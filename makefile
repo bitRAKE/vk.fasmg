@@ -7,6 +7,9 @@ FASM2 = ..\fasm2\fasm2.cmd
 !IFNDEF CLANG
 CLANG = $(PROGRAMFILES)\LLVM\bin\clang.exe
 !ENDIF
+!IFNDEF SLANGC
+SLANGC = $(VULKAN_SDK)\Bin\slangc.exe
+!ENDIF
 
 POWERSHELL = powershell -NoProfile -ExecutionPolicy Bypass
 BUILD = build
@@ -41,11 +44,23 @@ CUBE_SHADERS = $(BUILD)\noAPI_cube_bindings.spv $(BUILD)\noAPI_cube_pointer.spv 
 CUBE_EXAMPLE = $(BUILD)\noAPI_cube.exe
 RANGE_PROBE = $(BUILD)\vk_ranges_test.dll
 
+# myhits: the boundary header is assembled first, the shaders are compiled against it, then the programs embed them.
+MYHITS = source\myhits
+MYHITS_HEADER = $(BUILD)\myhits_shared.slang
+MYHITS_SLANG = "$(SLANGC)" -I $(BUILD) -target spirv -profile spirv_1_5 -emit-spirv-directly -fvk-use-scalar-layout
+MYHITS_VALIDATE = "$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.3 --scalar-block-layout
+MYHITS_MACHINE = $(MYHITS)\machine.inc $(MYHITS)\shared.inc $(SHARED_EXAMPLE_BODY)
+STYLE_SLANG = $(MYHITS)\proofs\01_style\style.slang
+STYLE_SHADERS = $(BUILD)\myhits_style_collide.spv $(BUILD)\myhits_style_vertex.spv $(BUILD)\myhits_style_fragment.spv
+SPINE_SLANG = $(MYHITS)\proofs\02_spine\spine.slang
+SPINE_SHADERS = $(BUILD)\myhits_spine_seed.spv $(BUILD)\myhits_spine_direct.spv $(BUILD)\myhits_spine_advance.spv $(BUILD)\myhits_spine_mote_vertex.spv $(BUILD)\myhits_spine_mote_fragment.spv
+MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe
+
 VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
 VULKAN_DELAY_OBJ = $(BUILD)\vk_delay.obj
 
-all: $(LOADER_EXAMPLES) $(DEBUG_EXAMPLES) $(LEGACY_EXAMPLES) $(CUBE_EXAMPLE)
+all: $(LOADER_EXAMPLES) $(DEBUG_EXAMPLES) $(LEGACY_EXAMPLES) $(CUBE_EXAMPLE) $(MYHITS_PROOFS)
 
 $(BUILD_READY):
 	if not exist "$(BUILD)" mkdir "$(BUILD)"
@@ -238,7 +253,60 @@ $(RANGE_PROBE): $(BUILD)\ranges_probe.obj tests\ranges_probe.def
 check-noAPI_cube: $(CUBE_EXAMPLE) $(RANGE_PROBE)
 	$(POWERSHELL) -File tests\verify-noAPI-cube.ps1 -BuildDir "$(BUILD)" -Validation
 
-check: check-api check-debug check-legacy check-noAPI_cube
+$(MYHITS_HEADER): $(MYHITS)\shared.asm $(MYHITS)\shared.inc tools\assemble.ps1 $(BUILD_READY)
+	$(ASSEMBLE) -Source $(MYHITS)\shared.asm -Output $@
+
+# Proof 01: the pointer style compiles and is valid SPIR-V. Nothing runs.
+$(BUILD)\myhits_style_collide.spv: $(STYLE_SLANG) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry collide -stage compute -o $@ $(STYLE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_style_vertex.spv: $(STYLE_SLANG) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry sprite_vertex -stage vertex -o $@ $(STYLE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_style_fragment.spv: $(STYLE_SLANG) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry sprite_fragment -stage fragment -o $@ $(STYLE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+# Proof 02: the boundary end to end, on the device.
+$(BUILD)\myhits_spine_seed.spv: $(SPINE_SLANG) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry seed -stage compute -o $@ $(SPINE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_spine_direct.spv: $(SPINE_SLANG) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry direct -stage compute -o $@ $(SPINE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_spine_advance.spv: $(SPINE_SLANG) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry advance -stage compute -o $@ $(SPINE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_spine_mote_vertex.spv: $(SPINE_SLANG) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry mote_vertex -stage vertex -o $@ $(SPINE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_spine_mote_fragment.spv: $(SPINE_SLANG) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry mote_fragment -stage fragment -o $@ $(SPINE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_spine.obj: $(MYHITS)\proofs\02_spine\spine.asm $(MYHITS_MACHINE) $(SPINE_SHADERS)
+	$(ASSEMBLE) -Source $(MYHITS)\proofs\02_spine\spine.asm -Output $@
+
+$(BUILD)\myhits_spine.exe: $(BUILD)\myhits_spine.obj $(DEBUG_LOGGER_OBJ)
+	$(LINK_WINDOW)
+
+myhits-proofs: $(MYHITS_PROOFS)
+	$(POWERSHELL) -File $(MYHITS)\proofs\run.ps1 -BuildDir "$(BUILD)"
+
+# What this machine offers that the plan leans on; nothing is built.
+myhits-survey:
+	$(POWERSHELL) -File $(MYHITS)\proofs\00_survey\survey.ps1
+
+check-myhits: $(MYHITS_PROOFS)
+	$(POWERSHELL) -File $(MYHITS)\proofs\run.ps1 -BuildDir "$(BUILD)" -Validation
+
+check: check-api check-debug check-legacy check-noAPI_cube check-myhits
 
 # Generated includes and manifests survive clean; the next build reuses them.
 clean:

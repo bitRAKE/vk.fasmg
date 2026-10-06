@@ -54,7 +54,11 @@ rem Build and check the GPU-only textured cube and fallback routes:
 build.cmd noAPI_cube
 rem Repeat cube checks with core and synchronization validation:
 build.cmd check-noAPI_cube
-rem Run all projection, loader, debug, explorer, and cube checks:
+rem Build and run the proofs under the shooter in progress:
+build.cmd myhits-proofs
+rem Repeat them with core and synchronization validation:
+build.cmd check-myhits
+rem Run all projection, loader, debug, explorer, cube, and proof checks:
 build.cmd check
 rem Run just the projection and loader checks:
 build.cmd check-api
@@ -107,6 +111,7 @@ examples/legacy/       fractal explorer under adaptive, compatibility, modern co
 examples/noAPI_cube/   GPU-only textured cube with negotiated Vulkan fallbacks
 examples/common/       shared build contract, context, memory, commands, WSI, math
 examples/strings.inc   pooled UTF-8/UTF-16 literals for the examples
+source/myhits/         a GPU-resident shooter in progress: plan, platform layer, proofs
 tests/                 projection/loader/debug/explorer/cube checks and native probes
 macro/struct.inc       fasm2 struct macro with escaped-member alignment fix
 newcoff.inc            common AMD64 NEWCOFF and procedure setup
@@ -152,3 +157,8 @@ console/debugger/file sinks, and object/workload annotations.
 The [legacy examples](examples/legacy/README.md) apply
 [graceful fallback](docs/legacy.md) to one Vulkan application, and show a
 contract deciding at assembly time which side of each operation exists.
+
+`source\myhits` is a shooter being built on a modern-only contract, with its
+world on the GPU and no descriptors. [Its plan](source/myhits/plan.md) says
+where it is going; [its proofs](source/myhits/proofs/README.md) are each idea
+it rests on, small, runnable and checked. They need the SDK's `slangc`.
