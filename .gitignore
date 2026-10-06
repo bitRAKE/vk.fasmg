@@ -1,4 +1,6 @@
 /build
-/tests/vk/.validated
+/tests/vk/.*
+/tests/vk/*.inc
+/tests/vk/*.txt
 /vk/*
-!/vk/loader
+!/vk/loader/
