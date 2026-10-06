@@ -16,6 +16,12 @@ extrn OutputDebugStringW:qword
 extrn ExitProcess:qword
 
 section '.text$probe' code readable executable align 16
+proc check_fifth first,second,third,fourth,text
+	; Static-RSP procedures expose arguments as stack aliases; read that alias.
+	fastcall OutputDebugStringW,[text]
+	ret
+endp
+
 proc check_record sink,message,expected
 	mov [sink],rcx
 	mov [callback_data.pMessage],rdx
@@ -77,6 +83,7 @@ proc mainCRTStartup uses rbx rsi
 	test eax,eax
 	jnz .finish
 	fastcall OutputDebugStringW,<W,'probe.wide: inline UTF-16 café λ',13,10>
+	fastcall check_fifth,0,0,0,0,<W,'probe.stack: fifth-argument UTF-16 café λ',13,10>
 	; Reopen the first file read-only to make WriteFile fail deterministically.
 	fastcall debug_shutdown,addr first_sink
 	fastcall CreateFileW,<W,'build\debug_sink_a.log'>,80000000h,1,0,3,80h,0

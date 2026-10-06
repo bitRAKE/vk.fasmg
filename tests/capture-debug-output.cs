@@ -57,6 +57,9 @@ namespace VkFasmgTests {
         [DllImport("kernel32.dll")] static extern bool TerminateProcess(IntPtr process, uint code);
 
         public static string Run(string executable, string directory) {
+            return Run(executable, directory, "");
+        }
+        public static string Run(string executable, string directory, string arguments) {
             if (IntPtr.Size != 8) throw new InvalidOperationException("Use x64 PowerShell.");
             var startup = new StartupInfo();
             startup.cb = Marshal.SizeOf(typeof(StartupInfo));
@@ -72,7 +75,8 @@ namespace VkFasmgTests {
                 startup.flags = 0x100; // STARTF_USESTDHANDLES.
                 startup.stdin = startup.stdout = startup.stderr = nullHandle;
                 // DEBUG_ONLY_THIS_PROCESS | CREATE_NO_WINDOW.
-                if (!CreateProcessW(executable, null, IntPtr.Zero, IntPtr.Zero, true,
+                var command = new StringBuilder("\"" + executable + "\" " + arguments);
+                if (!CreateProcessW(executable, command, IntPtr.Zero, IntPtr.Zero, true,
                         0x08000002, IntPtr.Zero, directory, ref startup, out process))
                     throw new Win32Exception(Marshal.GetLastWin32Error());
             } finally { CloseHandle(nullHandle); }

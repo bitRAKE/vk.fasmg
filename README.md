@@ -3,8 +3,8 @@
 This is a minimal Windows x64 repository for projecting the Vulkan registry
 into fasmg/fasm2 includes and demonstrating how to bind the resulting functions.
 It contains the projection generator, ABI verification, five loader strategies
-demonstrated by six console programs, three debug-utils examples, and their
-focused tests.
+demonstrated by six console programs, three debug-utils examples, and three
+fractal explorer GUI profiles demonstrating graceful fallback, with focused tests.
 
 ## Requirements
 
@@ -14,7 +14,9 @@ focused tests.
 - [fasm2](https://github.com/tgrysztar/fasm2) with AMD64 NEWCOFF support.
 - A Vulkan 1.1 capable driver for running the loader examples, including
   `VK_KHR_surface` and, except for the IAT example, `VK_EXT_debug_utils`.
-- The Vulkan SDK's Khronos validation layer for `check-debug` and `check`.
+- The Vulkan SDK's `glslangValidator` and `spirv-val` for the explorer shaders.
+- The Vulkan SDK's Khronos validation layer for `check-debug`, `check-legacy`,
+  and `check`. The explorer's software profile needs no Vulkan runtime to run.
 
 The makefile defaults to `..\fasm2\fasm2.cmd` and
 `%ProgramFiles%\LLVM\bin\clang.exe`. Override either when needed:
@@ -28,7 +30,7 @@ build.cmd "FASM2=C:\tools\fasm2\fasm2.cmd" "CLANG=C:\tools\LLVM\bin\clang.exe"
 Run from the repository root:
 
 ```bat
-rem Generate, verify against the SDK, and build loader/debug examples:
+rem Generate, verify against the SDK, and build all examples:
 build.cmd
 rem Generate and verify the projection only:
 build.cmd api
@@ -38,7 +40,11 @@ rem Build and verify the three debug-utils examples:
 build.cmd debug
 rem Repeat debug checks with the Khronos validation layer:
 build.cmd check-debug
-rem Run all projection, loader, and debug checks:
+rem Build and check the three fractal explorer profiles:
+build.cmd legacy
+rem Repeat explorer checks with core and synchronization validation:
+build.cmd check-legacy
+rem Run all projection, loader, debug, and explorer checks:
 build.cmd check
 rem Run just the projection and loader checks:
 build.cmd check-api
@@ -65,6 +71,9 @@ examples, checks their imports and dense slot tables, and links the delay-load
 example against an absent DLL to verify its ordinary initialization failure.
 It also verifies the [debug-utils examples](examples/debug/README.md), including
 actual Windows debugger events and runs under the Khronos validation layer.
+The [legacy examples](examples/legacy/README.md) compare full images across
+modern, compatibility, KHR, and API 1.2 routes; exercise GUI controls and CPU
+precision recovery; and run with an unavailable driver and synchronization validation.
 
 ## Repository layout
 
@@ -73,11 +82,12 @@ tools/                 projection generator, SDK verifier, assembler wrapper
 vk/loader/             handwritten IAT, delay, static, dynamic, COMDAT loaders
 examples/loaders/      six builds of one instance/device program; stdout helper
 examples/debug/        lifecycle, severity/output routing, object names/tags/labels
+examples/legacy/       fractal explorer: adaptive, compatibility/tiled, software
 examples/strings.inc   pooled UTF-8/UTF-16 literals for the examples
-tests/                 projection/loader/debug checks, probes, debugger capture
+tests/                 projection/loader/debug/explorer checks and native probes
 macro/struct.inc       fasm2 struct macro with escaped-member alignment fix
 newcoff.inc            common AMD64 NEWCOFF and procedure setup
-docs/                  projection format and loader contracts
+docs/                  projection format, loader contracts, fallback design
 ```
 
 The following are generated locally:
@@ -116,3 +126,5 @@ See [the projection format](docs/vulkan.md), [the loader contracts](docs/loaders
 and [the six loader examples](examples/loaders/README.md). The
 [debug-utils examples](examples/debug/README.md) demonstrate message callbacks,
 console/debugger/file sinks, and object/workload annotations.
+The [legacy examples](examples/legacy/README.md) apply
+[graceful fallback](docs/legacy.md) to a complete GUI application.

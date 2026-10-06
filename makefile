@@ -1,4 +1,4 @@
-# NMAKE: generate and verify the Vulkan projection, then build loader/debug examples.
+# NMAKE: generate/verify the projection and build loader/debug/legacy examples.
 # Override FASM2 and CLANG on the command line for other toolchain locations.
 
 !IFNDEF FASM2
@@ -30,12 +30,16 @@ DEBUG_LOGGER_OBJ = $(BUILD)\debug_logger.obj
 DEBUG_BODY = examples\debug\context.inc examples\debug\sink.inc $(EXAMPLE_STRINGS) $(OBJECT_BASE) vk\loader\static.inc vk\loader\lazy.inc $(VK_VALIDATED) $(BUILD_READY)
 DEBUG_EXAMPLES = $(BUILD)\debug_lifecycle.exe $(BUILD)\debug_outputs.exe $(BUILD)\debug_objects.exe
 DEBUG_SINK_PROBE = $(BUILD)\debug_sink_probe.exe
+LEGACY_BODY = examples\legacy\explorer.inc examples\legacy\capabilities.inc examples\legacy\gpu.inc examples\legacy\cpu.inc examples\debug\sink.inc $(EXAMPLE_STRINGS) $(OBJECT_BASE) vk\loader\static.inc vk\loader\lazy.inc $(VK_VALIDATED) $(BUILD_READY)
+LEGACY_SHADERS = $(BUILD)\legacy_fullscreen.spv $(BUILD)\legacy_fractal.spv
+LEGACY_EXAMPLES = $(BUILD)\legacy_adaptive.exe $(BUILD)\legacy_compatibility.exe $(BUILD)\legacy_software.exe
+LINK_LEGACY = link /NOLOGO /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup /NODEFAULTLIB /OPT:REF /OPT:ICF /MAP:$(@R).map /OUT:$@ $** kernel32.lib user32.lib gdi32.lib comdlg32.lib shlwapi.lib
 
 VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
 VULKAN_DELAY_OBJ = $(BUILD)\vk_delay.obj
 
-all: $(LOADER_EXAMPLES) $(DEBUG_EXAMPLES)
+all: $(LOADER_EXAMPLES) $(DEBUG_EXAMPLES) $(LEGACY_EXAMPLES)
 
 $(BUILD_READY):
 	if not exist "$(BUILD)" mkdir "$(BUILD)"
@@ -149,7 +153,39 @@ debug: $(DEBUG_EXAMPLES) $(DEBUG_SINK_PROBE)
 check-debug: $(DEBUG_EXAMPLES) $(DEBUG_SINK_PROBE)
 	$(POWERSHELL) -File tests\verify-debug-examples.ps1 -BuildDir "$(BUILD)" -Validation
 
-check: check-api check-debug
+$(BUILD)\legacy_fullscreen.spv: examples\legacy\fullscreen.vert $(BUILD_READY)
+	"$(VULKAN_SDK)\Bin\glslangValidator.exe" -V --target-env vulkan1.0 -o $@ examples\legacy\fullscreen.vert
+	"$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.0 $@
+
+$(BUILD)\legacy_fractal.spv: examples\legacy\fractal.frag $(BUILD_READY)
+	"$(VULKAN_SDK)\Bin\glslangValidator.exe" -V --target-env vulkan1.0 -o $@ examples\legacy\fractal.frag
+	"$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.0 $@
+
+$(BUILD)\legacy_adaptive.obj: examples\legacy\00_adaptive.asm $(LEGACY_BODY) $(LEGACY_SHADERS)
+	$(ASSEMBLE) -Source examples\legacy\00_adaptive.asm -Output $@
+
+$(BUILD)\legacy_compatibility.obj: examples\legacy\01_compatibility.asm $(LEGACY_BODY) $(LEGACY_SHADERS)
+	$(ASSEMBLE) -Source examples\legacy\01_compatibility.asm -Output $@
+
+$(BUILD)\legacy_software.obj: examples\legacy\02_software.asm $(LEGACY_BODY) $(LEGACY_SHADERS)
+	$(ASSEMBLE) -Source examples\legacy\02_software.asm -Output $@
+
+$(BUILD)\legacy_adaptive.exe: $(BUILD)\legacy_adaptive.obj $(DEBUG_LOGGER_OBJ)
+	$(LINK_LEGACY)
+
+$(BUILD)\legacy_compatibility.exe: $(BUILD)\legacy_compatibility.obj $(DEBUG_LOGGER_OBJ)
+	$(LINK_LEGACY)
+
+$(BUILD)\legacy_software.exe: $(BUILD)\legacy_software.obj $(DEBUG_LOGGER_OBJ)
+	$(LINK_LEGACY)
+
+legacy: $(LEGACY_EXAMPLES)
+	$(POWERSHELL) -File tests\verify-legacy-examples.ps1 -BuildDir "$(BUILD)"
+
+check-legacy: $(LEGACY_EXAMPLES)
+	$(POWERSHELL) -File tests\verify-legacy-examples.ps1 -BuildDir "$(BUILD)" -Validation
+
+check: check-api check-debug check-legacy
 
 # Generated includes and manifests survive clean; the next build reuses them.
 clean:

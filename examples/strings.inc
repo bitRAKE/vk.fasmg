@@ -16,6 +16,9 @@ macro fastcall?.inline_string var
 		text GLOBSTR var,0
 	end match
 	redefine var text
+	; Stack arguments also need the new address classified as memory. proc64's
+	; previous operand state can still describe the literal as an immediate.
+	x86.parse_operand@src [text]
 end macro
 
 postpone

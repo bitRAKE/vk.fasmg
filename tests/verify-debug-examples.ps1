@@ -46,6 +46,7 @@ if ([regex]::Matches($probeReport, '\[debug\] sink: WriteFile failed').Count -ne
 $probeUnicode = 'caf' + [char]0xE9 + ' ' + [char]0x3BB
 Assert-Contains $probeReport ('probe.debugger: UTF-8 ' + $probeUnicode) 'Debugger sentinel'
 Assert-Contains $probeReport ('probe.wide: inline UTF-16 ' + $probeUnicode) 'Wide literal pool'
+Assert-Contains $probeReport ('probe.stack: fifth-argument UTF-16 ' + $probeUnicode) 'Stack literal materialization'
 if ($probeReport.IndexOf([char]0) -ge 0) { throw 'Debugger capture retained bytes beyond a string terminator' }
 if ($probeReport -match 'probe\.(first|second|retargeted|handle|invalid|null|write):') {
     throw 'Debugger capture retained adjacent pooled literals or a file record'
