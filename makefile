@@ -58,7 +58,14 @@ MYHITS_ART = $(BUILD)\myhits_art.inc
 MYHITS_PICTURES = $(MYHITS)\pictures.inc $(MYHITS)\pictures.slang $(MYHITS_ART)
 GALLERY_SLANG = $(MYHITS)\proofs\03_pictures\gallery.slang
 GALLERY_SHADERS = $(BUILD)\myhits_pictures_develop.spv $(BUILD)\myhits_pictures_chart.spv $(BUILD)\myhits_pictures_census.spv $(BUILD)\myhits_pictures_direct.spv $(BUILD)\myhits_pictures_sprite_vertex.spv $(BUILD)\myhits_pictures_sprite_fragment.spv
-MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe
+MYHITS_TABLES = $(BUILD)\myhits_tables.slang
+MYHITS_MOTION = $(MYHITS)\motion.slang $(MYHITS)\ease.slang $(MYHITS)\tables.inc $(MYHITS_TABLES)
+RANGE_SLANG = $(MYHITS)\proofs\04_motion\range.slang
+RANGE_SOURCES = $(RANGE_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(MYHITS_HEADER)
+RANGE_SHADERS = $(BUILD)\myhits_motion_develop.spv $(BUILD)\myhits_motion_chart.spv $(BUILD)\myhits_motion_census.spv $(BUILD)\myhits_motion_examine.spv \
+	$(BUILD)\myhits_motion_direct.spv $(BUILD)\myhits_motion_update.spv $(BUILD)\myhits_motion_report.spv $(BUILD)\myhits_motion_scene_vertex.spv \
+	$(BUILD)\myhits_motion_scene_fragment.spv $(BUILD)\myhits_motion_plot_vertex.spv $(BUILD)\myhits_motion_plot_fragment.spv
+MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe $(BUILD)\myhits_motion.exe
 
 VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
@@ -334,6 +341,61 @@ $(BUILD)\myhits_pictures.obj: $(MYHITS)\proofs\03_pictures\gallery.asm $(MYHITS_
 
 $(BUILD)\myhits_pictures.exe: $(BUILD)\myhits_pictures.obj $(DEBUG_LOGGER_OBJ)
 	$(LINK_WINDOW) xinput.lib
+
+# The tables' numbers for the shaders, then proof 04's passes.
+$(MYHITS_TABLES): $(MYHITS)\tables.asm $(MYHITS)\tables.inc $(MYHITS)\shared.inc $(MYHITS_ART) tools\assemble.ps1
+	$(ASSEMBLE) -Source $(MYHITS)\tables.asm -Output $@
+
+$(BUILD)\myhits_motion_develop.spv: $(RANGE_SOURCES)
+	$(MYHITS_SLANG) -entry develop -stage compute -o $@ $(RANGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_motion_chart.spv: $(RANGE_SOURCES)
+	$(MYHITS_SLANG) -entry chart -stage compute -o $@ $(RANGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_motion_census.spv: $(RANGE_SOURCES)
+	$(MYHITS_SLANG) -entry census -stage compute -o $@ $(RANGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_motion_examine.spv: $(RANGE_SOURCES)
+	$(MYHITS_SLANG) -entry examine -stage compute -o $@ $(RANGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_motion_direct.spv: $(RANGE_SOURCES)
+	$(MYHITS_SLANG) -entry direct -stage compute -o $@ $(RANGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_motion_update.spv: $(RANGE_SOURCES)
+	$(MYHITS_SLANG) -entry update -stage compute -o $@ $(RANGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_motion_report.spv: $(RANGE_SOURCES)
+	$(MYHITS_SLANG) -entry report -stage compute -o $@ $(RANGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_motion_scene_vertex.spv: $(RANGE_SOURCES)
+	$(MYHITS_SLANG) -entry scene_vertex -stage vertex -o $@ $(RANGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_motion_scene_fragment.spv: $(RANGE_SOURCES)
+	$(MYHITS_SLANG) -entry scene_fragment -stage fragment -o $@ $(RANGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_motion_plot_vertex.spv: $(RANGE_SOURCES)
+	$(MYHITS_SLANG) -entry plot_vertex -stage vertex -o $@ $(RANGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_motion_plot_fragment.spv: $(RANGE_SOURCES)
+	$(MYHITS_SLANG) -entry plot_fragment -stage fragment -o $@ $(RANGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_motion.obj: $(MYHITS)\proofs\04_motion\range.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(RANGE_SHADERS)
+	$(ASSEMBLE) -Source $(MYHITS)\proofs\04_motion\range.asm -Output $@
+
+$(BUILD)\myhits_motion.exe: $(BUILD)\myhits_motion.obj $(DEBUG_LOGGER_OBJ)
+	$(LINK_WINDOW) xinput.lib
+
 
 myhits-proofs: $(MYHITS_PROOFS)
 	$(POWERSHELL) -File $(MYHITS)\proofs\run.ps1 -BuildDir "$(BUILD)"

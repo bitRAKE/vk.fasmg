@@ -6,6 +6,8 @@
      02 spine   the CPU-GPU boundary works end to end on the device
      03 pictures  every frame is made, masked and drawn on the device, lit
                 from one side however it turns
+     04 motion  the easing curves are the textbook's; bodies run the tables'
+                programs at a fixed tick; the level's pace is eased too
 
    -Validation repeats the device runs under Khronos core and synchronization
    validation and rejects any diagnostic.
@@ -61,18 +63,21 @@ foreach ($line in [IO.File]::ReadAllLines((Join-Path $BuildDir 'myhits_shared.sl
 }
 Assert-True ($promised['Root.world'] -eq 0 -and $promised.ContainsKey('Events.sound') -and $promised.ContainsKey('Picture.checksum')) 'The generated header lists no boundary members'
 $modules = @(Get-ChildItem -LiteralPath $BuildDir -Filter 'myhits_*.spv')
-Assert-True ($modules.Count -ge 14) 'The proofs'' shaders were not built'
+Assert-True ($modules.Count -ge 25) 'The proofs'' shaders were not built'
 $checked = 0
+$pulling = 0
 foreach ($module in $modules) {
     $code = (& $spirvDis $module.FullName | Out-String)
     Assert-True ($LASTEXITCODE -eq 0) "Could not read $($module.Name)"
     # SV_VertexID and SV_InstanceID would bring this in, and a feature with it.
     Assert-True ($code -notmatch 'OpCapability DrawParameters') "$($module.Name) needs shaderDrawParameters"
-    Assert-True ($code -match 'OpCapability PhysicalStorageBufferAddresses') "$($module.Name) does not reach memory through pointers"
-    Assert-True ($code -notmatch 'OpTypeImage|OpTypeSampler|DescriptorSet') "$($module.Name) binds a descriptor"
+    # Nothing is bound: whatever memory a module reaches, it reaches through a
+    # pointer. (One that only computes, like a plot of a curve, reaches none.)
+    Assert-True ($code -notmatch 'OpTypeImage|OpTypeSampler|DescriptorSet|OpVariable %\S+ (Uniform|StorageBuffer|UniformConstant)\b') "$($module.Name) binds a descriptor"
+    if ($code -match 'OpCapability PhysicalStorageBufferAddresses') { $pulling++ }
     $names = @{}
     foreach ($match in [regex]::Matches($code, 'OpMemberName (%\S+) (\d+) "(\w+)"')) { $names["$($match.Groups[1].Value) $($match.Groups[2].Value)"] = $match.Groups[3].Value }
-    foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census)(?:_\w+)?) (\d+) Offset (\d+)')) {
+    foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census|Tables|Move|Kind)(?:_\w+)?) (\d+) Offset (\d+)')) {
         $member = "$($match.Groups[2].Value).$($names["$($match.Groups[1].Value) $($match.Groups[3].Value)"])"
         Assert-True ($promised.ContainsKey($member)) "$($module.Name) has $member, which shared.inc does not"
         Assert-True ($promised[$member] -eq [int]$match.Groups[4].Value) "$($module.Name) puts $member at $($match.Groups[4].Value), shared.inc at $($promised[$member])"
@@ -81,7 +86,8 @@ foreach ($module in $modules) {
 }
 $atomics = [regex]::Matches((& $spirvDis (Join-Path $BuildDir 'myhits_style_collide.spv') | Out-String), 'OpAtomicIAdd').Count
 Assert-True ($atomics -ge 4) 'The collision sketch lost its atomics'
-Write-Host "[myhits] 01 style: $($modules.Count) modules valid, pointer-only, no descriptors; $checked member offsets match shared.inc; $atomics atomics through pointers in the collision sketch"
+Assert-True ($pulling -ge $modules.Count - 2) 'More than the two plot shaders reach no memory'
+Write-Host "[myhits] 01 style: $($modules.Count) modules valid, none binds a descriptor, $pulling reach memory through pointers; $checked member offsets match shared.inc; $atomics atomics through pointers in the collision sketch"
 
 $previousLayers = $env:VK_INSTANCE_LAYERS
 $previousSync = $env:VK_LAYER_VALIDATE_SYNC
@@ -130,6 +136,21 @@ try {
         Write-Host ("[myhits] $mode/03 pictures: {0} frames ({1} packed, {2} KB up once), {3} texels and {4} mask words made in {5} passes; {6} solid texels, as packed; masks cover {7} pixels and pictures {8}; {9:0}% of the light on the lit side ({10:0}% had it turned with the pictures); {11} sprites in {12} pass and {13} draw a frame" -f `
             $state.art_frames, $state.baked_frames, [int]([int]$state.packed_bytes / 1024), $state.texels, $state.mask_words, $state.startup_dispatches, $state.baked_solid,
             $state.mask_pixels, $state.picture_pixels, $lit, $fixed, $state.sprites, ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
+
+        # 04: motion. The program checks its own claims; the curves it read back from the device are held here to a second implementation.
+        $state = Run-Proof $mode 'motion' @{ 1='events out of order, or late'; 2='the device found a fault in its own curves'; 3='a scripted frame did not run two ticks'
+            4='the controls did not move the ship in their own frame'; 5='the missile''s offset did not end where it says'; 6='the missile did not come to face the crosshair'
+            7='the missile did not reach its speed on the line to the crosshair'; 8='what rides the level did not ride it exactly, or the level did not stand still'
+            9='shots fired, missed and flying do not add up, or the level came the wrong distance'; 10='the traffic or the passes of a frame are not what the plan allows'
+            11='a press was lost, repeated or invented'; 12='a stall was chased, or time was paid out wrongly' }
+        $frames = [int]$state.frames
+        Assert-True ($frames -eq 200 -and [int]$state.events -eq $frames -and [int]$state.ticks -eq 2 * $frames) 'The motion proof did not run its script'
+        if (-not ('Myhits.Curves' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot '04_motion\curves.cs') }
+        $worst = ([Myhits.Curves]::Compare((Resolve-Path -LiteralPath (Join-Path $BuildDir 'myhits_motion.curves.bin')).Path, [int]$state.samples)) -split ' '
+        Assert-True ([double]$worst[0] -lt 1e-4) "The device's $($worst[1]) is $($worst[0]) from the textbook's at sample $($worst[2])"
+        Write-Host ("[myhits] $mode/04 motion: {0} curves by {1} samples within {2} of a second implementation (worst: {3}); {4} ticks a second, 2 a scripted frame; {5} kinds in {6} moves; the missile's three moves end where they say; {7} fired, {8} missed, {9} flying; the level stood still for 40 frames and came {10}; {11} passes and {12} draws a frame" -f `
+            $state.curves, $state.samples, $worst[0], $worst[1], $state.tick_rate, ([int]$state.kinds - 1), $state.moves, $state.fired, $state.escaped, $state.flying, $state.scroll,
+            ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
     }
 } finally {
     $env:VK_INSTANCE_LAYERS = $previousLayers

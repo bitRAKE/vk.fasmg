@@ -12,6 +12,10 @@
 ; Every frame it calls, in order: machine_await, machine_sample, machine_open,
 ; its compute passes with machine_dispatch and machine_settle between them,
 ; machine_canvas, its draws with machine_draw, machine_close.
+;
+; machine_sample pays real time out in ticks, TICK_RATE a second: a program
+; that simulates runs its passes Root.ticks times in the frame, which may be
+; none, and draws its world Root.blend of the way between the last two.
 include 'newcoff.inc'
 struc? TCHAR args:?&
 	. du args
@@ -49,6 +53,8 @@ BLEND_OPAQUE := 0
 BLEND_ALPHA := 1
 BLEND_ADDITIVE := 2
 BLEND_PREMULTIPLIED := 3		; the pictures': one blend covers and adds alike
+TICKS_LIMIT := 8			; the most one frame runs; past that, lost time stays lost
+SCRIPT_TICKS := 2			; a scripted frame is a sixtieth of a second
 QS_ALLINPUT := 4FFh
 
 iterate function,GetModuleHandleW,GetCommandLineW,OutputDebugStringW,ExitProcess,CreateFileW,WriteFile,CloseHandle,VirtualAlloc,VirtualFree, \
@@ -159,7 +165,7 @@ proc window_proc hwnd,message,wparam,lparam
 	mov [message],rdx
 	mov [wparam],r8
 	mov [lparam],r9
-	iterate <code,target>, WM_PAINT,.paint,WM_SIZE,.size,WM_KEYDOWN,.key,WM_GETMINMAXINFO,.minimum,WM_CLOSE,.close,WM_DESTROY,.close
+	iterate <code,target>, WM_PAINT,.paint,WM_SIZE,.size,WM_KEYDOWN,.key,WM_LBUTTONDOWN,.left,WM_RBUTTONDOWN,.right,WM_GETMINMAXINFO,.minimum,WM_CLOSE,.close,WM_DESTROY,.close
 		cmp edx,code
 		je target
 	end iterate
@@ -182,9 +188,25 @@ proc window_proc hwnd,message,wparam,lparam
 	fastcall resize_client
 	mov [stale],1
 	jmp .handled
+; A press is taken from its message, so one shorter than a frame is not lost.
 .key:
 	cmp r8d,VK_ESCAPE
-	jne .default
+	je .close
+	bt r9,30			; the keyboard repeating a key already down
+	jc .default
+	iterate <key,bit>, VK_SPACE,BUTTON_FIRE, VK_SHIFT,BUTTON_SECOND, VK_RETURN,BUTTON_START
+		cmp r8d,key
+		jne .not_#key
+		or [pressed_pending],bit
+	.not_#key:
+	end iterate
+	jmp .default
+.left:
+	or [pressed_pending],BUTTON_FIRE
+	jmp .default
+.right:
+	or [pressed_pending],BUTTON_SECOND
+	jmp .default
 .close:
 	fastcall PostQuitMessage,0
 	jmp .handled
@@ -431,8 +453,9 @@ proc machine_events uses rbx
 endp
 
 ; The clock and the controls into Root, read now: the frame recorded next
-; shows them. Keys, then the mouse, then a pad over both. A scripted run
-; supplies its own and steps evenly.
+; shows them. Real time is paid out in whole ticks; what is left over is where
+; the picture stands between the last two. Keys, then the mouse, then a pad
+; over both. A scripted run supplies its own controls and steps evenly.
 proc machine_sample uses rbx
 	test dword [root+Root.flags],ROOT_SCRIPTED
 	jnz .scripted
@@ -441,22 +464,51 @@ proc machine_sample uses rbx
 	mov rdx,rax
 	sub rax,[clock_last]
 	mov [clock_last],rdx
-	cvtsi2ss xmm0,rax
-	cvtsi2ss xmm1,qword [clock_frequency]
-	divss xmm0,xmm1
-	minss xmm0,[longest_step]
+	cvtsi2sd xmm0,rax
+	cvtsi2sd xmm1,qword [clock_frequency]
+	divsd xmm0,xmm1
 	cmp dword [root+Root.frame],0
-	jne .step
+	jne .owed
 	xorps xmm0,xmm0
-.step:
-	movss [root+Root.dt],xmm0
-	addss xmm0,[root+Root.time]
-	movss [root+Root.time],xmm0
-	; Keys only while the window has the keyboard.
+.owed:
+	cvtsd2ss xmm1,xmm0
+	minss xmm1,[longest_step]
+	movss [frame_seconds],xmm1
+	addsd xmm0,[tick_debt]
+	movsd xmm1,[tick_rate]
+	mulsd xmm1,xmm0
+	cvttsd2si eax,xmm1
+	cmp eax,TICKS_LIMIT
+	jbe .pay
+	; Too far behind to catch up, after a stall or a breakpoint: run the limit
+	; and forgive the rest.
+	mov eax,TICKS_LIMIT
+	cvtsi2sd xmm0,eax
+	divsd xmm0,[tick_rate]
+.pay:
+	mov [root+Root.ticks],eax
+	add [ticks_run],rax
+	cvtsi2sd xmm2,eax
+	divsd xmm2,[tick_rate]
+	subsd xmm0,xmm2
+	movsd [tick_debt],xmm0
+	mulsd xmm0,[tick_rate]
+	cvtsd2ss xmm1,xmm0
+	movss [root+Root.blend],xmm1
+	; The picture shows the tick before last, and this much of the way on.
+	cvtsi2sd xmm2,[ticks_run]
+	subsd xmm2,[whole_tick]
+	addsd xmm2,xmm0
+	xorps xmm3,xmm3
+	maxsd xmm2,xmm3
+	divsd xmm2,[tick_rate]
+	cvtsd2ss xmm1,xmm2
+	movss [root+Root.time],xmm1
+	; Keys and buttons only while the window has the keyboard.
 	mov dword [root+Root.move],0
 	mov dword [root+Root.move+4],0
-	mov ebx,[root+Root.held]
 	mov dword [root+Root.held],0
+	xor ebx,ebx
 	fastcall GetForegroundWindow
 	cmp rax,[window]
 	jne .edges
@@ -467,7 +519,7 @@ proc machine_sample uses rbx
 		mov dword [root+Root.move+offset],value
 	.up_#key:
 	end iterate
-	iterate <key,bit>, VK_SPACE,BUTTON_FIRE, VK_SHIFT,BUTTON_SECOND, VK_RETURN,BUTTON_START
+	iterate <key,bit>, VK_SPACE,BUTTON_FIRE, VK_LBUTTON,BUTTON_FIRE, VK_SHIFT,BUTTON_SECOND, VK_RBUTTON,BUTTON_SECOND, VK_RETURN,BUTTON_START
 		fastcall GetAsyncKeyState,key
 		test ax,ax
 		jns .off_#key
@@ -490,19 +542,38 @@ proc machine_sample uses rbx
 		movss [root+Root.aim+offset],xmm0
 	end iterate
 .pad:
+	; What the pad adds to the buttons is the pad's; its presses are its edges.
+	mov ebx,[root+Root.held]
 	fastcall pad_sample
-.edges:
-	mov eax,[root+Root.held]
 	not ebx
-	and eax,ebx
-	mov [root+Root.pressed],eax
+	and ebx,[root+Root.held]
+.edges:
+	fastcall merge_presses,rbx
 	ret
 .scripted:
-	movss xmm0,[scripted_step]
-	movss [root+Root.dt],xmm0
-	cvtsi2ss xmm1,dword [root+Root.frame]
-	mulss xmm0,xmm1
-	movss [root+Root.time],xmm0
+	mov dword [root+Root.ticks],SCRIPT_TICKS
+	mov dword [root+Root.blend],1.0
+	add [ticks_run],SCRIPT_TICKS
+	cvtsi2sd xmm0,[ticks_run]
+	divsd xmm0,[tick_rate]
+	cvtsd2ss xmm1,xmm0
+	movss [root+Root.time],xmm1
+	ret
+endp
+
+; Root.pressed for this frame: what the window's messages saw go down since
+; the last one, and what the pad (ECX, its buttons now) newly holds. A press
+; shorter than a frame still holds for that frame.
+proc merge_presses pad_held
+	mov eax,[pressed_pending]
+	mov [pressed_pending],0
+	or [root+Root.held],eax
+	mov edx,[pad_before]
+	mov [pad_before],ecx
+	not edx
+	and edx,ecx
+	or eax,edx
+	mov [root+Root.pressed],eax
 	ret
 endp
 
@@ -774,6 +845,10 @@ serial_command_buffer dq 0
 clock_frequency dq 1
 clock_last dq 0
 clock_now dq 0
+ticks_run dq 0
+tick_debt dq 0.0			; seconds of real time not yet paid out in ticks
+tick_rate dq 1.0*TICK_RATE
+whole_tick dq 1.0
 traffic_down dq 0			; bytes the CPU sent after startup
 traffic_up dq 0				; bytes the CPU read back
 events_retirement rq EVENT_SLOTS
@@ -795,7 +870,9 @@ failure_stage dd 1
 app_io_failed dd 0
 written dd 0
 longest_step dd 0.05
-scripted_step dd 0.016666668
+frame_seconds dd 0.0			; real time since the last frame, for what follows the hand
+pressed_pending dd 0			; BUTTON_ bits the window's messages saw go down
+pad_before dd 0
 playfield_PLAYFIELD_WIDTH dd 1920.0
 playfield_PLAYFIELD_HEIGHT dd 1080.0
 cursor POINT

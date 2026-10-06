@@ -9,7 +9,9 @@ iterate on. What has been proved is marked so and lives, runnable, in
 Decisions taken, in the order they were asked:
 
 1. **Horizontal.** The playfield scrolls sideways, so there is room to see
-   what is coming and time to be impressed by it.
+   what is coming and time to be impressed by it. Sideways does not mean
+   relentless: the level's pace is a thing the game eases. It slows for a hard
+   enemy and stops for an anchored one or a boss, and moves on afterwards.
 2. **One ship, then a companion.** The game starts with a single ship. The
    companion arrives as a surprise and grows in three steps: it trails where
    you were; then it acts for itself, shielding one way and firing another;
@@ -28,6 +30,11 @@ Proved on the device (GTX 1080 Ti, with and without validation):
 - The assembly and the shader compiler agree on every boundary offset, from
   one definition. Proof 01.
 - A frame costs the CPU 72 bytes down and 512 up.
+- Every picture is made, masked and drawn on the device from one list, and a
+  picture that turns stays lit from one side. Proof 03.
+- The simulation steps 120 times a second whatever the display does; bodies
+  run programs of eased moves that end exactly where they say; the level's
+  pace is eased by the same curves. Proof 04.
 
 ## Shape
 
@@ -75,8 +82,8 @@ those offsets. Everything else is private to the shaders.
 struct Root {             // 72 bytes; at most 128, the size every device has
     World*  world;        //  0  everything else is reached from here
     Events* events;       //  8  this frame's slot
-    float   time, dt;     // 16  seconds; dt clamped, fixed in scripted runs
-    uint    frame, seed;  // 24
+    float   time, blend;  // 16  seconds the picture shows; where it stands between the last two ticks
+    uint    frame, ticks; // 24  and how many ticks this frame runs
     float2  view;         // 32  the playfield's size on screen, in pixels
     float2  move, aim;    // 40  -1..1, and the crosshair in playfield units
     uint    held, pressed;// 56  buttons down, and those that went down this frame
@@ -141,7 +148,7 @@ collision loops know their bounds.
 
 | # | Step | Runs as | Writes |
 | --- | --- | --- | --- |
-| 0 | await | CPU | Waits for the device to finish the last frame, plays its events' sounds, then reads the controls |
+| 0 | await | CPU | Waits for the device to finish the last frame, plays its events' sounds, then reads the controls and says how many ticks real time has earned |
 | 1 | direct | one invocation | Clock, rank, game state, bonuses; moves the player from input; creates every new sprite: waves, the player's shots, and whatever the spawn queue asked for |
 | 2 | update | per sprite | Its own slot in this frame's copy: its motion program, trail samples; requests for shots into the spawn queue |
 | 3 | collide | per shot and per hostile | Damage accumulators and pickup counters by atomics; its own death; sparks; sound counts |
@@ -149,7 +156,22 @@ collision loops know their bounds.
 | 5 | particles | per particle | Its own slot, in place |
 | 6 | draw | background, sprites by group, links, particles, HUD | The swapchain image |
 
+Steps 1 to 5 are one tick, and a frame runs as many as real time has earned:
+none or one on a 165 Hz display, two on a 60 Hz one. A last small pass
+reports the frame to its events whether a tick ran or not.
+
 Rules that keep it honest:
+
+- **The simulation runs in ticks, 120 a second.** What happens does not depend
+  on the display: a hit, a spawn, a scripted run are the same at 60 Hz and at
+  165. There are two copies of every body, the last tick's and this one's; a
+  pass reads the one and writes the other, and the picture stands between
+  them by `Root.blend`. Real time is paid out in whole ticks, at most eight a
+  frame: after a stall the rest is forgiven, not chased. The time is kept on
+  the device, so Root carries no clock a shader could step by. Proof 04.
+- **A press is taken from its message.** A key or button that goes down and
+  up between two frames is still pressed, and held, for one. Only the frame's
+  first tick sees a press.
 
 - **A frame begins when the device has finished the one before.** Proof 02
   found why: presentation lets a program queue frames ahead, and a queued
@@ -218,22 +240,36 @@ state, health, a link word, a seed and a tint. Three composite forms:
 - *Assemblies*. Anything too large for one frame is several linked parts,
   each separately destructible.
 
-**Motion.** A kind's behavior is a short program of moves, authored in the
-tables. A move is a duration, an easing curve and a target: hold, an offset
-from where it is, the player, the crosshair, along its heading, around its
-parent. One easing library, the usual in, out and in-out families of power,
-sine, exponential, circular, back, elastic and bounce, serves motion, the
-HUD's pops, particle sizes and the camera's shake. The missile is the model:
+**Motion.** A kind's behavior is a short program of moves, authored in
+[tables.inc](tables.inc). A body always coasts along its heading at its
+speed; a move changes something on top of that, over its seconds and along
+its curve: slide by an offset, slide to a target, turn to face one, turn by
+an angle, come to a speed, go back and repeat. A move is computed from where
+the body stood when it began, so nothing accumulates and it ends exactly
+where it says. A move of no seconds happens at once and the next follows in
+the same tick; a program that runs out coasts. One easing library, the in,
+out and in-out of power, sine, exponential, circular, back, elastic and
+bounce, serves motion, the HUD's pops, particle sizes, the camera's shake and
+the level's pace. The missile is the model:
 
 ```text
-kind MISSILE
-    move 0.35, OUT_CUBIC, OFFSET, 40, -60      ; drift out to a strike position
-    move 0.15, INOUT_SINE, FACE, CROSSHAIR     ; settle its aim
-    move 0,    IN_EXPO,   THRUST, 2400         ; and go
+mover MISSILE,FRAME_PLASMA,1.2
+	move 0.35,OUT_CUBIC,OFFSET,40,-60       ; drift out to a strike position
+	move 0.15,INOUT_SINE,FACE,0,0,CROSSHAIR ; settle its aim
+	move 0.50,IN_EXPO,THRUST,2400           ; and go
+end mover
 ```
 
-Variety comes from recombining moves, not from new shader code.
+Variety comes from recombining moves, not from new shader code: the three
+hostiles of proof 04 are fifteen lines of table. Still to come as moves:
+circling a parent, and firing.
 
+**The level's pace.** The level moves at a speed the director eases with the
+same curves, and can bring to nothing. Kinds marked as riding the level are
+carried at its pace and stand still when it does; everything else flies
+through it. That is how an anchored enemy or a boss holds the screen, and how
+a hard enemy can be given room: the director slows the level for it and lets
+it go again afterwards. Backgrounds scroll by the same number.
 **The player and the companion.** One ship, moved by `move`, with a crosshair
 at `aim` for what is aimed. The companion uses machinery that already exists:
 as a trailer it reads the player's own trail ring some samples back, which is
@@ -255,10 +291,17 @@ gives color ramp, size curve, drag, gravity and an optional pull toward the
 player. Drawn additively in linear light.
 
 **Director, rank and bonuses.** One serial invocation holds everything that
-is awkward in parallel: the state machine, the wave script, and rank. Rank
-rises with survival and firepower and falls on a hit; enemy counts, speeds
-and shot density read it. Bonuses read it too, in rate and in strength, so a
-harder game pays more.
+is awkward in parallel: the state machine, the wave script, the level's pace
+and rank. Rank rises with survival and firepower and falls on a hit; enemy
+counts, speeds and shot density read it. Bonuses read it too, in rate and in
+strength, so a harder game pays more.
+
+Rank also reads how the player shoots. Three counts are kept where they
+happen, on the device: shots fired, shots that left the playfield, and shots
+that struck. A player who hits what they aim at is ready for more; one who
+fills the screen and misses is not, however long they survive. Fired and
+escaped are counted already (proof 04); struck arrives with the hits. How the
+three become rank, over what window, is for milestone 5.
 
 **HUD.** Drawn by the GPU from the game block; the CPU never formats a
 number. The displayed score chases the real one, so it rolls. Each bonus slot
@@ -276,7 +319,9 @@ triggers, with a little random pitch on the CPU. Music follows as looped
 stems whose gains track `intensity`; the loop position returns as `beat`.
 
 **Input.** Keyboard and mouse, and an XInput pad when present, merged into
-the same four fields. Rumble goes back out from the events.
+the same four fields. What is held is read when the frame begins; what was
+pressed comes from the window's messages, and from the edges of the pad's
+buttons. Rumble goes back out from the events.
 
 ## Files
 
@@ -284,12 +329,13 @@ the same four fields. Rumble goes back out from the events.
 | --- | --- | --- |
 | `shared.inc`, `shared.asm` | The boundary blocks; the generated shader header | Built |
 | `machine.inc` | Window, contract, pipelines, the frame, events | Built; proved by the spine |
-| `proofs\` | Each proof, its checks, and what to look at | Four so far |
+| `proofs\` | Each proof, its checks, and what to look at | Five so far |
 | `art\art.txt`, `art\*.png` | Every frame, whatever its source; the cut ones | 22 frames |
 | `tools\art.cs`, `cut-art.ps1`, `pack-art.ps1` | Cutting sprites out of sheets (authoring); packing the art (build) | Built |
 | `pictures.inc`, `pictures.slang` | Making the pictures on the device; pulling, filtering and lighting them | Built; proved by 03 |
 | `input.inc` | The pad into Root; rumble to come | Built, without rumble |
-| `tables.inc` | The table macros and the game's data | |
+| `tables.inc`, `tables.asm` | The table macros and the game's data; their numbers for the shaders | Kinds and moves |
+| `ease.slang`, `motion.slang` | The easing curves; a body and one tick of its program | Built; proved by 04 |
 | `audio.inc` | XAudio2 voices and the bank | |
 | `myhits.asm`, `*.slang` | The game | |
 
@@ -316,7 +362,7 @@ they change a rule, into this plan.
 | 01 | style: the toolchain takes the pointer style; offsets agree | 0 | Passes |
 | 02 | spine: the boundary end to end | 0 | Passes; two findings, both adopted |
 | 03 | pictures: cut, made and drawn frames in one run of texels; masks beside them; a turning chain under a light that does not turn; the pad | 1 | Passes; three findings |
-| 04 | motion: every easing curve drawn and checked against reference values; the missile's program traced | 2 | |
+| 04 | motion: every easing curve drawn and held to a second implementation; a fixed tick; the missile's program traced; the level's pace eased to a stop and back | 2 | Passes; three findings |
 | 05 | hits: mask collision counted against a reference computed outside the GPU | 3 | |
 | 06 | sound: the bank rendered and compared; a trigger's delay measured | 4 | |
 
@@ -327,7 +373,10 @@ they change a rule, into this plan.
    filtered pulling, the plane of normals; the ship under keyboard and pad.
    Left for when they are first needed: strips of frames for animation, and a
    pivot other than a frame's center.
-2. **Motion.** The easing library and move programs; shots and the missile.
+2. **Motion.** Done: the fixed tick, the easing library, move programs, shots
+   and the missile, the level's pace, presses from messages. Left for when
+   they are first needed: circling a parent and firing as moves, and the
+   sprite pool at its full size with its groups.
 3. **Hits.** Mask collision, particles, events.
 4. **Sound.** The bank and triggers.
 5. **Opposition.** Kinds, waves, rank, chains, the director.
@@ -342,6 +391,12 @@ they change a rule, into this plan.
   stand-in from another sheet and does not match it yet. A frame size and
   count convention for Blender output is still to be settled against a first
   rendered asset; its normals would replace the packer's inflated ones.
+- **How far the level has come** is a float that grows without end. Before a
+  session can last hours it wants to wrap, or to be kept as a tick count.
+- **Tables in host-visible memory.** Bodies read their moves there every
+  tick, as the plan first said. It is 688 bytes and proof 04 does not feel
+  it; if a full pool does, a pass copies the tables to the device as the
+  pictures are copied.
 - **Pad layout.** Provisional: left stick and d-pad move, right stick carries
   the crosshair, A or the right trigger fires, B or X is the second button.
   What the second button does before the companion exists is open.
@@ -355,9 +410,9 @@ from it that this plan takes, each at the milestone it belongs to:
 
 - **A fixed simulation tick** with a bounded catch-up, rather than one step
   of clamped real time a frame: hits and scripted runs repeat exactly at any
-  refresh rate. Milestone 2, with motion. `Root.dt` becomes a tick count.
+  refresh rate. Taken in milestone 2: `Root.dt` became `Root.ticks`.
 - **Control edges gathered from window messages** between frames, so a tap
-  shorter than a frame is not lost. Milestone 2.
+  shorter than a frame is not lost. Taken in milestone 2.
 - **A swept test for shots against masks**: a fast shot walks the texels it
   crossed this tick rather than testing only where it landed. Milestone 3.
 - **Trails sampled by distance travelled**, not by frame, so a chain keeps

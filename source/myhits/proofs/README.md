@@ -23,6 +23,7 @@ build.cmd myhits-survey
 | 01 | [style](01_style/style.slang) | The shader toolchain accepts the pointer-only style, and lays the boundary blocks out as the assembly does | Passes |
 | 02 | [spine](02_spine/spine.asm) | The whole CPU–GPU boundary works on the device within the plan's traffic budget | Passes, with two findings |
 | 03 | [pictures](03_pictures/gallery.asm) | Every frame, cut, made or drawn, is made and masked on the device and drawn from it with nothing bound; a picture that turns is still lit from one side | Passes, with three findings |
+| 04 | [motion](04_motion/range.asm) | The easing curves are the textbook's; the simulation runs at a fixed tick; bodies run the tables' programs and end each move exactly where it says; the level's own pace is eased, to a stop and back | Passes, with three findings |
 
 ## 00 survey
 
@@ -212,7 +213,7 @@ Last result here, GTX 1080 Ti, default and validation alike: all eleven hold.
 counts 52,469 solid texels in the cut frames, as the packer did. The gallery's
 masks cover 13,991 pixels and its pictures 13,931, against a quarter of the
 solid texels at 14,062. Of the chain's brightened fragments 89% lie on the lit
-side; with the light turned with the pictures it would be 49%.
+side; with the light turned with the pictures it would be 50%.
 
 **Check 2 bites.** Flipping one bit of one texel in the embedded block, in a
 copy of the program, fails check 2 at frame 0.
@@ -237,6 +238,94 @@ that, `ONE, ONE_MINUS_SRC_ALPHA` covers where alpha is 1 and adds where it is
 0, so matter and light share a pipeline and a draw, in whatever order the
 sprites lie.
 
+## 04 motion
+
+The easing curves, and what is built on them: a simulation that steps 120
+times a second whatever the display does, bodies that run programs of eased
+moves from [tables.inc](../tables.inc), and a level whose own pace is eased.
+
+```bat
+build\myhits_motion.exe
+build\myhits_motion.exe --self-test
+```
+
+**To look at.** On the left wall are the 31 curves, each drawn by evaluating
+it: LINEAR alone at the top, then a row a family (quad, cubic, quart, quint,
+sine, expo, circ, back, elastic, bounce) with IN in amber, OUT in blue and
+INOUT in green. A dot rides each curve, and under each plot a second dot only
+slides from left to right by the curve's value: that one is what the curve
+feels like as motion.
+
+On the right is the range. Space or the left mouse button fires; shots leave
+at once and at speed. Shift or the right button launches a pair of missiles:
+each drifts out to its side, turns to face the crosshair, and goes; the upper
+one leaves a trace. Arrows or WASD move the ship, and a flare and a muzzle
+flash show the controls the instant they are read. Three hostiles come by in
+turn: one loops the loop, one weaves, one rears back to look at you and
+dives. None of them is code: each is a few lines of table.
+
+Watch the specks and the purple core. The specks are the level, passing at
+its pace. The core belongs to the level: it rides in with it. Then the level
+slows to a stop, the core holds the screen with it, and both move on. The
+hostiles and your shots fly on regardless. The title shows the ticks run this
+frame (none or one on a fast display, two at 60 Hz), the level's pace, and
+shots fired and missed.
+
+**How it is made.** A frame runs as many ticks as real time has earned. A
+tick is two passes: `direct`, alone, moves the ship from the controls, sets
+the pace and makes every new body; `update` advances every body one tick of
+its program, reading last tick's copy and writing this one's. A last pass,
+`report`, writes the frame's events. The draw shows each body between its
+last two ticks. The curves on the wall are a second draw of 31 quads whose
+fragments evaluate the curve; they reach no memory at all.
+
+**The checks**, on 200 scripted frames of two ticks each. The script moves
+the ship for ten frames, launches at frame 20 with the crosshair fixed, and
+holds fire from frame 60 to 99.
+
+| # | Claim | How it is held |
+| --- | --- | --- |
+| 1 | Events arrive in order, one frame late | As in the spine |
+| 2 | The curves are well formed | The device examines its own: each is 0 at 0 and 1 at 1 exactly; an OUT is its IN turned about the middle; an INOUT passes through it; none but bounce ever goes back; only back and elastic pass outside 0..1, and they do |
+| 3 | A scripted frame is two ticks | The device's tick count is 2 × frames, every frame |
+| 4 | Controls read for frame N move the ship in frame N | Through both ticks: ten units a frame |
+| 5 | A move ends exactly where it says | The missile's 42 ticks of OUT_CUBIC end at (930, 480), its launch point plus its offset, to a hundredth |
+| 6 | FACE faces | After 18 ticks of INOUT_SINE its heading is the angle to the crosshair, to a thousandth of a radian |
+| 7 | THRUST reaches its speed, on the line | After 60 ticks of IN_EXPO its speed is 2400, its heading unchanged, and it lies within half a unit of the line from where it turned to the crosshair. Then its program is over and it coasts |
+| 8 | The level's pace is eased, and what rides the level rides it exactly | The anchor's position and the scroll sum to 1760 in every frame; for the 40 frames the level stands the scroll does not change by a bit; the anchor has stopped at 1501, which is where 129.5 ticks at full pace put it |
+| 9 | Accuracy is counted where it happens | 14 shots and 2 missiles fired; with nothing to hit, 16 left the playfield and none is flying. And the level came 520 |
+| 10 | The traffic is Root down and Events up; a frame of two ticks is five passes and two draws | Counters, and the draw pulls the 610 sprites the shaders lay out |
+| 11 | A press comes from its message | A key down between frames is pressed and held for one frame and not the next; the keyboard repeating a key is not a press; a pad's press is the edge of what it holds |
+| 12 | A stall is not chased | With the clock set a second back, a frame earns eight ticks and owes nothing after; the next earns none |
+
+Then the script reads `build\myhits_motion.curves.bin`, the 31 curves by 65
+samples the device wrote where the CPU could read them, and holds each to
+[curves.cs](04_motion/curves.cs): the same curves written the long way, one
+formula each as easings.net gives them, in double precision. The two share
+no code and no structure.
+
+Last result here, GTX 1080 Ti, default and validation alike: all twelve hold,
+and the device's curves are within 4.9 × 10⁻⁷ of the second implementation
+(the worst is OUT_ELASTIC). 6 kinds in 24 moves, 688 bytes of table.
+
+**The checks bite.** An offset of 41 for the missile's 40 fails check 5 at
+frame 40. A back constant of 1.70258 for 1.70158 puts OUT_BACK 1.5 × 10⁻⁴
+from the second implementation, over the bound of 10⁻⁴.
+
+**Finding: `kind` is not a word a table can begin a line with.** A macro is
+seen by every line of every source, on every pass. `kind` is a field of half
+the structures in the tree, and a macro of that name took all of them. The
+tables say `mover NAME` and still number them KIND_NAME.
+
+**Finding: a joined name reaches a macro unjoined.** `shared EASE_IN_#family`
+defined the right symbol and wrote `EASE_IN_#QUAD` into the shader header,
+because the header line is made from the argument's text. The curve names
+are spelled by a macro of their own.
+
+**Finding: a pass that reaches no memory is not a fault.** Proof 01 demanded
+that every shader use pointers. The plot of a curve needs none: it computes.
+The demand is now what it should have been: nothing is bound.
+
 ## Writing the next one
 
 A proof is a directory here, a row in the table above, and a section saying
@@ -252,3 +341,5 @@ These assembler traps have cost time; each now has a comment where it bit:
 - A `proc` nothing refers to is not assembled. A test of a procedure in
   isolation passes vacuously unless the procedure is made `public`.
 - `frame` is proc64's, in any case: no symbol may be called `Frame`.
+- A macro takes every line that begins with its name, in every source. Name
+  table macros with words nothing else begins a line with.

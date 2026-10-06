@@ -63,7 +63,7 @@ void direct()
     events.reserved[6] = census.lopsided;
 
     float2 ship = root.frame == 0 ? float2(300.0, 640.0) : world.state.ship;
-    ship = clamp(ship + root.move * (SHIP_SPEED * root.dt), float2(60.0, 60.0), float2(PLAYFIELD_WIDTH - 60.0, PLAYFIELD_HEIGHT - 60.0));
+    ship = clamp(ship + root.move * (SHIP_SPEED * root.ticks * TICK_SECONDS), float2(60.0, 60.0), float2(PLAYFIELD_WIDTH - 60.0, PLAYFIELD_HEIGHT - 60.0));
     world.state.ship = ship;
     events.reserved[8] = asuint(ship.x);
     events.reserved[9] = asuint(ship.y);

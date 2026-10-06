@@ -92,7 +92,7 @@ proc pad_apply uses rbx,state
 	mov ecx,PAD_RIGHT_DEAD
 	fastcall pad_stick
 	movss xmm2,[pad_aim_speed]
-	mulss xmm2,dword [root+Root.dt]
+	mulss xmm2,[frame_seconds]
 	mulss xmm0,xmm2
 	mulss xmm1,xmm2
 	xorps xmm3,xmm3

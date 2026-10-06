@@ -71,7 +71,7 @@ void direct()
         events.sound[kind].count = 0;
         events.sound[kind].pan = 0;
     }
-    float2 position = world.motes[0].position + root.move * (PLAYER_SPEED * root.dt);
+    float2 position = world.motes[0].position + root.move * (PLAYER_SPEED * root.ticks * TICK_SECONDS);
     position = clamp(position, float2(16.0, 16.0), float2(PLAYFIELD_WIDTH - 16.0, PLAYFIELD_HEIGHT - 16.0));
     world.motes[0].position = position;
     events.debug[0] = 0;                    // every mote adds one below
@@ -91,7 +91,7 @@ void advance(uint3 id : SV_DispatchThreadID)
     if (i != 0)
     {
         Mote mote = world.motes[i];
-        mote.position += mote.velocity * root.dt;
+        mote.position += mote.velocity * (root.ticks * TICK_SECONDS);
         if (mote.position.x < 16.0 || mote.position.x > PLAYFIELD_WIDTH - 16.0)
         {
             mote.velocity.x = -mote.velocity.x;

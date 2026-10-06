@@ -87,6 +87,9 @@ shared PLAYFIELD_WIDTH,1920
 shared PLAYFIELD_HEIGHT,1080
 shared SOUND_KINDS,48
 shared EVENT_SLOTS,4			; a power of two
+; The simulation steps this many times a second, whatever the display's rate.
+shared TICK_RATE,120
+shader_line 'static const float TICK_SECONDS = 1.0 / float(TICK_RATE);'
 
 ; Root.held and Root.pressed
 shared BUTTON_FIRE,1
@@ -100,10 +103,10 @@ shared ROOT_SCRIPTED,2
 boundary Root
 	ptr world,World			; everything else is reached from here
 	ptr events,Events		; this frame's slot
-	f32 time			; seconds
-	f32 dt				; clamped; fixed in scripted runs
+	f32 time			; seconds of simulation the picture shows
+	f32 blend			; where it stands between the last two ticks: 1 is the last
 	u32 frame
-	u32 seed
+	u32 ticks			; how many ticks this frame runs; often 0 or 2
 	f32x2 view			; the playfield's size on screen, in pixels
 	f32x2 move			; -1..1
 	f32x2 aim			; the crosshair, in playfield units
@@ -196,4 +199,62 @@ boundary Pictures
 	u32 baked_texels
 	u32 texel_count
 	u32 mask_words
+end boundary
+
+; The easing curves: one library for motion, the HUD's pops, particle sizes,
+; the level's own pace. LINEAR, then IN, OUT and INOUT of each family.
+shared EASE_LINEAR,0
+; (A name joined with # reaches a macro unjoined, so these are spelled here.)
+macro shared_curve form*,family*,value*
+	EASE_#form#_#family := value
+	repeat 1, decimal:value
+		shader_line 'static const uint EASE_',`form,'_',`family,' = ',`decimal,';'
+	end repeat
+end macro
+iterate family, QUAD,CUBIC,QUART,QUINT,SINE,EXPO,CIRC,BACK,ELASTIC,BOUNCE
+	shared_curve IN,family,%*3-2
+	shared_curve OUT,family,%*3-1
+	shared_curve INOUT,family,%*3
+end iterate
+shared EASE_CURVES,31
+
+; What a move does, over its ticks and along its curve. A body always coasts
+; along its heading at its speed; a move changes something on top of that.
+shared MOVE_HOLD,0			; nothing; with no ticks, for good: how a program ends
+shared MOVE_OFFSET,1			; slide by (a, b) on the playfield
+shared MOVE_ALONG,2			; slide a ahead and b to its right
+shared MOVE_TO,3			; slide to its target, plus (a, b)
+shared MOVE_FACE,4			; turn to face its target
+shared MOVE_TURN,5			; turn by a degrees
+shared MOVE_THRUST,6			; bring its speed to a
+shared MOVE_AGAIN,7			; go back `target` moves
+shared MOVE_DIE,8
+; What a move aims at.
+shared TARGET_HEADING,0			; straight ahead
+shared TARGET_PLAYER,1
+shared TARGET_CROSSHAIR,2
+boundary Move
+	u32 action
+	u32 curve
+	u32 ticks			; none: at once, and the next move follows in the same tick
+	u32 target
+	f32 a
+	f32 b				; mirrored for a body whose seed is odd
+end boundary
+
+shared KIND_FACES_LEFT,1		; its picture looks left; its heading is where it looks
+shared KIND_RIDES,2			; it belongs to the level, and is carried at its pace
+boundary Kind
+	u32 first			; its first move
+	u32 picture			; FRAME_
+	f32 scale
+	u32 flags
+end boundary
+
+; The game's tables, authored in tables.inc. A program's World holds this.
+boundary Tables
+	ptr moves,Move
+	ptr kinds,Kind
+	u32 move_count
+	u32 kind_count
 end boundary
