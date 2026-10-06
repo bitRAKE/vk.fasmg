@@ -16,4 +16,4 @@ public mainCRTStartup
 include 'instance.inc'
 include 'device.inc'
 
-binding_text db 'core and surface through the import table, debug_utils through lazy slots',0
+binding_text GLOBSTR 'core and surface through the import table, debug_utils through lazy slots',0

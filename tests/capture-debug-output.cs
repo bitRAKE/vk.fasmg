@@ -21,6 +21,12 @@ namespace VkFasmgTests {
             public IntPtr process, thread;
             public uint processId, threadId;
         }
+        [StructLayout(LayoutKind.Sequential)]
+        struct SecurityAttributes {
+            public int length;
+            public IntPtr descriptor;
+            public int inherit;
+        }
         // Windows x64 DEBUG_EVENT: 16-byte header followed by its 160-byte union.
         [StructLayout(LayoutKind.Explicit, Size = 176)]
         struct DebugEvent {
@@ -37,6 +43,9 @@ namespace VkFasmgTests {
             IntPtr processAttributes, IntPtr threadAttributes, bool inherit,
             uint flags, IntPtr environment, string directory,
             ref StartupInfo startup, out ProcessInfo process);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern IntPtr CreateFileW(string name, uint access, uint share,
+            ref SecurityAttributes attributes, uint disposition, uint flags, IntPtr template);
         [DllImport("kernel32.dll", SetLastError = true)]
         static extern bool WaitForDebugEventEx(out DebugEvent data, uint milliseconds);
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -52,10 +61,21 @@ namespace VkFasmgTests {
             var startup = new StartupInfo();
             startup.cb = Marshal.SizeOf(typeof(StartupInfo));
             ProcessInfo process;
-            // DEBUG_ONLY_THIS_PROCESS | CREATE_NO_WINDOW.
-            if (!CreateProcessW(executable, null, IntPtr.Zero, IntPtr.Zero, false,
-                    0x08000002, IntPtr.Zero, directory, ref startup, out process))
-                throw new Win32Exception(Marshal.GetLastWin32Error());
+            // A hidden debuggee still receives valid standard handles. Discard
+            // its stdout here; the ordinary run verifies the console contents.
+            var attributes = new SecurityAttributes();
+            attributes.length = Marshal.SizeOf(typeof(SecurityAttributes));
+            attributes.inherit = 1;
+            IntPtr nullHandle = CreateFileW("NUL", 0xC0000000, 3, ref attributes, 3, 0x80, IntPtr.Zero);
+            if (nullHandle == new IntPtr(-1)) throw new Win32Exception(Marshal.GetLastWin32Error());
+            try {
+                startup.flags = 0x100; // STARTF_USESTDHANDLES.
+                startup.stdin = startup.stdout = startup.stderr = nullHandle;
+                // DEBUG_ONLY_THIS_PROCESS | CREATE_NO_WINDOW.
+                if (!CreateProcessW(executable, null, IntPtr.Zero, IntPtr.Zero, true,
+                        0x08000002, IntPtr.Zero, directory, ref startup, out process))
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+            } finally { CloseHandle(nullHandle); }
             var output = new StringBuilder();
             var timer = Stopwatch.StartNew();
             bool exited = false, pending = false;
@@ -72,7 +92,9 @@ namespace VkFasmgTests {
                     if (current.code == 3 || current.code == 6) { // CREATE_PROCESS / LOAD_DLL.
                         if (current.dataPointer != IntPtr.Zero) CloseHandle(current.dataPointer);
                     } else if (current.code == 8) { // OUTPUT_DEBUG_STRING_EVENT.
-                        int bytes = current.textLength * (current.unicode != 0 ? 2 : 1);
+                        // nDebugStringLength is a byte count for both formats.
+                        // https://learn.microsoft.com/windows/win32/api/minwinbase/ns-minwinbase-output_debug_string_info
+                        int bytes = current.textLength;
                         if (bytes != 0) {
                             var buffer = new byte[bytes];
                             UIntPtr read;
@@ -80,8 +102,11 @@ namespace VkFasmgTests {
                                     buffer, (UIntPtr)bytes, out read))
                                 throw new Win32Exception(Marshal.GetLastWin32Error());
                             int length = checked((int)read.ToUInt64());
-                            output.Append((current.unicode != 0 ? Encoding.Unicode : Encoding.UTF8)
-                                .GetString(buffer, 0, length).TrimEnd('\0'));
+                            string text = (current.unicode != 0 ? Encoding.Unicode : Encoding.Default)
+                                .GetString(buffer, 0, length);
+                            // Exclude the terminating NUL from captured text.
+                            int end = text.IndexOf('\0');
+                            output.Append(end < 0 ? text : text.Substring(0, end));
                         }
                     } else if (current.code == 1) { // EXCEPTION_DEBUG_EVENT.
                         if (current.exitOrExceptionCode != 0x80000003 &&

@@ -25,9 +25,11 @@ section '.text$debug_example' code readable executable align 16
 proc mainCRTStartup uses rbx rsi
 	fastcall console_initialize
 	mov ebx,1
-	fastcall debug_initialize,0
+	fastcall debug_initialize,addr bootstrap_sink,0
 	test eax,eax
 	jnz .finish
+	mov rax,[bootstrap_sink.handle]
+	mov [names_sink.handle],rax
 	fastcall create_instance
 	test eax,eax
 	jnz .finish
@@ -80,13 +82,13 @@ proc mainCRTStartup uses rbx rsi
 	mov [event_data.objectCount],object_names.count
 	lea rax,[object_names]
 	mov [event_data.pObjects],rax
-	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,named_message,DEBUG_DEMO_ID+11
+	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,'objects.named: five live Vulkan handles',DEBUG_DEMO_ID+11
 
 	inc ebx
 	vkSetDebugUtilsObjectTagEXT [device],addr tag_info
 	test eax,eax
 	jnz .resources
-	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,tagged_message,DEBUG_DEMO_ID+12
+	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,'objects.tagged: buffer carries asset-id:42',DEBUG_DEMO_ID+12
 
 	inc ebx
 	vkBeginCommandBuffer [command_buffer],addr begin_info
@@ -104,7 +106,7 @@ proc mainCRTStartup uses rbx rsi
 	mov [event_data.cmdBufLabelCount],2
 	lea rax,[command_regions]
 	mov [event_data.pCmdBufLabels],rax
-	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,labels_message,DEBUG_DEMO_ID+13
+	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,'objects.labels: active queue region and nested command regions',DEBUG_DEMO_ID+13
 	mov [event_data.queueLabelCount],0
 	mov [event_data.cmdBufLabelCount],0
 	mov [event_data.pQueueLabels],0
@@ -130,12 +132,12 @@ proc mainCRTStartup uses rbx rsi
 	vkSetDebugUtilsObjectNameEXT [device],addr buffer_name
 	test eax,eax
 	jnz .resources
-	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,renamed_message,DEBUG_DEMO_ID+14
+	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,'objects.renamed: buffer name replaced',DEBUG_DEMO_ID+14
 	mov [buffer_name.pObjectName],0
 	vkSetDebugUtilsObjectNameEXT [device],addr buffer_name
 	test eax,eax
 	jnz .resources
-	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,cleared_message,DEBUG_DEMO_ID+15
+	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,'objects.cleared: buffer name removed with NULL',DEBUG_DEMO_ID+15
 	xor ebx,ebx
 	jmp .resources
 .queue_label:
@@ -168,14 +170,13 @@ proc mainCRTStartup uses rbx rsi
 .instance:
 	fastcall destroy_instance
 .finish:
-	fastcall debug_shutdown
 	cmp [debug_io_failed],0
 	jne .logging_failed
 	cmp [debug_validation_failed],0
 	jne .logging_failed
 	test ebx,ebx
 	jnz .exit
-	fastcall console_write_line,success_text
+	fastcall console_write_line,'[debug] objects: PASS'
 	jmp .exit
 .logging_failed:
 	mov ebx,100
@@ -189,7 +190,8 @@ messenger dq 0
 command_pool dq 0
 command_buffer dq 0
 buffer dq 0
-names_sink DebugSink kind: DEBUG_CONSOLE, label: names_label
+names_label GLOBSTR 'objects',0
+names_sink DebugSink kind: DEBUG_CONSOLE, handle: -1, label: names_label
 names_info VkDebugUtilsMessengerCreateInfoEXT \
 	sType: VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT, \
 	messageSeverity: DEBUG_INFO, messageType: DEBUG_ALL_TYPES, \
@@ -246,20 +248,13 @@ label_color checkpoint,0.9,0.3,0.6,1.0
 section '.rdata$debug_example' data readable align 2
 tag_bytes db 'asset-id:42',0
 tag_bytes.size = $ - tag_bytes
-names_label db 'objects',0
-device_text db 'debug.device',0
-queue_text db 'debug.queue',0
-pool_text db 'debug.command_pool',0
-commands_text db 'debug.commands',0
-buffer_text db 'debug.buffer',0
-renamed_buffer db 'debug.buffer.renamed',0
-queue_label_text db 'debug.queue.work',0
-outer_label_text db 'debug.commands.outer',0
-inner_label_text db 'debug.commands.inner',0
-checkpoint_text db 'debug.checkpoint',0
-named_message db 'objects.named: five live Vulkan handles',0
-tagged_message db 'objects.tagged: buffer carries asset-id:42',0
-labels_message db 'objects.labels: active queue region and nested command regions',0
-renamed_message db 'objects.renamed: buffer name replaced',0
-cleared_message db 'objects.cleared: buffer name removed with NULL',0
-success_text db '[debug] objects: PASS',0
+device_text GLOBSTR 'debug.device',0
+queue_text GLOBSTR 'debug.queue',0
+pool_text GLOBSTR 'debug.command_pool',0
+commands_text GLOBSTR 'debug.commands',0
+buffer_text GLOBSTR 'debug.buffer',0
+renamed_buffer GLOBSTR 'debug.buffer.renamed',0
+queue_label_text GLOBSTR 'debug.queue.work',0
+outer_label_text GLOBSTR 'debug.commands.outer',0
+inner_label_text GLOBSTR 'debug.commands.inner',0
+checkpoint_text GLOBSTR 'debug.checkpoint',0

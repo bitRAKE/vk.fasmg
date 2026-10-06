@@ -11,7 +11,12 @@ section '.text$debug_example' code readable executable align 16
 proc mainCRTStartup uses rbx
 	fastcall console_initialize
 	mov ebx,1
-	fastcall debug_initialize,log_filename
+	fastcall debug_initialize,addr bootstrap_sink,0
+	test eax,eax
+	jnz .finish
+	mov rax,[bootstrap_sink.handle]
+	mov [console_sink.handle],rax
+	fastcall debug_initialize,addr file_sink,<W,'build\debug_outputs.log'>
 	test eax,eax
 	jnz .finish
 	; Keep loader/validation bootstrap warnings, but not INFO on stdout.
@@ -32,10 +37,11 @@ proc mainCRTStartup uses rbx
 	test eax,eax
 	jnz .debugger
 
-	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT,verbose_message,DEBUG_DEMO_ID
-	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,info_message,DEBUG_DEMO_ID+1
-	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,warning_message,DEBUG_DEMO_ID+2
-	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,error_message,DEBUG_DEMO_ID+3
+	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT,'demo.verbose: detail for the file sink',DEBUG_DEMO_ID
+	; Source literals are UTF-8; debugger output is converted to UTF-16.
+	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,'demo.info: debugger and file; UTF-8 café λ',DEBUG_DEMO_ID+1
+	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,'demo.warning: all three sinks',DEBUG_DEMO_ID+2
+	fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,'demo.error: synthetic GENERAL event, not a Vulkan validation failure',DEBUG_DEMO_ID+3
 
 	mov ebx,5
 	cmp [console_sink.demoMask],1100b
@@ -54,14 +60,14 @@ proc mainCRTStartup uses rbx
 .instance:
 	fastcall destroy_instance
 .finish:
-	fastcall debug_shutdown
+	fastcall debug_shutdown,addr file_sink
 	cmp [debug_io_failed],0
 	jne .logging_failed
 	cmp [debug_validation_failed],0
 	jne .logging_failed
 	test ebx,ebx
 	jnz .exit
-	fastcall console_write_line,success_text
+	fastcall console_write_line,'[debug] outputs: PASS (console=0xC debugger=0xE file=0xF)'
 	jmp .exit
 .logging_failed:
 	mov ebx,100
@@ -74,9 +80,10 @@ section '.data$debug_example' data readable writeable align 8
 console_messenger dq 0
 debugger_messenger dq 0
 file_messenger dq 0
-console_sink DebugSink kind: DEBUG_CONSOLE, label: levels_label
-debugger_sink DebugSink kind: DEBUG_DEBUGGER, label: levels_label
-file_sink DebugSink kind: DEBUG_FILE, label: levels_label
+levels_label GLOBSTR 'levels',0
+console_sink DebugSink kind: DEBUG_CONSOLE, handle: -1, label: levels_label
+debugger_sink DebugSink kind: DEBUG_DEBUGGER, handle: -1, label: levels_label
+file_sink DebugSink kind: DEBUG_FILE, handle: -1, label: levels_label
 console_info VkDebugUtilsMessengerCreateInfoEXT \
 	sType: VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT, \
 	messageSeverity: DEBUG_WARNINGS, messageType: DEBUG_ALL_TYPES, \
@@ -89,14 +96,3 @@ file_info VkDebugUtilsMessengerCreateInfoEXT \
 	sType: VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT, \
 	messageSeverity: DEBUG_ALL_SEVERITIES, messageType: DEBUG_ALL_TYPES, \
 	pfnUserCallback: debug_callback, pUserData: file_sink
-
-section '.rdata$debug_example' data readable align 2
-levels_label db 'levels',0
-log_filename db 'build\debug_outputs.log',0
-verbose_message db 'demo.verbose: detail for the file sink',0
-; UTF-8 bytes for "cafe with acute accent" and Greek lambda; the debugger
-; receives the corresponding UTF-16 string, while the file keeps UTF-8.
-info_message db 'demo.info: debugger and file; UTF-8 caf',0C3h,0A9h,' ',0CEh,0BBh,0
-warning_message db 'demo.warning: all three sinks',0
-error_message db 'demo.error: synthetic GENERAL event, not a Vulkan validation failure',0
-success_text db '[debug] outputs: PASS (console=0xC debugger=0xE file=0xF)',0

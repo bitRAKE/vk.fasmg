@@ -23,6 +23,35 @@ function Assert-Levels([string]$report, [string]$sink, [string[]]$expected) {
         throw "$sink received [$($actual -join ',')], expected [$($expected -join ',')]"
     }
 }
+$probeExecutable = (Resolve-Path -LiteralPath (Join-Path $BuildDir 'debug_sink_probe.exe')).Path
+$probeReport = [VkFasmgTests.DebugOutputCapture]::Run($probeExecutable, $repoRoot)
+$firstFile = [System.IO.File]::ReadAllText((Join-Path $BuildDir 'debug_sink_a.log'))
+$secondFile = [System.IO.File]::ReadAllText((Join-Path $BuildDir 'debug_sink_b.log'))
+Assert-Contains $firstFile 'message=probe.first: first handle' 'First sink'
+Assert-Contains $firstFile '[debug][debugger][first][info]' 'Valid debugger-kind file handle'
+Assert-Contains $firstFile 'message=probe.handle: handle selects WriteFile' 'Handle-based dispatch'
+Assert-Contains $secondFile 'message=probe.second: second handle' 'Second sink'
+Assert-Contains $secondFile '[debug][file][first][info]' 'Retargeted descriptor'
+Assert-Contains $secondFile 'message=probe.retargeted: second handle' 'Retargeted sink'
+if ($firstFile -match 'probe\.(second|retargeted):' -or $secondFile -match 'probe\.(first|handle):') {
+    throw 'Callback wrote to a handle outside its descriptor'
+}
+if ([regex]::Matches($probeReport, '\[debug\] sink: invalid output handle').Count -ne 2) {
+    throw 'Missing invalid -1/NULL handle diagnostics'
+}
+Assert-Contains $probeReport '[debug] sink: WriteFile failed' 'Failed-write fallback'
+if ([regex]::Matches($probeReport, '\[debug\] sink: WriteFile failed').Count -ne 1) {
+    throw 'Failed-write diagnostic must appear exactly once'
+}
+$probeUnicode = 'caf' + [char]0xE9 + ' ' + [char]0x3BB
+Assert-Contains $probeReport ('probe.debugger: UTF-8 ' + $probeUnicode) 'Debugger sentinel'
+Assert-Contains $probeReport ('probe.wide: inline UTF-16 ' + $probeUnicode) 'Wide literal pool'
+if ($probeReport.IndexOf([char]0) -ge 0) { throw 'Debugger capture retained bytes beyond a string terminator' }
+if ($probeReport -match 'probe\.(first|second|retargeted|handle|invalid|null|write):') {
+    throw 'Debugger capture retained adjacent pooled literals or a file record'
+}
+[System.IO.File]::WriteAllText((Join-Path $BuildDir 'debug_sink_probe.log'), $probeReport)
+Write-Host '[debug] sink probe passed: independent/retargeted handles, debugger sentinel, I/O fallbacks, wide literals'
 $previousLayers = $env:VK_INSTANCE_LAYERS
 $modes = @('default')
 if ($Validation) { $modes += 'validation' }

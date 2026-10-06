@@ -19,15 +19,17 @@ VK_VALIDATED = tests\vk\.validated
 
 ASSEMBLE = $(POWERSHELL) -File tools\assemble.ps1 -Fasm2 "$(FASM2)"
 OBJECT_BASE = newcoff.inc macro\struct.inc tools\assemble.ps1
+EXAMPLE_STRINGS = examples\strings.inc
 LOADER_SOURCES = vk\loader\loader.asm vk\loader\lazy.inc $(OBJECT_BASE)
 CONSOLE_OBJ = $(BUILD)\loader_console.obj
-LOADER_EXAMPLE_BODY = examples\loaders\instance.inc examples\loaders\device.inc $(OBJECT_BASE) $(VK_VALIDATED) $(BUILD_READY)
+LOADER_EXAMPLE_BODY = examples\loaders\instance.inc examples\loaders\device.inc $(EXAMPLE_STRINGS) $(OBJECT_BASE) $(VK_VALIDATED) $(BUILD_READY)
 LINK_EXAMPLE = link /NOLOGO /SUBSYSTEM:CONSOLE /ENTRY:mainCRTStartup /NODEFAULTLIB /OPT:REF /OPT:ICF
 LOADER_EXAMPLE_LINK = $(LINK_EXAMPLE) /MAP:$(@R).map /OUT:$@
 LOADER_EXAMPLES = $(BUILD)\loader_iat.exe $(BUILD)\loader_delay.exe $(BUILD)\loader_static.exe $(BUILD)\loader_mixed.exe $(BUILD)\loader_dynamic.exe $(BUILD)\loader_comdat.exe
 DEBUG_LOGGER_OBJ = $(BUILD)\debug_logger.obj
-DEBUG_BODY = examples\debug\context.inc examples\debug\sink.inc $(OBJECT_BASE) vk\loader\static.inc vk\loader\lazy.inc $(VK_VALIDATED) $(BUILD_READY)
+DEBUG_BODY = examples\debug\context.inc examples\debug\sink.inc $(EXAMPLE_STRINGS) $(OBJECT_BASE) vk\loader\static.inc vk\loader\lazy.inc $(VK_VALIDATED) $(BUILD_READY)
 DEBUG_EXAMPLES = $(BUILD)\debug_lifecycle.exe $(BUILD)\debug_outputs.exe $(BUILD)\debug_objects.exe
+DEBUG_SINK_PROBE = $(BUILD)\debug_sink_probe.exe
 
 VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
@@ -55,7 +57,7 @@ api: $(VK_VALIDATED)
 check-api: $(VK_VALIDATED) $(LOADER_EXAMPLES)
 	$(POWERSHELL) -File tests\verify-vk-tree.ps1 -Fasm2 "$(FASM2)" -BuildDir "$(BUILD)" -LoaderExamples "$(LOADER_EXAMPLES)"
 
-$(CONSOLE_OBJ): examples\loaders\console.asm $(OBJECT_BASE) $(BUILD_READY)
+$(CONSOLE_OBJ): examples\loaders\console.asm $(EXAMPLE_STRINGS) $(OBJECT_BASE) $(BUILD_READY)
 	$(ASSEMBLE) -Source examples\loaders\console.asm -Output $@
 
 $(VULKAN_DELAY_LIB): $(VK_VALIDATED) $(BUILD_READY)
@@ -135,10 +137,16 @@ $(BUILD)\debug_outputs.exe: $(BUILD)\debug_outputs.obj $(DEBUG_LOGGER_OBJ) $(CON
 $(BUILD)\debug_objects.exe: $(BUILD)\debug_objects.obj $(DEBUG_LOGGER_OBJ) $(CONSOLE_OBJ)
 	$(LINK_EXAMPLE) /MAP:$(@R).map /OUT:$@ $** $(VULKAN_LIB) kernel32.lib
 
-debug: $(DEBUG_EXAMPLES)
+$(BUILD)\debug_sink_probe.obj: tests\debug\sink_probe.asm examples\debug\sink.inc $(EXAMPLE_STRINGS) $(OBJECT_BASE) $(VK_VALIDATED) $(BUILD_READY)
+	$(ASSEMBLE) -Source tests\debug\sink_probe.asm -Output $@
+
+$(DEBUG_SINK_PROBE): $(BUILD)\debug_sink_probe.obj $(DEBUG_LOGGER_OBJ)
+	$(LINK_EXAMPLE) /OUT:$@ $** kernel32.lib
+
+debug: $(DEBUG_EXAMPLES) $(DEBUG_SINK_PROBE)
 	$(POWERSHELL) -File tests\verify-debug-examples.ps1 -BuildDir "$(BUILD)"
 
-check-debug: $(DEBUG_EXAMPLES)
+check-debug: $(DEBUG_EXAMPLES) $(DEBUG_SINK_PROBE)
 	$(POWERSHELL) -File tests\verify-debug-examples.ps1 -BuildDir "$(BUILD)" -Validation
 
 check: check-api check-debug

@@ -16,4 +16,4 @@ public mainCRTStartup
 include 'instance.inc'
 include 'device.inc'
 
-binding_text db 'lazy slots in this object: each function binds at its first call',0
+binding_text GLOBSTR 'lazy slots in this object: each function binds at its first call',0

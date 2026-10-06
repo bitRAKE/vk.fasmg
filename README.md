@@ -73,6 +73,7 @@ tools/                 projection generator, SDK verifier, assembler wrapper
 vk/loader/             handwritten IAT, delay, static, dynamic, COMDAT loaders
 examples/loaders/      six builds of one instance/device program; stdout helper
 examples/debug/        lifecycle, severity/output routing, object names/tags/labels
+examples/strings.inc   pooled UTF-8/UTF-16 literals for the examples
 tests/                 projection/loader/debug checks, probes, debugger capture
 macro/struct.inc       fasm2 struct macro with escaped-member alignment fix
 newcoff.inc            common AMD64 NEWCOFF and procedure setup

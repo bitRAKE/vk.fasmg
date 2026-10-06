@@ -1,5 +1,6 @@
 ; Minimal stdout support for the loader examples, without a C runtime.
 include 'newcoff.inc'
+include '..\strings.inc'
 
 public console_initialize
 public console_write_string
@@ -43,7 +44,7 @@ endp
 proc console_write_line text
 	mov [text],rcx
 	fastcall console_write_string,[text]
-	fastcall console_write_string,console_newline
+	fastcall console_write_string,<13,10>
 	ret
 endp
 
@@ -51,7 +52,3 @@ section '.bss$loader_console' readable writeable align 8
 
 console_output dq ?
 console_written dd ?
-
-section '.rdata$loader_console' data readable align 2
-
-console_newline db 13,10,0

@@ -18,4 +18,4 @@ extrn run_device:qword
 
 include 'instance.inc'
 
-binding_text db 'lazy slots the linker merged from two objects',0
+binding_text GLOBSTR 'lazy slots the linker merged from two objects',0

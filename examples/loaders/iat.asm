@@ -17,4 +17,4 @@ public mainCRTStartup
 include 'instance.inc'
 include 'device.inc'
 
-binding_text db 'import table: Windows bound every function before the program started',0
+binding_text GLOBSTR 'import table: Windows bound every function before the program started',0

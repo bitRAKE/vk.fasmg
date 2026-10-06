@@ -11,5 +11,6 @@ DEBUG_FILE := 2
 struct DebugSink
 	kind dd ?
 	demoMask dd ?
+	handle dq ?                     ; WriteFile handle, or -1 for DEBUG_DEBUGGER.
 	?label dq ?
 ends

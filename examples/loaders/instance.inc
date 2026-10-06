@@ -3,6 +3,7 @@
 ; calls a function of each kind a loader has to bind, runs the device half and
 ; tears down.  The process exits with 0, or with the number of the step that
 ; failed.
+include '..\strings.inc'
 
 extrn ExitProcess:qword
 extrn console_initialize:qword
@@ -13,7 +14,7 @@ section '.text$t' code readable executable align 16
 
 proc mainCRTStartup uses rbx
 	fastcall console_initialize
-	fastcall console_write_string,report_prefix
+	fastcall console_write_string,'[loaders] '
 	fastcall console_write_line,binding_text
 
 	mov ebx,1
@@ -43,14 +44,14 @@ if definite VK_EXT_DEBUG_UTILS_SPEC_VERSION
 		VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT, addr message
 	vkDestroyDebugUtilsMessengerEXT [instance], [messenger], 0
 else
-	fastcall console_write_line,no_debug_utils_text
+	fastcall console_write_line,'[loaders] debug_utils is not included: the import table has no slot for it'
 end if
 
 	fastcall run_device
 	mov ebx,eax
 	test eax,eax
 	jnz .destroy_instance
-	fastcall console_write_line,device_text
+	fastcall console_write_line,'[loaders] instance and device created, device idle, both destroyed'
 .destroy_instance:
 	vkDestroyInstance [instance], 0
 .exit:
@@ -63,7 +64,7 @@ if definite VK_EXT_DEBUG_UTILS_SPEC_VERSION
 ; PFN_vkDebugUtilsMessengerCallbackEXT: prints what was submitted.
 proc report_message severity,types,callback_data,user_data
 	mov [callback_data],r8
-	fastcall console_write_string,report_prefix
+	fastcall console_write_string,'[loaders] '
 	mov rax,[callback_data]
 	fastcall console_write_line,[rax + VkDebugUtilsMessengerCallbackDataEXT.pMessage]
 	xor eax,eax
@@ -109,12 +110,9 @@ message VkDebugUtilsMessengerCallbackDataEXT \
 	sType: VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CALLBACK_DATA_EXT, \
 	pMessage: message_text
 
-debug_utils_extension db VK_EXT_DEBUG_UTILS_EXTENSION_NAME,0
-message_text db 'a debug_utils messenger received this through three lazily bound functions',0
+debug_utils_extension GLOBSTR VK_EXT_DEBUG_UTILS_EXTENSION_NAME,0
+message_text GLOBSTR 'a debug_utils messenger received this through three lazily bound functions',0
 
 end if
 
-surface_extension db VK_KHR_SURFACE_EXTENSION_NAME,0
-report_prefix db '[loaders] ',0
-no_debug_utils_text db '[loaders] debug_utils is not included: the import table has no slot for it',0
-device_text db '[loaders] instance and device created, device idle, both destroyed',0
+surface_extension GLOBSTR VK_KHR_SURFACE_EXTENSION_NAME,0

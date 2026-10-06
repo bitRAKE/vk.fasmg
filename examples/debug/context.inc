@@ -1,6 +1,7 @@
 ; Small headless host, included in each example's single Vulkan-calling object.
 ; No window, surface, rendering features, device extensions, or C runtime.
 include 'sink.inc'
+include '..\strings.inc'
 
 extrn ExitProcess:qword
 extrn console_initialize:qword
@@ -100,12 +101,14 @@ queue_priority dd 1.0
 adapters rq 16
 families rb 32 * sizeof.VkQueueFamilyProperties
 
-bootstrap_sink DebugSink kind: DEBUG_CONSOLE, label: bootstrap_label
+bootstrap_label GLOBSTR 'bootstrap',0
+bootstrap_sink DebugSink kind: DEBUG_CONSOLE, handle: -1, label: bootstrap_label
 bootstrap_info VkDebugUtilsMessengerCreateInfoEXT \
 	sType: VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT, \
 	messageSeverity: DEBUG_INFO, messageType: DEBUG_ALL_TYPES, \
 	pfnUserCallback: debug_callback, pUserData: bootstrap_sink
 
+application_name GLOBSTR 'vk.fasmg debug examples',0
 application_info VkApplicationInfo \
 	sType: VK_STRUCTURE_TYPE_APPLICATION_INFO, \
 	pApplicationName: application_name, apiVersion: VK_API_VERSION_1_1
@@ -119,12 +122,10 @@ queue_info VkDeviceQueueCreateInfo \
 device_info VkDeviceCreateInfo \
 	sType: VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, \
 	queueCreateInfoCount: 1, pQueueCreateInfos: queue_info
+event_id GLOBSTR 'vk.fasmg.debug',0
 event_data VkDebugUtilsMessengerCallbackDataEXT \
 	sType: VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CALLBACK_DATA_EXT, \
 	pMessageIdName: event_id
 
 instance_extensions dq debug_utils_extension
-debug_utils_extension db VK_EXT_DEBUG_UTILS_EXTENSION_NAME,0
-application_name db 'vk.fasmg debug examples',0
-bootstrap_label db 'bootstrap',0
-event_id db 'vk.fasmg.debug',0
+debug_utils_extension GLOBSTR VK_EXT_DEBUG_UTILS_EXTENSION_NAME,0

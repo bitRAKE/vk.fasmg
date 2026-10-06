@@ -20,4 +20,4 @@ extrn run_device:qword
 
 include 'instance.inc'
 
-binding_text db 'lazy slots in a loader object assembled from two objects'' reports',0
+binding_text GLOBSTR 'lazy slots in a loader object assembled from two objects'' reports',0

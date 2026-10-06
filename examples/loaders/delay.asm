@@ -20,4 +20,4 @@ public instance
 include 'instance.inc'
 include 'device.inc'
 
-binding_text db 'delay-loaded imports: the linker''s thunks, answered through vkGetInstanceProcAddr',0
+binding_text GLOBSTR 'delay-loaded imports: the linker''s thunks, answered through vkGetInstanceProcAddr',0

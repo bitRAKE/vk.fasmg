@@ -4,6 +4,7 @@ include 'newcoff.inc'
 include 'vk/core.inc'
 include 'vk/ext/debug_utils.inc'
 include 'sink.inc'
+include '..\strings.inc'
 
 public debug_initialize
 public debug_shutdown
@@ -12,7 +13,7 @@ public debug_io_failed
 public debug_validation_failed
 
 extrn GetStdHandle:qword
-extrn CreateFileA:qword
+extrn CreateFileW:qword
 extrn WriteFile:qword
 extrn CloseHandle:qword
 extrn AcquireSRWLockExclusive:qword
@@ -24,34 +25,51 @@ LOG_CAPACITY := 4096
 
 section '.text$debug_logger' code readable executable align 16
 
-; Optional filename in RCX. Initialize before vkCreateInstance, close after
-; vkDestroyInstance: a chained messenger may call us during both operations.
-proc debug_initialize uses rbx,filename
+; Caller owns the descriptor and its handle. File names are UTF-16.
+; Initialize before creating a messenger; close only after its last callback.
+proc debug_initialize uses rbx,sink,filename
 	mov rbx,rcx
+	mov [filename],rdx
+	mov [rbx + DebugSink.handle],-1
+	cmp [rbx + DebugSink.kind],DEBUG_DEBUGGER
+	je .success
+	cmp [rbx + DebugSink.kind],DEBUG_FILE
+	je .file
 	fastcall GetStdHandle,-11
-	mov [stdout_handle],rax
-	mov [file_handle],-1
-	xor eax,eax
-	test rbx,rbx
-	jz .done
-	fastcall CreateFileA,rbx,40000000h,1,0,2,80h,0
-	mov [file_handle],rax
+	jmp .check
+.file:
+	fastcall CreateFileW,[filename],40000000h,1,0,2,80h,0
+.check:
+	mov [rbx + DebugSink.handle],rax
+	test rax,rax
+	jz .failed
 	cmp rax,-1
-	sete al
-	movzx eax,al
+	je .failed
+.success:
+	xor eax,eax
+	jmp .done
+.failed:
+	mov [debug_io_failed],1
+	fastcall OutputDebugStringW,<W,'[debug] sink: could not open output handle',13,10>
+	mov eax,1
 .done:
 	ret
 endp
 
-proc debug_shutdown
-	cmp [file_handle],-1
+; Console handles are borrowed; only a file sink owns a closable handle.
+proc debug_shutdown uses rbx,sink
+	mov rbx,rcx
+	cmp [rbx + DebugSink.kind],DEBUG_FILE
+	jne .done
+	cmp [rbx + DebugSink.handle],-1
 	je .done
-	fastcall CloseHandle,[file_handle]
+	fastcall CloseHandle,[rbx + DebugSink.handle]
 	test eax,eax
 	jnz .closed
 	mov [debug_io_failed],1
+	fastcall OutputDebugStringW,<W,'[debug] sink: CloseHandle failed',13,10>
 .closed:
-	mov [file_handle],-1
+	mov [rbx + DebugSink.handle],-1
 .done:
 	ret
 endp
@@ -80,7 +98,7 @@ endp
 
 proc append_hex uses rbx rsi,value
 	mov rbx,rcx
-	fastcall append_text,hex_prefix
+	fastcall append_text,'0x'
 	mov esi,16
 .loop:
 	rol rbx,4
@@ -136,8 +154,10 @@ proc write_record uses rbx rsi rdi,handle
 	add esi,eax
 	jmp .loop
 .failed:
-	mov [debug_io_failed],1
+	mov eax,1
+	ret
 .done:
+	xor eax,eax
 	ret
 endp
 
@@ -164,7 +184,7 @@ proc debug_callback uses rbx rsi rdi,severity,types,callback_data,user_data
 	jae .counted
 	bts [rdi + DebugSink.demoMask],eax
 .counted:
-	fastcall append_text,record_prefix
+	fastcall append_text,'[debug]['
 	mov eax,[rdi + DebugSink.kind]
 	lea rcx,[console_text]
 	cmp eax,DEBUG_DEBUGGER
@@ -176,9 +196,9 @@ proc debug_callback uses rbx rsi rdi,severity,types,callback_data,user_data
 	lea rcx,[file_text]
 .kind_ready:
 	fastcall append_text,rcx
-	fastcall append_text,bracket_separator
+	fastcall append_text,']['
 	fastcall append_text,[rdi + DebugSink.label]
-	fastcall append_text,bracket_separator
+	fastcall append_text,']['
 	lea rcx,[verbose_text]
 	cmp [severity],VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT
 	jne .not_info
@@ -193,25 +213,25 @@ proc debug_callback uses rbx rsi rdi,severity,types,callback_data,user_data
 	lea rcx,[error_text]
 .severity_ready:
 	fastcall append_text,rcx
-	fastcall append_text,type_prefix
+	fastcall append_text,'] types='
 	test [types],VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
 	jz .no_general
-	fastcall append_text,general_text
+	fastcall append_text,'general '
 .no_general:
 	test [types],VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
 	jz .no_validation
-	fastcall append_text,validation_text
+	fastcall append_text,'validation '
 .no_validation:
 	test [types],VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
 	jz .no_performance
-	fastcall append_text,performance_text
+	fastcall append_text,'performance '
 .no_performance:
-	fastcall append_text,id_prefix
+	fastcall append_text,'id='
 	fastcall append_text,[rsi + VkDebugUtilsMessengerCallbackDataEXT.pMessageIdName]
-	fastcall append_text,number_prefix
+	fastcall append_text,' number='
 	mov ecx,[rsi + VkDebugUtilsMessengerCallbackDataEXT.messageIdNumber]
 	fastcall append_hex,rcx
-	fastcall append_text,message_prefix
+	fastcall append_text,' message='
 	fastcall append_text,[rsi + VkDebugUtilsMessengerCallbackDataEXT.pMessage]
 
 	mov ebx,[rsi + VkDebugUtilsMessengerCallbackDataEXT.objectCount]
@@ -221,21 +241,21 @@ proc debug_callback uses rbx rsi rdi,severity,types,callback_data,user_data
 .objects:
 	test ebx,ebx
 	jz .objects_done
-	fastcall append_text,object_prefix
+	fastcall append_text,<13,10,'  object type='>
 	mov ecx,[rdi + VkDebugUtilsObjectNameInfoEXT.objectType]
 	fastcall append_hex,rcx
-	fastcall append_text,handle_prefix
+	fastcall append_text,' handle='
 	fastcall append_hex,[rdi + VkDebugUtilsObjectNameInfoEXT.objectHandle]
-	fastcall append_text,name_prefix
+	fastcall append_text,' name='
 	fastcall append_text,[rdi + VkDebugUtilsObjectNameInfoEXT.pObjectName]
 	add rdi,sizeof.VkDebugUtilsObjectNameInfoEXT
 	dec ebx
 	jmp .objects
 .objects_done:
 	fastcall append_labels,[rsi + VkDebugUtilsMessengerCallbackDataEXT.queueLabelCount], \
-		[rsi + VkDebugUtilsMessengerCallbackDataEXT.pQueueLabels],queue_prefix
+		[rsi + VkDebugUtilsMessengerCallbackDataEXT.pQueueLabels],<13,10,'  queue-label='>
 	fastcall append_labels,[rsi + VkDebugUtilsMessengerCallbackDataEXT.cmdBufLabelCount], \
-		[rsi + VkDebugUtilsMessengerCallbackDataEXT.pCmdBufLabels],command_prefix
+		[rsi + VkDebugUtilsMessengerCallbackDataEXT.pCmdBufLabels],<13,10,'  command-label='>
 	mov eax,[line_length]
 	lea rcx,[line_buffer]
 	mov word [rcx+rax],0A0Dh
@@ -243,22 +263,25 @@ proc debug_callback uses rbx rsi rdi,severity,types,callback_data,user_data
 	add [line_length],2
 
 	mov rdi,[user_data]
-	mov eax,[rdi + DebugSink.kind]
-	cmp eax,DEBUG_DEBUGGER
-	je .debugger
-	cmp eax,DEBUG_FILE
-	je .file
-	mov rcx,[stdout_handle]
-	test rcx,rcx
-	jz .done
+	mov rcx,[rdi + DebugSink.handle]
 	cmp rcx,-1
-	je .done
+	je .sentinel
+	test rcx,rcx
+	jz .invalid
 	fastcall write_record,rcx
+	test eax,eax
+	jnz .write_failed
 	jmp .done
-.file:
-	cmp [file_handle],-1
-	je .failed
-	fastcall write_record,[file_handle]
+.sentinel:
+	cmp [rdi + DebugSink.kind],DEBUG_DEBUGGER
+	je .debugger
+.invalid:
+	mov [debug_io_failed],1
+	fastcall OutputDebugStringW,<W,'[debug] sink: invalid output handle',13,10>
+	jmp .done
+.write_failed:
+	mov [debug_io_failed],1
+	fastcall OutputDebugStringW,<W,'[debug] sink: WriteFile failed',13,10>
 	jmp .done
 .debugger:
 	; Vulkan messages are UTF-8; convert before OutputDebugStringW.
@@ -269,6 +292,7 @@ proc debug_callback uses rbx rsi rdi,severity,types,callback_data,user_data
 	jmp .done
 .failed:
 	mov [debug_io_failed],1
+	fastcall OutputDebugStringW,<W,'[debug] sink: UTF-8 conversion failed',13,10>
 .done:
 	fastcall ReleaseSRWLockExclusive,addr log_lock
 	xor eax,eax                         ; Always VK_FALSE; never abort a Vulkan call.
@@ -276,8 +300,6 @@ proc debug_callback uses rbx rsi rdi,severity,types,callback_data,user_data
 endp
 
 section '.data$debug_logger' data readable writeable align 16
-stdout_handle dq 0
-file_handle dq -1
 log_lock dq 0
 line_length dd 0
 bytes_written dd 0
@@ -288,28 +310,12 @@ section '.bss$debug_logger' readable writeable align 16
 line_buffer rb LOG_CAPACITY
 wide_buffer rw LOG_CAPACITY
 
-section '.rdata$debug_logger' data readable align 2
-record_prefix db '[debug][',0
-console_text db 'console',0
-debugger_text db 'debugger',0
-file_text db 'file',0
-bracket_separator db '][',0
-verbose_text db 'verbose',0
-info_text db 'info',0
-warning_text db 'warning',0
-error_text db 'error',0
-type_prefix db '] types=',0
-general_text db 'general ',0
-validation_text db 'validation ',0
-performance_text db 'performance ',0
-id_prefix db 'id=',0
-number_prefix db ' number=',0
-message_prefix db ' message=',0
-object_prefix db 13,10,'  object type=',0
-handle_prefix db ' handle=',0
-name_prefix db ' name=',0
-queue_prefix db 13,10,'  queue-label=',0
-command_prefix db 13,10,'  command-label=',0
-hex_prefix db '0x',0
-hex_digits db '0123456789ABCDEF'
-null_text db '(none)',0
+console_text GLOBSTR 'console',0
+debugger_text GLOBSTR 'debugger',0
+file_text GLOBSTR 'file',0
+verbose_text GLOBSTR 'verbose',0
+info_text GLOBSTR 'info',0
+warning_text GLOBSTR 'warning',0
+error_text GLOBSTR 'error',0
+hex_digits GLOBSTR '0123456789ABCDEF'
+null_text GLOBSTR '(none)',0

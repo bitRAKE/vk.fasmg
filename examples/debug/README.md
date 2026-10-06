@@ -54,6 +54,15 @@ the same callback with different severity masks and `pUserData` sink descriptors
 | Warning | yes | yes | yes |
 | Error | yes | yes | yes |
 
+Each `DebugSink` carries its own `handle`. A valid handle receives `WriteFile`
+records regardless of the descriptive `kind`; `-1` selects `OutputDebugStringW`
+only for `DEBUG_DEBUGGER`. For other kinds, `-1` or NULL is an invalid handle:
+the callback marks an I/O failure and reports it to the debugger. Failed writes
+also report to the debugger. Handles can be supplied or retargeted by the
+caller without changing logger globals. `debug_initialize(sink, filename)` is
+an optional convenience for obtaining stdout or opening a UTF-16 file path;
+`debug_shutdown(sink)` closes only owned file handles.
+
 All three accept GENERAL, VALIDATION, and PERFORMANCE message types. The example
 submits four GENERAL messages to demonstrate filtering. Its ERROR message is
 synthetic and does not represent invalid Vulkan usage. The bootstrap callback
@@ -71,6 +80,18 @@ synchronously, returns `VK_FALSE`, and calls no Vulkan commands. An SRW lock
 protects the bounded 4096-byte record buffer, counters, and complete writes.
 Oversized records are truncated; Win32 write/conversion failures and actual
 validation warnings/errors cause a failing exit status.
+
+All examples share `examples\strings.inc`, which uses fasm2's `globstr.inc` and
+`globwstr.inc` to pool literals in `.rdata$strings`. Ordinary inline `fastcall`
+strings are NUL-terminated UTF-8; `<W,'text'>` creates UTF-16, and `<A,'text'>`
+explicitly selects bytes. Named `GLOBSTR` declarations provide pooled pointers
+for structure fields. Literals stay beside their calls instead of emitting
+string bytes into the instruction stream. For example:
+
+```asm
+fastcall debug_initialize,addr file_sink,<W,'build\debug_outputs.log'>
+fastcall submit_event,VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,'device created',DEBUG_DEMO_ID+4
+```
 
 [Messenger filtering and callback threading](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugUtilsMessengerCreateInfoEXT.html)
 
@@ -105,7 +126,15 @@ routing to stdout and the file, UTF-8/UTF-16 text, live named handles, rename/cl
 and label metadata. Its small Win32 helper in `tests\capture-debug-output.cs`
 launches the output example as a debuggee and reads real
 `OUTPUT_DEBUG_STRING_EVENT` records. This verifies debugger output independently
-of the program's callback counters, without installing a debugger.
+of the program's callback counters, without installing a debugger. The hidden
+debuggee inherits valid NUL standard handles; ordinary runs verify stdout.
+
+`tests\debug\sink_probe.asm` exercises the callback directly with two file
+handles, retargets a descriptor, and verifies that a valid handle routes to
+`WriteFile` even for `DEBUG_DEBUGGER`. It also checks the debugger sentinel,
+invalid -1/NULL handles, a failed write to a read-only handle, `VK_FALSE` returns,
+and non-ASCII narrow/wide literals. Its logs are `build\debug_sink_a.log`,
+`build\debug_sink_b.log`, and `build\debug_sink_probe.log`.
 
 The script saves stdout, file, and debugger logs under
 `build\debug_checks\default\` and, with validation, `build\debug_checks\validation\`.
