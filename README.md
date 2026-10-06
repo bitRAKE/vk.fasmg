@@ -1,9 +1,10 @@
-# Vulkan projection and loader examples for fasmg
+# Vulkan projection and examples for fasmg
 
 This is a minimal Windows x64 repository for projecting the Vulkan registry
 into fasmg/fasm2 includes and demonstrating how to bind the resulting functions.
 It contains the projection generator, ABI verification, five loader strategies
-demonstrated by six console programs, and their focused tests.
+demonstrated by six console programs, three debug-utils examples, and their
+focused tests.
 
 ## Requirements
 
@@ -13,6 +14,7 @@ demonstrated by six console programs, and their focused tests.
 - [fasm2](https://github.com/tgrysztar/fasm2) with AMD64 NEWCOFF support.
 - A Vulkan 1.1 capable driver for running the loader examples, including
   `VK_KHR_surface` and, except for the IAT example, `VK_EXT_debug_utils`.
+- The Vulkan SDK's Khronos validation layer for `check-debug` and `check`.
 
 The makefile defaults to `..\fasm2\fasm2.cmd` and
 `%ProgramFiles%\LLVM\bin\clang.exe`. Override either when needed:
@@ -26,14 +28,19 @@ build.cmd "FASM2=C:\tools\fasm2\fasm2.cmd" "CLANG=C:\tools\LLVM\bin\clang.exe"
 Run from the repository root:
 
 ```bat
-rem Generate, verify against the SDK, and build six loaders:
+rem Generate, verify against the SDK, and build loader/debug examples:
 build.cmd
 rem Generate and verify the projection only:
 build.cmd api
 rem Build, run, and compare all six loader examples:
 build.cmd loaders
-rem Run all projection and loader checks (check-api is an alias):
+rem Build and verify the three debug-utils examples:
+build.cmd debug
+rem Repeat debug checks with the Khronos validation layer:
+build.cmd check-debug
+rem Run all projection, loader, and debug checks:
 build.cmd check
+rem Run just the projection and loader checks:
 build.cmd check-api
 rem Remove build artifacts; keep the generated projection:
 build.cmd clean
@@ -56,6 +63,8 @@ with layout assertions and alignment checking, and tests lazy resolution
 against a stand-in resolver that clobbers volatile registers. It runs all six
 examples, checks their imports and dense slot tables, and links the delay-load
 example against an absent DLL to verify its ordinary initialization failure.
+It also verifies the [debug-utils examples](examples/debug/README.md), including
+actual Windows debugger events and runs under the Khronos validation layer.
 
 ## Repository layout
 
@@ -63,7 +72,8 @@ example against an absent DLL to verify its ordinary initialization failure.
 tools/                 projection generator, SDK verifier, assembler wrapper
 vk/loader/             handwritten IAT, delay, static, dynamic, COMDAT loaders
 examples/loaders/      six builds of one instance/device program; stdout helper
-tests/                 projection and loader checks; three assembly probes
+examples/debug/        lifecycle, severity/output routing, object names/tags/labels
+tests/                 projection/loader/debug checks, probes, debugger capture
 macro/struct.inc       fasm2 struct macro with escaped-member alignment fix
 newcoff.inc            common AMD64 NEWCOFF and procedure setup
 docs/                  projection format and loader contracts
@@ -102,4 +112,6 @@ loaders read the program's `instance` and `device` qwords and resolve each slot
 on its first call.
 
 See [the projection format](docs/vulkan.md), [the loader contracts](docs/loaders.md),
-and [the six loader examples](examples/loaders/README.md).
+and [the six loader examples](examples/loaders/README.md). The
+[debug-utils examples](examples/debug/README.md) demonstrate message callbacks,
+console/debugger/file sinks, and object/workload annotations.

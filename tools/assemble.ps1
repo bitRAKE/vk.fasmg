@@ -20,7 +20,15 @@ foreach ($include in $Includes.Split(';', [System.StringSplitOptions]::RemoveEmp
     $arguments += "-iinclude('$include')"
 }
 $arguments += @($Source, $Output)
-$report = (& $assembler.Source @arguments 2>&1 | Out-String)
+$nativeErrorPreference = $ErrorActionPreference
+try {
+    # Windows PowerShell treats redirected native stderr as error records.
+    # Collect the complete diagnostic before deciding whether assembly failed.
+    $ErrorActionPreference = 'Continue'
+    $report = (& $assembler.Source @arguments 2>&1 | Out-String)
+} finally {
+    $ErrorActionPreference = $nativeErrorPreference
+}
 if ($LASTEXITCODE -or -not (Test-Path -LiteralPath $Output -PathType Leaf) -or $report -match '(?im)^warning') {
     foreach ($path in @($Output, [System.IO.Path]::ChangeExtension($Output, 'vkuse'))) {
         if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }

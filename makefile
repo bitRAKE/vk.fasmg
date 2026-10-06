@@ -1,4 +1,4 @@
-# NMAKE: generate and verify the Vulkan projection, then build six loader examples.
+# NMAKE: generate and verify the Vulkan projection, then build loader/debug examples.
 # Override FASM2 and CLANG on the command line for other toolchain locations.
 
 !IFNDEF FASM2
@@ -25,12 +25,15 @@ LOADER_EXAMPLE_BODY = examples\loaders\instance.inc examples\loaders\device.inc 
 LINK_EXAMPLE = link /NOLOGO /SUBSYSTEM:CONSOLE /ENTRY:mainCRTStartup /NODEFAULTLIB /OPT:REF /OPT:ICF
 LOADER_EXAMPLE_LINK = $(LINK_EXAMPLE) /MAP:$(@R).map /OUT:$@
 LOADER_EXAMPLES = $(BUILD)\loader_iat.exe $(BUILD)\loader_delay.exe $(BUILD)\loader_static.exe $(BUILD)\loader_mixed.exe $(BUILD)\loader_dynamic.exe $(BUILD)\loader_comdat.exe
+DEBUG_LOGGER_OBJ = $(BUILD)\debug_logger.obj
+DEBUG_BODY = examples\debug\context.inc examples\debug\sink.inc $(OBJECT_BASE) vk\loader\static.inc vk\loader\lazy.inc $(VK_VALIDATED) $(BUILD_READY)
+DEBUG_EXAMPLES = $(BUILD)\debug_lifecycle.exe $(BUILD)\debug_outputs.exe $(BUILD)\debug_objects.exe
 
 VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
 VULKAN_DELAY_OBJ = $(BUILD)\vk_delay.obj
 
-all: $(LOADER_EXAMPLES)
+all: $(LOADER_EXAMPLES) $(DEBUG_EXAMPLES)
 
 $(BUILD_READY):
 	if not exist "$(BUILD)" mkdir "$(BUILD)"
@@ -110,7 +113,35 @@ $(BUILD)\loader_comdat.exe: $(BUILD)\loader_comdat_app.obj $(BUILD)\loader_comda
 loaders: $(LOADER_EXAMPLES)
 	$(POWERSHELL) -File examples\loaders\compare.ps1 -Executables "$(LOADER_EXAMPLES)"
 
-check: check-api
+# Headless VK_EXT_debug_utils examples, with one Vulkan-calling object apiece.
+$(DEBUG_LOGGER_OBJ): examples\debug\logger.asm $(DEBUG_BODY)
+	$(ASSEMBLE) -Source examples\debug\logger.asm -Output $@
+
+$(BUILD)\debug_lifecycle.obj: examples\debug\00_lifecycle.asm $(DEBUG_BODY)
+	$(ASSEMBLE) -Source examples\debug\00_lifecycle.asm -Output $@
+
+$(BUILD)\debug_outputs.obj: examples\debug\01_outputs.asm $(DEBUG_BODY)
+	$(ASSEMBLE) -Source examples\debug\01_outputs.asm -Output $@
+
+$(BUILD)\debug_objects.obj: examples\debug\02_objects.asm $(DEBUG_BODY)
+	$(ASSEMBLE) -Source examples\debug\02_objects.asm -Output $@
+
+$(BUILD)\debug_lifecycle.exe: $(BUILD)\debug_lifecycle.obj $(DEBUG_LOGGER_OBJ) $(CONSOLE_OBJ)
+	$(LINK_EXAMPLE) /MAP:$(@R).map /OUT:$@ $** $(VULKAN_LIB) kernel32.lib
+
+$(BUILD)\debug_outputs.exe: $(BUILD)\debug_outputs.obj $(DEBUG_LOGGER_OBJ) $(CONSOLE_OBJ)
+	$(LINK_EXAMPLE) /MAP:$(@R).map /OUT:$@ $** $(VULKAN_LIB) kernel32.lib
+
+$(BUILD)\debug_objects.exe: $(BUILD)\debug_objects.obj $(DEBUG_LOGGER_OBJ) $(CONSOLE_OBJ)
+	$(LINK_EXAMPLE) /MAP:$(@R).map /OUT:$@ $** $(VULKAN_LIB) kernel32.lib
+
+debug: $(DEBUG_EXAMPLES)
+	$(POWERSHELL) -File tests\verify-debug-examples.ps1 -BuildDir "$(BUILD)"
+
+check-debug: $(DEBUG_EXAMPLES)
+	$(POWERSHELL) -File tests\verify-debug-examples.ps1 -BuildDir "$(BUILD)" -Validation
+
+check: check-api check-debug
 
 # Generated includes and manifests survive clean; the next build reuses them.
 clean:
