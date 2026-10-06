@@ -139,3 +139,61 @@ boundary Events
 	u32 reserved,16
 end boundary
 assert sizeof.Events = 512
+
+; One frame: a run of texels and a mask of the solid ones. With FRAME_LIGHT a
+; plane of normals follows the texels. The packer writes the table; the device
+; makes its own copy, with what it found in place of what it was told.
+shared FRAME_LIGHT,1			; lit from one side however it turns
+shared FRAME_GLOW,2			; light: its halo adds to what is behind it
+shared FRAME_SYMMETRIC,4		; the same mirrored left to right
+shared RECIPE_BAKED,0			; cut from a sheet and packed
+shared RECIPE_MADE,1			; computed on the device
+shared RECIPE_DRAWN,2			; rasterized on the device from strokes
+boundary Picture			; (Frame is taken: proc64's frame)
+	u32 texels			; its first, among all texels
+	u32 mask			; its first word, among all masks; a row is (width + 31) / 32 words
+	u32 width
+	u32 height
+	u32 flags
+	u32 recipe
+	u32 argument			; made: the generator. drawn: first stroke, and the count << 16
+	u32 solid			; texels its mask holds
+	u32 checksum
+end boundary
+
+; A capsule from `start` to `finish`; a disc when they meet. `outline` is half
+; the width of its edge, or zero when it is filled. Texels from the top left.
+boundary Stroke
+	f32x2 start
+	f32x2 finish
+	f32 radius
+	f32 outline
+	u32 color
+end boundary
+
+; What the device found when it made the pictures.
+boundary Census
+	u32 baked			; frames from the packer
+	u32 baked_wrong			; whose solid count or checksum is not the packer's
+	u32 baked_solid
+	u32 made			; frames made or drawn on the device
+	u32 made_wrong			; empty, or drawn with another area than its strokes have
+	u32 made_solid
+	u32 lopsided			; mask bits of symmetric frames that differ from their mirror
+	u32 pad
+end boundary
+
+; Where the pictures are. A program's World begins with this, written once.
+boundary Pictures
+	ptr frames,Picture
+	ptr texels,uint
+	ptr masks,uint
+	ptr census,Census
+	ptr packed_frames,Picture		; these three are the packer's, in host-visible
+	ptr packed_texels,uint		; memory: read while the pictures are made and
+	ptr strokes,Stroke		; never after
+	u32 count			; frames
+	u32 baked_texels
+	u32 texel_count
+	u32 mask_words
+end boundary

@@ -49,12 +49,16 @@ MYHITS = source\myhits
 MYHITS_HEADER = $(BUILD)\myhits_shared.slang
 MYHITS_SLANG = "$(SLANGC)" -I $(BUILD) -target spirv -profile spirv_1_5 -emit-spirv-directly -fvk-use-scalar-layout
 MYHITS_VALIDATE = "$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.3 --scalar-block-layout
-MYHITS_MACHINE = $(MYHITS)\machine.inc $(MYHITS)\shared.inc $(SHARED_EXAMPLE_BODY)
+MYHITS_MACHINE = $(MYHITS)\machine.inc $(MYHITS)\input.inc $(MYHITS)\shared.inc $(SHARED_EXAMPLE_BODY)
 STYLE_SLANG = $(MYHITS)\proofs\01_style\style.slang
 STYLE_SHADERS = $(BUILD)\myhits_style_collide.spv $(BUILD)\myhits_style_vertex.spv $(BUILD)\myhits_style_fragment.spv
 SPINE_SLANG = $(MYHITS)\proofs\02_spine\spine.slang
 SPINE_SHADERS = $(BUILD)\myhits_spine_seed.spv $(BUILD)\myhits_spine_direct.spv $(BUILD)\myhits_spine_advance.spv $(BUILD)\myhits_spine_mote_vertex.spv $(BUILD)\myhits_spine_mote_fragment.spv
-MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe
+MYHITS_ART = $(BUILD)\myhits_art.inc
+MYHITS_PICTURES = $(MYHITS)\pictures.inc $(MYHITS)\pictures.slang $(MYHITS_ART)
+GALLERY_SLANG = $(MYHITS)\proofs\03_pictures\gallery.slang
+GALLERY_SHADERS = $(BUILD)\myhits_pictures_develop.spv $(BUILD)\myhits_pictures_chart.spv $(BUILD)\myhits_pictures_census.spv $(BUILD)\myhits_pictures_direct.spv $(BUILD)\myhits_pictures_sprite_vertex.spv $(BUILD)\myhits_pictures_sprite_fragment.spv
+MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe
 
 VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
@@ -294,7 +298,42 @@ $(BUILD)\myhits_spine.obj: $(MYHITS)\proofs\02_spine\spine.asm $(MYHITS_MACHINE)
 	$(ASSEMBLE) -Source $(MYHITS)\proofs\02_spine\spine.asm -Output $@
 
 $(BUILD)\myhits_spine.exe: $(BUILD)\myhits_spine.obj $(DEBUG_LOGGER_OBJ)
-	$(LINK_WINDOW)
+	$(LINK_WINDOW) xinput.lib
+
+# The art: the PNGs art.txt names, packed with the table of every frame. The
+# .bin and the .slang are written with the .inc.
+$(MYHITS_ART): $(MYHITS)\art\art.txt $(MYHITS)\art\*.png $(MYHITS)\tools\art.cs $(MYHITS)\tools\pack-art.ps1 $(BUILD_READY)
+	$(POWERSHELL) -File $(MYHITS)\tools\pack-art.ps1 -BuildDir "$(BUILD)"
+
+$(BUILD)\myhits_pictures_develop.spv: $(GALLERY_SLANG) $(MYHITS_PICTURES) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry develop -stage compute -o $@ $(GALLERY_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_pictures_chart.spv: $(GALLERY_SLANG) $(MYHITS_PICTURES) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry chart -stage compute -o $@ $(GALLERY_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_pictures_census.spv: $(GALLERY_SLANG) $(MYHITS_PICTURES) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry census -stage compute -o $@ $(GALLERY_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_pictures_direct.spv: $(GALLERY_SLANG) $(MYHITS_PICTURES) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry direct -stage compute -o $@ $(GALLERY_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_pictures_sprite_vertex.spv: $(GALLERY_SLANG) $(MYHITS_PICTURES) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry sprite_vertex -stage vertex -o $@ $(GALLERY_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_pictures_sprite_fragment.spv: $(GALLERY_SLANG) $(MYHITS_PICTURES) $(MYHITS_HEADER)
+	$(MYHITS_SLANG) -entry sprite_fragment -stage fragment -o $@ $(GALLERY_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_pictures.obj: $(MYHITS)\proofs\03_pictures\gallery.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(GALLERY_SHADERS)
+	$(ASSEMBLE) -Source $(MYHITS)\proofs\03_pictures\gallery.asm -Output $@
+
+$(BUILD)\myhits_pictures.exe: $(BUILD)\myhits_pictures.obj $(DEBUG_LOGGER_OBJ)
+	$(LINK_WINDOW) xinput.lib
 
 myhits-proofs: $(MYHITS_PROOFS)
 	$(POWERSHELL) -File $(MYHITS)\proofs\run.ps1 -BuildDir "$(BUILD)"

@@ -112,6 +112,13 @@ styles, sound recipes, the frame table of the pictures, HUD layout, glyphs,
 palettes. The same macros give the shader header its `KIND_*`, `SOUND_*` and
 `BONUS_*` numbers. This is where variety is cheap: a new enemy is a few lines.
 
+The pictures are the first of these to exist, and show the pattern. The
+packer writes the frame table from [art.txt](art/art.txt) with its `FRAME_*`
+numbers for both sides; `Picture`, `Stroke` and `Pictures` in shared.inc are
+its layout; the table and the cut texels go up once, the device makes its own
+copy, and the uploaded one is let go. The `Census` block is what the device
+found when it did, and a proof reads it back through Events.
+
 ### World: GPU only
 
 | Pool | Capacity | Notes |
@@ -121,7 +128,7 @@ palettes. The same macros give the shader header its `KIND_*`, `SOUND_*` and
 | Trails | 64 × 256 points | One ring per snake head, and one for the player |
 | Links | 256 | A pair of sprite slots and a style |
 | Particles | 65536 × 32 B | A ring; the oldest are overwritten |
-| Pictures | as the art needs | Texels of every frame, packed; see below |
+| Pictures | as the art needs | Texels of every frame, packed, with normals for those that ask; see below. 539 KB for the first 22 frames |
 | Masks | one bit a texel | Derived on the GPU from the pictures' alpha, so they match what is drawn |
 | Game | one block | Clock, rank, player, bonuses, HUD timers, cursors, damage accumulators |
 
@@ -164,27 +171,39 @@ Rules that keep it honest:
 
 ## Subsystems
 
-**Pictures.** A frame is a rectangle of texels of any size with a pivot; a
-picture is a strip of frames, for animation or for rotation steps. Three
-sources fill the same texel buffer, so there is one way to draw and one way
-to collide:
+**Pictures.** A frame is a rectangle of texels of any size; a picture is a
+strip of frames, for animation or for rotation steps. [art.txt](art/art.txt)
+lists every frame, and three sources fill the same run of texels, so there is
+one way to draw and one way to collide:
 
-- *Baked*: PNG frames, from Blender or by hand, packed at build time into a
-  blob with its frame table and copied to the device once.
-- *Generated*: a compute pass at start, from a seed. Mirrored pixel ships and
-  the like: variety with no asset.
-- *Vector*: shape recipes rasterized by the same pass at whatever size is
-  asked.
+- *Cut*: PNG frames, lifted from a sheet by `tools\cut-art.ps1`, rendered in
+  Blender or painted by hand, packed at build time into a block with the
+  frame table and copied to the device once.
+- *Made*: computed by a generator in a compute pass at start. Mirrored pixel
+  ships and the like: variety with no asset.
+- *Drawn*: strokes written in art.txt, rasterized by the same pass at
+  whatever size is asked.
 
-A frame may carry a second plane, the *light*: a shading overlay that stays
-upright while the color plane turns under it. That is the fake depth for
-rotating chain segments, a sphere's highlight that does not spin with its
-markings. A normal map lit by nearby explosions can use the same plane later.
-Texels are pulled with four fetches and blended, which is bilinear filtering
-without a sampler. If minified art shimmers, or the buffer outgrows what is
-sensible, pictures become images and the root gains a descriptor index; the
-frame table and everything above it stay as they are.
+A texel is premultiplied in linear light and stored sRGB-encoded. One blend,
+`ONE, ONE_MINUS_SRC_ALPHA`, then covers where alpha is 1 and adds where it is
+0: matter and light share a pipeline and a draw. A frame marked `glow` is
+drawn with its alpha squared as coverage, so its halo adds and only its core
+covers.
 
+A frame marked `light` carries a second plane, of normals. The packer
+inflates them from the frame's own alpha, as if the picture were the top of
+something round; Blender or a painter can supply better ones in the same
+plane. When a sprite turns its normals turn with it and the light does not:
+that is the fake depth for rotating chain segments, a sphere's highlight that
+does not spin with its markings. Nearby explosions can light the same plane
+later.
+
+Texels are pulled with four fetches and blended. Magnified, a texel keeps its
+square and only its edge is blended, so pixel art stays crisp at any angle;
+at one to one and below it is plain bilinear filtering, without a sampler. If
+minified art shimmers, or the run outgrows what is sensible, pictures become
+images and the root gains a descriptor index; the frame table and everything
+above it stay as they are. Proof 03 holds all of this.
 **Sprites.** A sprite is position, velocity, angle, scale, kind, frame,
 state, health, a link word, a seed and a tint. Three composite forms:
 
@@ -265,15 +284,18 @@ the same four fields. Rumble goes back out from the events.
 | --- | --- | --- |
 | `shared.inc`, `shared.asm` | The boundary blocks; the generated shader header | Built |
 | `machine.inc` | Window, contract, pipelines, the frame, events | Built; proved by the spine |
-| `proofs\` | Each proof, its checks, and what to look at | Three so far |
+| `proofs\` | Each proof, its checks, and what to look at | Four so far |
+| `art\art.txt`, `art\*.png` | Every frame, whatever its source; the cut ones | 22 frames |
+| `tools\art.cs`, `cut-art.ps1`, `pack-art.ps1` | Cutting sprites out of sheets (authoring); packing the art (build) | Built |
+| `pictures.inc`, `pictures.slang` | Making the pictures on the device; pulling, filtering and lighting them | Built; proved by 03 |
+| `input.inc` | The pad into Root; rumble to come | Built, without rumble |
 | `tables.inc` | The table macros and the game's data | |
-| `pictures.inc`, a packer under `tools\` | The frame table; baked art into a blob | |
-| `input.inc`, `audio.inc` | Pad and rumble; XAudio2 voices and the bank | |
+| `audio.inc` | XAudio2 voices and the bank | |
 | `myhits.asm`, `*.slang` | The game | |
 
 One addition went into `examples\common`: device-local buffers in the pools,
 for the world. One is still to come: a present-mode choice in
-`vulkan_wsi.inc` for a `--low-latency` switch.
+`vulkan_wsi.inc` for a `--low-latency` switch. The programs link `xinput.lib`.
 
 Build order: assemble `shared.asm` to write the header, compile and validate
 the shaders against it, assemble the program with the SPIR-V embedded.
@@ -293,7 +315,7 @@ they change a rule, into this plan.
 | 00 | survey: what the machine offers | | Passes here |
 | 01 | style: the toolchain takes the pointer style; offsets agree | 0 | Passes |
 | 02 | spine: the boundary end to end | 0 | Passes; two findings, both adopted |
-| 03 | pictures: baked, generated and vector frames in one buffer; masks beside them; a turning chain under its light plane | 1 | |
+| 03 | pictures: cut, made and drawn frames in one run of texels; masks beside them; a turning chain under a light that does not turn; the pad | 1 | Passes; three findings |
 | 04 | motion: every easing curve drawn and checked against reference values; the missile's program traced | 2 | |
 | 05 | hits: mask collision counted against a reference computed outside the GPU | 3 | |
 | 06 | sound: the bank rendered and compared; a trigger's delay measured | 4 | |
@@ -301,8 +323,10 @@ they change a rule, into this plan.
 ## Milestones
 
 0. **Spine.** Done.
-1. **Pictures and sprites.** The frame table, the three sources, masks,
-   filtered pulling, the light plane; the ship under keyboard and pad.
+1. **Pictures and sprites.** Done: the frame table, the three sources, masks,
+   filtered pulling, the plane of normals; the ship under keyboard and pad.
+   Left for when they are first needed: strips of frames for animation, and a
+   pivot other than a frame's center.
 2. **Motion.** The easing library and move programs; shots and the missile.
 3. **Hits.** Mask collision, particles, events.
 4. **Sound.** The bank and triggers.
@@ -313,13 +337,49 @@ they change a rule, into this plan.
 
 ## Open
 
-- **How baked art is authored.** A frame size and count convention for
-  Blender output, and whether the light plane is a painted overlay or baked
-  normals, are best settled against a first real asset.
-- **Pad layout.** Which stick aims, and what the second button does before
-  the companion exists.
+- **Art.** The creature atlas is the reference for quality and scale: about
+  80 texels to a head, two sheet pixels to a pixel of the art. The ship is a
+  stand-in from another sheet and does not match it yet. A frame size and
+  count convention for Blender output is still to be settled against a first
+  rendered asset; its normals would replace the packer's inflated ones.
+- **Pad layout.** Provisional: left stick and d-pad move, right stick carries
+  the crosshair, A or the right trigger fires, B or X is the second button.
+  What the second button does before the companion exists is open.
 - **How long the scripted runs may take.** Proofs so far finish in seconds;
   the game's checks will want a budget.
+
+## The other branch
+
+`myhits-codex` is another take on the same game, read on 2026-10-06. Ideas
+from it that this plan takes, each at the milestone it belongs to:
+
+- **A fixed simulation tick** with a bounded catch-up, rather than one step
+  of clamped real time a frame: hits and scripted runs repeat exactly at any
+  refresh rate. Milestone 2, with motion. `Root.dt` becomes a tick count.
+- **Control edges gathered from window messages** between frames, so a tap
+  shorter than a frame is not lost. Milestone 2.
+- **A swept test for shots against masks**: a fast shot walks the texels it
+  crossed this tick rather than testing only where it landed. Milestone 3.
+- **Trails sampled by distance travelled**, not by frame, so a chain keeps
+  its spacing at any speed. Milestone 5; the proof-03 chain steps along its
+  road the same way.
+- **Admission caps on particles** by kind, so one explosion cannot starve the
+  rest. Milestone 3.
+- **Priority events and loop state beside the sound histogram.** Counts and a
+  pan sum lose which sound mattered most; a few slots of `Events.reserved`
+  can carry it. Milestone 4.
+
+Where this plan differs on purpose: the boundary blocks are defined once and
+projected into the shaders, with every member's offset checked in every
+module; the contract is stated with route blocks; a frame waits for the one
+before, and event latency is measured rather than assumed; draws use Vulkan's
+raw indices and need no extra feature; the programs are assembly throughout,
+with no C++ bridge; and each proof fails by a numbered claim.
+
+Both branches change `examples\common\vulkan_pools.inc` and
+`vulkan_context.inc`, differently: this one adds `create_device_buffer`, the
+other `create_buffer_domain` and two context switches. Merging both to main
+will conflict there and wants one design for the pair.
 
 ## Risks
 

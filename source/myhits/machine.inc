@@ -48,12 +48,14 @@ MACHINE_STAGES := VK_SHADER_STAGE_COMPUTE_BIT or VK_SHADER_STAGE_VERTEX_BIT or V
 BLEND_OPAQUE := 0
 BLEND_ALPHA := 1
 BLEND_ADDITIVE := 2
+BLEND_PREMULTIPLIED := 3		; the pictures': one blend covers and adds alike
 QS_ALLINPUT := 4FFh
 
 iterate function,GetModuleHandleW,GetCommandLineW,OutputDebugStringW,ExitProcess,CreateFileW,WriteFile,CloseHandle,VirtualAlloc,VirtualFree, \
 	RegisterClassExW,CreateWindowExW,DefWindowProcW,DestroyWindow,ShowWindow,UpdateWindow,PeekMessageW,TranslateMessage,DispatchMessageW, \
 	WaitMessage,PostQuitMessage,BeginPaint,EndPaint,GetClientRect,LoadCursorW,MessageBoxW,SetWindowPos,AdjustWindowRectEx, \
-	SetWindowTextW,wsprintfW,QueryPerformanceCounter,QueryPerformanceFrequency,GetAsyncKeyState,GetCursorPos,ScreenToClient,GetForegroundWindow
+	SetWindowTextW,wsprintfW,QueryPerformanceCounter,QueryPerformanceFrequency,GetAsyncKeyState,GetCursorPos,ScreenToClient,GetForegroundWindow, \
+	XInputGetState
 	extrn function:qword
 end iterate
 ; For the startup arena behind the shared allocators.
@@ -72,6 +74,7 @@ include '..\..\examples\common\vulkan_context.inc'
 include '..\..\examples\common\vulkan_memory.inc'
 include '..\..\examples\common\vulkan_commands.inc'
 include '..\..\examples\common\vulkan_barriers.inc'
+include 'input.inc'
 
 ; A VkResult in EAX: on failure record it and leave.
 macro require_vk line&
@@ -299,6 +302,9 @@ proc machine_graphics vertex,vertex_bytes,fragment,fragment_bytes,blend,pipeline
 	je .create
 	mov [blend_attachment.dstColorBlendFactor],VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA
 	mov [blend_attachment.dstAlphaBlendFactor],VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA
+	cmp eax,BLEND_PREMULTIPLIED
+	jne .create
+	mov [blend_attachment.srcColorBlendFactor],VK_BLEND_FACTOR_ONE
 .create:
 	vkCreateGraphicsPipelines [device],0,1,addr graphics_info,0,[pipeline]
 	test eax,eax
@@ -425,7 +431,8 @@ proc machine_events uses rbx
 endp
 
 ; The clock and the controls into Root, read now: the frame recorded next
-; shows them. A scripted run supplies its own and steps evenly.
+; shows them. Keys, then the mouse, then a pad over both. A scripted run
+; supplies its own and steps evenly.
 proc machine_sample uses rbx
 	test dword [root+Root.flags],ROOT_SCRIPTED
 	jnz .scripted
@@ -467,8 +474,13 @@ proc machine_sample uses rbx
 		or dword [root+Root.held],bit
 	.off_#key:
 	end iterate
-	; The crosshair follows the mouse, in playfield units.
+	; The crosshair follows the mouse, in playfield units, when the mouse moves;
+	; between times the pad's right stick may carry it.
 	fastcall GetCursorPos,addr cursor
+	mov rax,qword [cursor]
+	cmp rax,[cursor_last]
+	je .pad
+	mov [cursor_last],rax
 	fastcall ScreenToClient,[window],addr cursor
 	iterate <coordinate,origin,extent,span,offset>, cursor.x,viewport.x,viewport.width,PLAYFIELD_WIDTH,0, cursor.y,viewport.y,viewport.height,PLAYFIELD_HEIGHT,4
 		cvtsi2ss xmm0,dword [coordinate]
@@ -477,6 +489,8 @@ proc machine_sample uses rbx
 		mulss xmm0,[playfield_#span]
 		movss [root+Root.aim+offset],xmm0
 	end iterate
+.pad:
+	fastcall pad_sample
 .edges:
 	mov eax,[root+Root.held]
 	not ebx
@@ -785,6 +799,7 @@ scripted_step dd 0.016666668
 playfield_PLAYFIELD_WIDTH dd 1920.0
 playfield_PLAYFIELD_HEIGHT dd 1080.0
 cursor POINT
+cursor_last dq -1
 class_name GLOBWSTR 'VkFasmgMyhits',0
 window_name GLOBWSTR MACHINE_NAME,0
 window_class WNDCLASSEX cbSize: sizeof.WNDCLASSEX,lpfnWndProc: window_proc,lpszClassName: class_name

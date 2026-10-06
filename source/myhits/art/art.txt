@@ -1,0 +1,69 @@
+; Every picture in the game, whatever its source. One a line:
+;
+;	sheet	<alias> <file>				a sheet of ideas; the file's name may hold spaces
+;	cut	<name> <alias> x y width height size	lifted from a sheet into <name>.png beside this file
+;	made	<name> <generator> width height		computed on the device: `made` in pictures.slang
+;	drawn	<name> width height			rasterized on the device from the strokes that follow
+;	  line	x y x y radius color			a capsule
+;	  disc	x y radius color
+;	  ring	x y radius width color
+;
+; then any of: flip (cut only: mirror it left to right), light (cut only: pack
+; a plane of normals with it, so it is lit from one side however it turns),
+; glow (light rather than matter: its halo adds to what is behind it),
+; symmetric (the same mirrored left to right, which the device checks).
+;
+; A cut's rectangle is roughly its cell in the sheet, in the sheet's pixels; it
+; may take in the cell's frame. `size` is the longer side of the result, or 0
+; for the sheet's own. Stroke coordinates are texels from the frame's top left;
+; a color is AABBGGRR.
+;
+; cut-art.ps1 reads the sheets, which live outside the repository, and writes
+; the PNGs, which are committed. The build packs the PNGs and this table.
+
+sheet	atlas	Modular Pixel-Art Creature Sprite Atlas.png
+sheet	ships	Gemini_Generated_Image_m8matcm8matcm8ma.jpg
+
+; The player, facing right. The atlas has no ships: this one is from the
+; second sheet, sized to sit beside the atlas's creatures.
+cut	ship		ships	1400 34 168 158		84
+
+; A chain: head, as many bodies as wanted, tail. They face left, toward the player.
+cut	worm_head	atlas	444 26 96 88		0	light
+cut	worm_body	atlas	540 26 96 88		0	light
+cut	worm_tail	atlas	730 26 100 88		0	light
+cut	larva_head	atlas	444 118 96 90		0	light
+cut	larva_body	atlas	540 118 96 90		0	light
+
+; Heads, for whatever is given one.
+cut	mantis_head	atlas	12 26 84 88		0
+cut	skull_head	atlas	338 26 82 88		0
+cut	beast_head	atlas	12 450 88 96		0
+cut	wolf_head	atlas	102 450 90 96		0
+
+; Joints and cores.
+cut	orb		atlas	1266 26 66 88		0	light
+cut	core		atlas	858 118 96 90		0
+
+; Light.
+cut	bolt		atlas	1224 584 40 40		0	glow
+cut	plasma		atlas	1431 584 68 44		0	glow
+cut	flare		atlas	1428 760 78 74		0	glow
+cut	flash		atlas	1433 843 68 72		0	glow
+cut	burst		atlas	1507 760 88 74		0	glow
+cut	nova		atlas	1509 838 82 82		0	glow
+
+made	spark		spark	48 48			glow symmetric
+made	wave		wave	96 96			glow symmetric
+
+drawn	crosshair	64 64				symmetric
+	ring	32 32 18 3 ffe0f0ff
+	line	32 3 32 12 1.5 ffe0f0ff
+	line	32 52 32 61 1.5 ffe0f0ff
+	line	3 32 12 32 1.5 ffe0f0ff
+	line	52 32 61 32 1.5 ffe0f0ff
+	disc	32 32 2 ff4060ff
+
+drawn	shield		96 96				glow symmetric
+	ring	48 48 40 6 c0ffc080
+	ring	48 48 44 2 ffffe0c0

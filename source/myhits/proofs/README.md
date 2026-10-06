@@ -22,6 +22,7 @@ build.cmd myhits-survey
 | 00 | [survey](00_survey/survey.ps1) | The target GPU, the system libraries and the shader compiler offer what the plan uses | Passes here |
 | 01 | [style](01_style/style.slang) | The shader toolchain accepts the pointer-only style, and lays the boundary blocks out as the assembly does | Passes |
 | 02 | [spine](02_spine/spine.asm) | The whole CPU–GPU boundary works on the device within the plan's traffic budget | Passes, with two findings |
+| 03 | [pictures](03_pictures/gallery.asm) | Every frame, cut, made or drawn, is made and masked on the device and drawn from it with nothing bound; a picture that turns is still lit from one side | Passes, with three findings |
 
 ## 00 survey
 
@@ -140,14 +141,109 @@ only when the device has finished the one before (`machine_await`): events
 are one frame late, always, and the controls are read as late as they can be.
 This is in the plan as a rule of the frame.
 
+## 03 pictures
+
+Every picture the game will draw, from all three sources, in one run of
+texels on the device with a mask beside each: a gallery of the frames over
+their masks, a chain that turns under a light that does not, and the ship
+under the keys and the pad.
+
+```bat
+build\myhits_pictures.exe
+build\myhits_pictures.exe --self-test
+```
+
+**To look at.** Run it without arguments. The top rows are every frame in
+[art.txt](../art/art.txt), each over the mask the device made of it in green:
+the mask should be the picture's silhouette, holes and all. Below them the
+light sprites turn and swell; their halos should brighten what they cross,
+not darken it. Watch the chain: every piece turns as it follows its road,
+and the bright side of every piece stays toward the upper left. Arrows, WASD
+or a pad's left stick or d-pad move the ship; the mouse or the right stick
+carries the crosshair. The title gives the share of lit fragments that lie on
+the lit side of their sprite, and what the share would have been had the
+light turned with the pictures.
+
+**Where the pictures come from.** [art.txt](../art/art.txt) lists every
+frame, whatever its source:
+
+- **cut** from a sheet of ideas by `tools\cut-art.ps1`, which removes the
+  panel behind the sprite, cleans its edge for blending, and writes a PNG
+  beside art.txt. This is authoring: it needs the sheets, which are not in the
+  repository, and its PNGs are committed. Run it with `-Sheet out.png` to see
+  every result over a dark and a light ground.
+- **made** on the device by a generator in
+  [pictures.slang](../pictures.slang): a spark, a shock ring.
+- **drawn** on the device from strokes written in art.txt itself: capsules,
+  discs and rings. The crosshair and the shield are drawn.
+
+The build runs `tools\pack-art.ps1`, which packs the PNGs into
+`build\myhits_art.bin` (with a plane of normals for frames marked `light`)
+and writes the table of every frame for the assembly and for the shaders.
+
+**How it is made.** The program embeds the packer's block. At start it goes
+into host-visible memory, once, and three compute passes make the pictures in
+memory only shaders touch: `develop` writes every texel (copying the cut
+ones, computing the rest), `chart` derives every mask word from the texels'
+alpha, and `census` counts each frame and compares it with what the packer
+said. Then the packer's block is let go. A frame of the proof is one compute
+pass, which sets down all 69 sprites, and one draw, which pulls sprite, frame,
+texels and normals through the root pointer.
+
+**The checks**, on 120 scripted frames:
+
+| # | Claim | How it is held |
+| --- | --- | --- |
+| 1 | Events arrive in order, one frame late | As in the spine |
+| 2 | Every cut frame is on the device exactly as packed | For each, the device's count of solid texels (from its own mask) and its sum over the texels equal the packer's; the total is the packer's total |
+| 3 | The other frames were made there | None is empty, and each drawn frame covers what the packer's own reading of its strokes covers, to within its edge's rounding |
+| 4 | A frame said to be symmetric is | Its mask equals its mirror, bit for bit |
+| 5 | The masks are what is drawn | At half size the gallery's masks cover a quarter of all solid texels in pixels, and its pictures, by their own filtered alpha, cover the same, each within a sixteenth |
+| 6 | Controls read for frame N move the ship in frame N | As in the spine |
+| 7 | One pass set down every sprite the draw pulls | It reports 69 |
+| 8 | The light stays put while the pictures turn | Summed over the run, at least 85% of the chain's brightened fragments lie on the lit side of their sprite, and at most 70% would have with the light turned with the picture |
+| 9 | The traffic is Root down and Events up | Byte counters, as in the spine |
+| 10 | Three passes make the pictures; a frame is one pass and one draw | Command counters |
+| 11 | The pad maps as designed | Six made-up pad states through `pad_apply`: nothing inside the dead zone, 1 at the rim, a half halfway, up is up, the d-pad and buttons |
+
+Last result here, GTX 1080 Ti, default and validation alike: all eleven hold.
+22 frames (18 cut, 2 made, 2 drawn), 133,985 texels and 3,891 mask words;
+427 KB goes up once and the pictures take 539 KB on the device. The device
+counts 52,469 solid texels in the cut frames, as the packer did. The gallery's
+masks cover 13,991 pixels and its pictures 13,931, against a quarter of the
+solid texels at 14,062. Of the chain's brightened fragments 89% lie on the lit
+side; with the light turned with the pictures it would be 49%.
+
+**Check 2 bites.** Flipping one bit of one texel in the embedded block, in a
+copy of the program, fails check 2 at frame 0.
+
+**Finding: `Frame` is not a name the assembly can use.** proc64 has a
+`frame` keyword, matched without regard to case, so a boundary block called
+`Frame` assembles as its prologue. The block is `Picture`; a frame is still
+what it describes.
+
+**Finding: light needs a different cut than matter.** A sprite of matter is
+cut by connectivity: the panel reached from the cell's edge goes, the largest
+piece left is the sprite, and only its rim is part transparent. A bolt or an
+explosion has no rim. Its alpha is how far each pixel stands out from the
+panel, and the threshold has to sit above the haze the sheet paints around
+its light, or the haze comes along as a box. Such frames are marked `glow`,
+and drawn with their alpha squared as coverage, so a halo adds light and only
+a core covers.
+
+**Finding: one blend does both.** Texels are premultiplied in linear light
+and stored sRGB-encoded, which keeps 8 bits where the eye needs them. With
+that, `ONE, ONE_MINUS_SRC_ALPHA` covers where alpha is 1 and adds where it is
+0, so matter and light share a pipeline and a draw, in whatever order the
+sprites lie.
+
 ## Writing the next one
 
 A proof is a directory here, a row in the table above, and a section saying
 what it claims, what to look at and what its checks are. It should fail by
 number, as the spine does, so a report says which claim broke.
 
-Three assembler traps cost time on the spine; each now has a comment where it
-bit:
+These assembler traps have cost time; each now has a comment where it bit:
 
 - A macro parameter is substituted inside dotted names too. A parameter named
   `alignment` turns `boundary.alignment` into `boundary.8`.
@@ -155,3 +251,4 @@ bit:
   if `Root` itself is a defined symbol.
 - A `proc` nothing refers to is not assembled. A test of a procedure in
   isolation passes vacuously unless the procedure is made `public`.
+- `frame` is proc64's, in any case: no symbol may be called `Frame`.
