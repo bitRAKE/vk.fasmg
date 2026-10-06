@@ -35,6 +35,8 @@ Proved on the device (GTX 1080 Ti, with and without validation):
 - The simulation steps 120 times a second whatever the display does; bodies
   run programs of eased moves that end exactly where they say; the level's
   pace is eased by the same curves. Proof 04.
+- What is drawn is what is hit, by its mask, at any angle, size and speed; a
+  hit throws off exactly the particles and sounds it should. Proof 05.
 
 ## Shape
 
@@ -278,18 +280,24 @@ a shield toward the densest incoming fire and a gun toward the best target;
 steered, it takes `aim`. A link between ship and companion is where pair
 effects come in.
 
-**Mask collision.** Circles reject first; survivors test masks. A shot maps
-its center, and a point or two back along its motion, into the target's mask
-space through the inverse of the target's rotation and scale, and tests one
-bit: exact against any shape at any angle, with no pre-rotated masks. Body
-against body samples a coarse lattice of the smaller sprite's solid texels
-the same way. Group ranges are scanned whole at first; a grid can replace the
-scan without touching the interface.
+**Mask collision.** A point is tested against a picture by taking it into the
+picture's own texels, through the inverse of the turn and scale that set the
+picture down, and reading one bit of its mask: exact against any shape at any
+angle, with no pre-rotated masks. Circles reject first. A shot is tested as
+the step it took this tick, seen from its target, which has moved too, and
+the step is walked a texel at a time: nothing is too fast to hit. The nearest
+thing along the step takes it. Body against body sets every sixth solid texel
+of the smaller down on the playfield and looks each up in the larger. Group
+ranges are scanned whole for now; a grid can replace the scan without
+touching the interface. What a hit does goes by atomics: damage into the
+target's slot, which the target takes up in the next pass.
 
-**Particles.** Position, velocity, age, life, style, seed. The style table
-gives color ramp, size curve, drag, gravity and an optional pull toward the
-player. Drawn additively in linear light.
-
+**Particles.** Position, velocity, birth, life, style, seed, in a ring. Any
+pass may ask for some, and each style admits only so many a tick, so one
+explosion cannot crowd out the sparks of the next hit. The style table gives
+the colors and sizes from birth to death and the curve between, life, speed
+and spread, drag, gravity and a pull toward the player. Drawn additively in
+linear light with no texel pulled: a particle is its own falloff.
 **Director, rank and bonuses.** One serial invocation holds everything that
 is awkward in parallel: the state machine, the wave script, the level's pace
 and rank. Rank rises with survival and firepower and falls on a hit; enemy
@@ -329,13 +337,15 @@ buttons. Rumble goes back out from the events.
 | --- | --- | --- |
 | `shared.inc`, `shared.asm` | The boundary blocks; the generated shader header | Built |
 | `machine.inc` | Window, contract, pipelines, the frame, events | Built; proved by the spine |
-| `proofs\` | Each proof, its checks, and what to look at | Five so far |
+| `proofs\` | Each proof, its checks, and what to look at | Six so far |
 | `art\art.txt`, `art\*.png` | Every frame, whatever its source; the cut ones | 22 frames |
 | `tools\art.cs`, `cut-art.ps1`, `pack-art.ps1` | Cutting sprites out of sheets (authoring); packing the art (build) | Built |
 | `pictures.inc`, `pictures.slang` | Making the pictures on the device; pulling, filtering and lighting them | Built; proved by 03 |
 | `input.inc` | The pad into Root; rumble to come | Built, without rumble |
-| `tables.inc`, `tables.asm` | The table macros and the game's data; their numbers for the shaders | Kinds and moves |
+| `tables.inc`, `tables.asm` | The table macros and the game's data; their numbers for the shaders | Kinds, moves, particle styles |
+| `common.slang` | The root, a hash, opening a frame's events, asking for a sound | Built |
 | `ease.slang`, `motion.slang` | The easing curves; a body and one tick of its program | Built; proved by 04 |
+| `hits.slang`, `particles.slang` | Mask collision; the particle ring, its styles and its light | Built; proved by 05 |
 | `audio.inc` | XAudio2 voices and the bank | |
 | `myhits.asm`, `*.slang` | The game | |
 
@@ -363,7 +373,7 @@ they change a rule, into this plan.
 | 02 | spine: the boundary end to end | 0 | Passes; two findings, both adopted |
 | 03 | pictures: cut, made and drawn frames in one run of texels; masks beside them; a turning chain under a light that does not turn; the pad | 1 | Passes; three findings |
 | 04 | motion: every easing curve drawn and held to a second implementation; a fixed tick; the missile's program traced; the level's pace eased to a stop and back | 2 | Passes; three findings |
-| 05 | hits: mask collision counted against a reference computed outside the GPU | 3 | |
+| 05 | hits: every texel hit where it is drawn, counted against the packer's PNGs; swept shots; damage and death; particles by the count; sounds as events; the ship hurt by a touch | 3 | Passes; two findings |
 | 06 | sound: the bank rendered and compared; a trigger's delay measured | 4 | |
 
 ## Milestones
@@ -377,7 +387,10 @@ they change a rule, into this plan.
    and the missile, the level's pace, presses from messages. Left for when
    they are first needed: circling a parent and firing as moves, and the
    sprite pool at its full size with its groups.
-3. **Hits.** Mask collision, particles, events.
+3. **Hits.** Done: mask collision at any angle, size and speed, damage and
+   death, the particle ring with its styles and caps, sound triggers as
+   counts, the ship hurt by a touch. Left for when they are first needed:
+   enemy shots against the ship, pickups, and a grid in place of the scan.
 4. **Sound.** The bank and triggers.
 5. **Opposition.** Kinds, waves, rank, chains, the director.
 6. **Reward.** Bonuses, the animated HUD, damage you feel, the companion's
@@ -394,9 +407,16 @@ they change a rule, into this plan.
 - **How far the level has come** is a float that grows without end. Before a
   session can last hours it wants to wrap, or to be kept as a tick count.
 - **Tables in host-visible memory.** Bodies read their moves there every
-  tick, as the plan first said. It is 688 bytes and proof 04 does not feel
+  tick, as the plan first said. They are about a kilobyte and the proofs do not feel
   it; if a full pool does, a pass copies the tables to the device as the
   pictures are copied.
+- **The sweep takes one sample a texel along its longer side.** A wall one
+  texel thick lying diagonally across a shot's way can fall between two
+  samples. Nothing in the art is that thin; if something becomes so, the walk
+  visits both texels at each crossing.
+- **The collide pass scans every hostile for every shot.** 128 by 96 pairs a
+  tick, nearly all rejected by the circles. At the full pool that is 2048 by
+  1792; the grid is for then.
 - **Pad layout.** Provisional: left stick and d-pad move, right stick carries
   the crosshair, A or the right trigger fires, B or X is the second button.
   What the second button does before the companion exists is open.
@@ -414,12 +434,13 @@ from it that this plan takes, each at the milestone it belongs to:
 - **Control edges gathered from window messages** between frames, so a tap
   shorter than a frame is not lost. Taken in milestone 2.
 - **A swept test for shots against masks**: a fast shot walks the texels it
-  crossed this tick rather than testing only where it landed. Milestone 3.
+  crossed this tick rather than testing only where it landed. Taken in
+  milestone 3, and seen from the target, so its motion counts too.
 - **Trails sampled by distance travelled**, not by frame, so a chain keeps
   its spacing at any speed. Milestone 5; the proof-03 chain steps along its
   road the same way.
 - **Admission caps on particles** by kind, so one explosion cannot starve the
-  rest. Milestone 3.
+  rest. Taken in milestone 3: a cap a tick in each style.
 - **Priority events and loop state beside the sound histogram.** Counts and a
   pan sum lose which sound mattered most; a few slots of `Events.reserved`
   can carry it. Milestone 4.

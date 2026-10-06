@@ -91,6 +91,12 @@ shared EVENT_SLOTS,4			; a power of two
 shared TICK_RATE,120
 shader_line 'static const float TICK_SECONDS = 1.0 / float(TICK_RATE);'
 
+; The sounds a pass may ask for: which Trigger of Events.sound.
+shared SOUND_SHOT,0
+shared SOUND_LAUNCH,1
+shared SOUND_HIT,2
+shared SOUND_BURST,3
+shared SOUND_HURT,4
 ; Root.held and Root.pressed
 shared BUTTON_FIRE,1
 shared BUTTON_SECOND,2
@@ -249,12 +255,40 @@ boundary Kind
 	u32 picture			; FRAME_
 	f32 scale
 	u32 flags
+	f32 health			; hits it takes; none: nothing can hit it
+	u32 worth			; what it scores
 end boundary
+
+; A style of particle: how one looks and goes, from birth to death.
+boundary Style
+	u32 color_from			; R G B A, as a texel; A is how bright
+	u32 color_to
+	f32 size_from			; across, in playfield units
+	f32 size_to
+	u32 size_curve			; EASE_
+	u32 life			; ticks
+	u32 life_spread			; and up to this many more
+	f32 speed			; at birth, units a second
+	f32 speed_spread		; and up to this much more
+	f32 spread			; radians either side of where it is thrown; pi: all round
+	f32 drag			; the share of its speed lost in a second
+	f32 gravity			; units a second, each second, down
+	f32 pull			; the same, toward the player
+	u32 cap				; the most admitted in one tick
+end boundary
+shared STYLE_LIMIT,16
+; What the device keeps of these two is the shaders' business; the assembly
+; only needs their sizes: Body in motion.slang, Particle in particles.slang.
+shared BODY_BYTES,72
+shared PARTICLE_BYTES,32
 
 ; The game's tables, authored in tables.inc. A program's World holds this.
 boundary Tables
 	ptr moves,Move
 	ptr kinds,Kind
+	ptr styles,Style
 	u32 move_count
 	u32 kind_count
+	u32 style_count
+	u32 pad
 end boundary

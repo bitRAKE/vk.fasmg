@@ -24,6 +24,7 @@ build.cmd myhits-survey
 | 02 | [spine](02_spine/spine.asm) | The whole CPU–GPU boundary works on the device within the plan's traffic budget | Passes, with two findings |
 | 03 | [pictures](03_pictures/gallery.asm) | Every frame, cut, made or drawn, is made and masked on the device and drawn from it with nothing bound; a picture that turns is still lit from one side | Passes, with three findings |
 | 04 | [motion](04_motion/range.asm) | The easing curves are the textbook's; the simulation runs at a fixed tick; bodies run the tables' programs and end each move exactly where it says; the level's own pace is eased, to a stop and back | Passes, with three findings |
+| 05 | [hits](05_hits/arena.asm) | What is drawn is what is hit, by its mask, at any angle, size and speed; what is hit takes it and dies of it; a hit throws off exactly the particles and sounds it should; a touch hurts the ship and a near miss does not | Passes, with two findings |
 
 ## 00 survey
 
@@ -306,7 +307,7 @@ no code and no structure.
 
 Last result here, GTX 1080 Ti, default and validation alike: all twelve hold,
 and the device's curves are within 4.9 × 10⁻⁷ of the second implementation
-(the worst is OUT_ELASTIC). 6 kinds in 24 moves, 688 bytes of table.
+(the worst is OUT_ELASTIC). The tables it runs are under a kilobyte.
 
 **The checks bite.** An offset of 41 for the missile's 40 fails check 5 at
 frame 40. A back constant of 1.70258 for 1.70158 puts OUT_BACK 1.5 × 10⁻⁴
@@ -325,6 +326,84 @@ are spelled by a macro of their own.
 **Finding: a pass that reaches no memory is not a fault.** Proof 01 demanded
 that every shader use pointers. The plot of a curve needs none: it computes.
 The demand is now what it should have been: nothing is bound.
+
+## 05 hits
+
+Collision by masks, and what comes of it: shots that strike what they are
+drawn to strike, bodies that take hits and die of them, particles, the sounds
+asked for, and the ship being hurt.
+
+```bat
+build\myhits_hits.exe
+build\myhits_hits.exe --self-test
+```
+
+**To look at.** A ring stands in the middle and nothing can break it. Space
+or the left button fires at it: each shot stops at the ring's edge, not at
+the square its picture fills, and throws sparks back the way it came. Move up
+or down until your shots just clear the ring: they pass through the corner of
+its picture and fly on. Shift or the right button throws a lance, which is
+fast enough to be on one side of the ring's wall at one tick and far past it
+at the next; it strikes the wall all the same. The skull above takes three
+hits, flashing white at each, and bursts on the third. Now and then two
+rammers cross: the first passes just over the ship and does nothing, the
+second comes along its row, and the ship flashes as it is hurt, once. Enter
+asks for 500 particles at once and gets the 128 its style allows in a tick.
+The title counts shots fired, struck and missed, the score, the hurts and the
+particles alive.
+
+**How it is made.** A point is tested against a picture by taking it into
+the picture's own texels, with the inverse of the turn and scale that set the
+picture down, and reading one bit of its mask. No mask is ever turned or
+scaled, so a hit is exact at any angle and size. A shot is not a point but
+the step it took this tick, seen from its target, which has moved too; the
+step is walked a texel at a time. Circles reject first. A body against the
+ship sets every sixth solid texel of the ship down on the playfield and looks
+each up in the body's mask.
+
+A tick is now five passes. After `direct` and `update` come `collide`, one
+invocation a shot, which finds the nearest thing its step struck, writes its
+own death, and reports the rest by atomics: damage to the target's slot,
+sparks into the particle ring, a sound; then `resolve`, one invocation a
+body, which takes its damage, dies of it or not, and says whether it touches
+the ship; then `drift`, one invocation a particle. Particles are a ring of
+16,384. Any pass may ask for some; each style admits only so many a tick.
+They are drawn with no texel at all: a particle is its own falloff, and adds.
+
+**The checks**, on 280 scripted frames:
+
+| # | Claim | How it is held |
+| --- | --- | --- |
+| 1 | Events arrive in order, one frame late | As in the spine |
+| 2 | What is drawn is what is hit | At start, every texel of every frame is set down on the playfield as the draw sets it and brought back as a hit is, through four poses (plain; turned 37° at 1.5; turned 143° at 0.75; on its side at 2). It comes back solid exactly where its mask is, and through each pose the cut frames' solid texels number what the packer counted in the PNGs |
+| 3 | Every shot is accounted for | In every frame, fired = struck + escaped + flying |
+| 4 | A shot strikes where the picture begins | Four shots along the ring's middle row are logged between 1332.4 and 1334.1: the ring's first solid texel there is at 1332.5, and the walk meets it within a texel |
+| 5 | Nothing is too fast | A lance covers 50 units a tick and the ring's wall is 12 thick: it is never inside the wall at a tick, on either side of the ring. It strikes, at the same place |
+| 6 | The corner of a picture is not the picture | Four shots 70 above the ring's middle pass through its picture's square, clear of the ring, and strike nothing |
+| 7 | Three hits kill | The drone is alive after two, dead at the third for its 150, and the fourth shot passes where it was |
+| 8 | A touch hurts, once; a near miss does not | A rammer 110 above the ship is inside its circle and outside its mask: nothing. One along its row hurts it once, though it is inside the ship for a dozen ticks, and the rumble in the events says so for half a second after |
+| 9 | Particles are exactly what was asked for | Six sparks a hit and 48 for the death; 500 asked of a style in one tick, 128 let in; 224 in all, and by the end every one has lived its life and gone |
+| 10 | The sounds are the events | Summed over the run, the triggers are 12 shots, 1 launch, 8 hits, 1 death, 1 hurt: what happened |
+| 11 | The traffic is Root down and Events up; a frame of two ticks is eleven passes and two draws | Counters |
+
+Last result here, GTX 1080 Ti, default and validation alike: all eleven hold.
+52,469 solid texels come back through each of the four poses. 13 fired, 8
+struck, 5 escaped.
+
+**The checks bite.** Testing only where a shot lands, not its step, fails
+check 4 at frame 31 (so that run never reached check 5, which the same change
+should also fail). Taking a hit into the picture mirrored fails check 2 at
+once. Using circles in place of masks for the ship fails check 8 at frame 198,
+when the near miss hurts.
+
+**Finding: `sound` cannot name an iterate's parameter.** The loop that adds
+up the triggers read `Events.sound` with a parameter called `sound`, which
+made it `Events.SOUND_SHOT`. The trap is the old one; it is easier to fall
+into from `iterate` than from a macro.
+
+**Finding: three shaders reach no memory now, and the check names them.** A
+particle's fragment computes its own light. Proof 01 lists the shaders that
+may reach nothing; any other that stops reaching memory fails it.
 
 ## Writing the next one
 

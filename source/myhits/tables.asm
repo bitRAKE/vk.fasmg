@@ -6,3 +6,4 @@ TABLE_HEADER := 1
 include 'tables.inc'
 game_tables
 kinds_table
+game_styles

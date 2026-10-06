@@ -39,13 +39,6 @@ struct Game
 // The header the CPU writes once: RangeWorld in range.asm.
 struct World { Pictures pictures; Tables tables; Body* bodies; Game* game; float2* trace; float* curves; uint capacity; uint pad; };
 
-uint hash(uint x)
-{
-    x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16;
-    return x;
-}
-float unit(uint x) { return float(x >> 8) * (1.0 / 16777216.0); }
-
 // Where a curve's plot is: LINEAR alone on the first row, then a row a family.
 float2 cell_corner(uint curve)
 {
@@ -102,21 +95,6 @@ void examine(uint3 id : SV_DispatchThreadID)
     }
     game.faults[0] = ends; game.faults[1] = mirrors; game.faults[2] = order; game.faults[3] = reach;
     *world.game = game;
-}
-
-void open_events(Events* events)
-{
-    events.frame = root.frame;
-    events.state = 0; events.score = 0; events.wave = 0; events.lives = 0; events.multiplier = 0;
-    events.rank = 0.0; events.shield = 0.0; events.intensity = 0.0;
-    events.rumble_low = 0.0; events.rumble_high = 0.0; events.flags = 0;
-    for (uint kind = 0; kind < SOUND_KINDS; ++kind)
-    {
-        events.sound[kind].count = 0;
-        events.sound[kind].pan = 0;
-    }
-    for (uint slot = 0; slot < 4; ++slot) events.debug[slot] = 0;
-    for (uint spare = 0; spare < 16; ++spare) events.reserved[spare] = 0;
 }
 
 // A new body goes into last tick's copy: this tick's update is its first.

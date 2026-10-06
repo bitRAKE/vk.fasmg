@@ -6,10 +6,8 @@
 // so one blend (ONE, ONE_MINUS_SRC_ALPHA) covers and adds alike.
 //
 // The including file defines World, beginning with `Pictures pictures`.
-#include "myhits_shared.slang"
+#include "common.slang"
 #include "myhits_art.slang"
-
-[[vk::push_constant]] ConstantBuffer<Root> root;
 
 float4 unpack(uint texel) { return float4(texel & 255, (texel >> 8) & 255, (texel >> 16) & 255, texel >> 24) * (1.0 / 255.0); }
 uint pack(float4 color)
@@ -198,6 +196,16 @@ struct SpriteVertex
     nointerpolation uint flags : COLOR1;
 };
 
+// A point of a frame, in texels from its top left, as its sprite sets it down:
+// how far from the sprite's position, and where on the playfield. A picture
+// is drawn by this and hit by its inverse (into_picture in hits.slang).
+float2 laid(Sprite sprite, Picture frame, float2 texel)
+{
+    float2 local = texel - float2(frame.width, frame.height) * 0.5;
+    return local.x * sprite.axis + local.y * float2(-sprite.axis.y, sprite.axis.x);
+}
+float2 set_down(Sprite sprite, Picture frame, float2 texel) { return sprite.position + laid(sprite, frame, texel); }
+
 // One corner of a sprite's quad. The quad is a texel wider than the frame all
 // round, so a filtered edge has somewhere to fade.
 SpriteVertex sprite_corner(Sprite sprite, Picture frame, uint vertex)
@@ -207,8 +215,7 @@ SpriteVertex sprite_corner(Sprite sprite, Picture frame, uint vertex)
     float2 size = float2(frame.width, frame.height);
     SpriteVertex result;
     result.texel = float2(corner & 1, corner >> 1) * (size + 2.0) - 1.0;
-    float2 local = result.texel - size * 0.5;
-    result.offset = local.x * sprite.axis + local.y * float2(-sprite.axis.y, sprite.axis.x);
+    result.offset = laid(sprite, frame, result.texel);
     result.position = float4((sprite.position + result.offset) / float2(PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT) * 2.0 - 1.0, 0.0, 1.0);
     float scale = length(sprite.axis);
     result.turn = scale > 0.0 ? sprite.axis / scale : float2(1.0, 0.0);

@@ -55,7 +55,7 @@ STYLE_SHADERS = $(BUILD)\myhits_style_collide.spv $(BUILD)\myhits_style_vertex.s
 SPINE_SLANG = $(MYHITS)\proofs\02_spine\spine.slang
 SPINE_SHADERS = $(BUILD)\myhits_spine_seed.spv $(BUILD)\myhits_spine_direct.spv $(BUILD)\myhits_spine_advance.spv $(BUILD)\myhits_spine_mote_vertex.spv $(BUILD)\myhits_spine_mote_fragment.spv
 MYHITS_ART = $(BUILD)\myhits_art.inc
-MYHITS_PICTURES = $(MYHITS)\pictures.inc $(MYHITS)\pictures.slang $(MYHITS_ART)
+MYHITS_PICTURES = $(MYHITS)\pictures.inc $(MYHITS)\pictures.slang $(MYHITS)\common.slang $(MYHITS_ART)
 GALLERY_SLANG = $(MYHITS)\proofs\03_pictures\gallery.slang
 GALLERY_SHADERS = $(BUILD)\myhits_pictures_develop.spv $(BUILD)\myhits_pictures_chart.spv $(BUILD)\myhits_pictures_census.spv $(BUILD)\myhits_pictures_direct.spv $(BUILD)\myhits_pictures_sprite_vertex.spv $(BUILD)\myhits_pictures_sprite_fragment.spv
 MYHITS_TABLES = $(BUILD)\myhits_tables.slang
@@ -65,7 +65,13 @@ RANGE_SOURCES = $(RANGE_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(MYHITS_HEAD
 RANGE_SHADERS = $(BUILD)\myhits_motion_develop.spv $(BUILD)\myhits_motion_chart.spv $(BUILD)\myhits_motion_census.spv $(BUILD)\myhits_motion_examine.spv \
 	$(BUILD)\myhits_motion_direct.spv $(BUILD)\myhits_motion_update.spv $(BUILD)\myhits_motion_report.spv $(BUILD)\myhits_motion_scene_vertex.spv \
 	$(BUILD)\myhits_motion_scene_fragment.spv $(BUILD)\myhits_motion_plot_vertex.spv $(BUILD)\myhits_motion_plot_fragment.spv
-MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe $(BUILD)\myhits_motion.exe
+ARENA_SLANG = $(MYHITS)\proofs\05_hits\arena.slang
+ARENA_SOURCES = $(ARENA_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(MYHITS)\hits.slang $(MYHITS)\particles.slang $(MYHITS_HEADER)
+ARENA_SHADERS = $(BUILD)\myhits_hits_develop.spv $(BUILD)\myhits_hits_chart.spv $(BUILD)\myhits_hits_census.spv $(BUILD)\myhits_hits_begin.spv \
+	$(BUILD)\myhits_hits_survey.spv $(BUILD)\myhits_hits_direct.spv $(BUILD)\myhits_hits_update.spv $(BUILD)\myhits_hits_collide.spv \
+	$(BUILD)\myhits_hits_resolve.spv $(BUILD)\myhits_hits_drift.spv $(BUILD)\myhits_hits_report.spv $(BUILD)\myhits_hits_scene_vertex.spv \
+	$(BUILD)\myhits_hits_scene_fragment.spv $(BUILD)\myhits_hits_particle_vertex.spv $(BUILD)\myhits_hits_particle_fragment.spv
+MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe $(BUILD)\myhits_motion.exe $(BUILD)\myhits_hits.exe
 
 VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
@@ -395,6 +401,74 @@ $(BUILD)\myhits_motion.obj: $(MYHITS)\proofs\04_motion\range.asm $(MYHITS_MACHIN
 
 $(BUILD)\myhits_motion.exe: $(BUILD)\myhits_motion.obj $(DEBUG_LOGGER_OBJ)
 	$(LINK_WINDOW) xinput.lib
+
+# Proof 05's passes.
+$(BUILD)\myhits_hits_develop.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry develop -stage compute -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_chart.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry chart -stage compute -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_census.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry census -stage compute -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_begin.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry begin -stage compute -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_survey.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry survey -stage compute -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_direct.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry direct -stage compute -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_update.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry update -stage compute -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_collide.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry collide -stage compute -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_resolve.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry resolve -stage compute -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_drift.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry drift -stage compute -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_report.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry report -stage compute -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_scene_vertex.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry scene_vertex -stage vertex -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_scene_fragment.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry scene_fragment -stage fragment -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_particle_vertex.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry particle_vertex -stage vertex -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits_particle_fragment.spv: $(ARENA_SOURCES)
+	$(MYHITS_SLANG) -entry particle_fragment -stage fragment -o $@ $(ARENA_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_hits.obj: $(MYHITS)\proofs\05_hits\arena.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(ARENA_SHADERS)
+	$(ASSEMBLE) -Source $(MYHITS)\proofs\05_hits\arena.asm -Output $@
+
+$(BUILD)\myhits_hits.exe: $(BUILD)\myhits_hits.obj $(DEBUG_LOGGER_OBJ)
+	$(LINK_WINDOW) xinput.lib
+
 
 
 myhits-proofs: $(MYHITS_PROOFS)

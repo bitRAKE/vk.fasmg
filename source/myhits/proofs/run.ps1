@@ -8,6 +8,8 @@
                 from one side however it turns
      04 motion  the easing curves are the textbook's; bodies run the tables'
                 programs at a fixed tick; the level's pace is eased too
+     05 hits    what is drawn is what is hit, by its mask, at any speed; a
+                hit throws off exactly the particles and sounds it should
 
    -Validation repeats the device runs under Khronos core and synchronization
    validation and rejects any diagnostic.
@@ -63,7 +65,7 @@ foreach ($line in [IO.File]::ReadAllLines((Join-Path $BuildDir 'myhits_shared.sl
 }
 Assert-True ($promised['Root.world'] -eq 0 -and $promised.ContainsKey('Events.sound') -and $promised.ContainsKey('Picture.checksum')) 'The generated header lists no boundary members'
 $modules = @(Get-ChildItem -LiteralPath $BuildDir -Filter 'myhits_*.spv')
-Assert-True ($modules.Count -ge 25) 'The proofs'' shaders were not built'
+Assert-True ($modules.Count -ge 40) 'The proofs'' shaders were not built'
 $checked = 0
 $pulling = 0
 foreach ($module in $modules) {
@@ -75,9 +77,10 @@ foreach ($module in $modules) {
     # pointer. (One that only computes, like a plot of a curve, reaches none.)
     Assert-True ($code -notmatch 'OpTypeImage|OpTypeSampler|DescriptorSet|OpVariable %\S+ (Uniform|StorageBuffer|UniformConstant)\b') "$($module.Name) binds a descriptor"
     if ($code -match 'OpCapability PhysicalStorageBufferAddresses') { $pulling++ }
+    else { Assert-True ($module.Name -match '_plot_|_particle_fragment') "$($module.Name) reaches no memory, and is not one of the shaders known to need none" }
     $names = @{}
     foreach ($match in [regex]::Matches($code, 'OpMemberName (%\S+) (\d+) "(\w+)"')) { $names["$($match.Groups[1].Value) $($match.Groups[2].Value)"] = $match.Groups[3].Value }
-    foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census|Tables|Move|Kind)(?:_\w+)?) (\d+) Offset (\d+)')) {
+    foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census|Tables|Move|Kind|Style)(?:_\w+)?) (\d+) Offset (\d+)')) {
         $member = "$($match.Groups[2].Value).$($names["$($match.Groups[1].Value) $($match.Groups[3].Value)"])"
         Assert-True ($promised.ContainsKey($member)) "$($module.Name) has $member, which shared.inc does not"
         Assert-True ($promised[$member] -eq [int]$match.Groups[4].Value) "$($module.Name) puts $member at $($match.Groups[4].Value), shared.inc at $($promised[$member])"
@@ -86,7 +89,7 @@ foreach ($module in $modules) {
 }
 $atomics = [regex]::Matches((& $spirvDis (Join-Path $BuildDir 'myhits_style_collide.spv') | Out-String), 'OpAtomicIAdd').Count
 Assert-True ($atomics -ge 4) 'The collision sketch lost its atomics'
-Assert-True ($pulling -ge $modules.Count - 2) 'More than the two plot shaders reach no memory'
+
 Write-Host "[myhits] 01 style: $($modules.Count) modules valid, none binds a descriptor, $pulling reach memory through pointers; $checked member offsets match shared.inc; $atomics atomics through pointers in the collision sketch"
 
 $previousLayers = $env:VK_INSTANCE_LAYERS
@@ -151,6 +154,20 @@ try {
         Write-Host ("[myhits] $mode/04 motion: {0} curves by {1} samples within {2} of a second implementation (worst: {3}); {4} ticks a second, 2 a scripted frame; {5} kinds in {6} moves; the missile's three moves end where they say; {7} fired, {8} missed, {9} flying; the level stood still for 40 frames and came {10}; {11} passes and {12} draws a frame" -f `
             $state.curves, $state.samples, $worst[0], $worst[1], $state.tick_rate, ([int]$state.kinds - 1), $state.moves, $state.fired, $state.escaped, $state.flying, $state.scroll,
             ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
+
+        # 05: hits. The packer's count of solid texels is the reference from outside the device.
+        $state = Run-Proof $mode 'hits' @{ 1='events out of order, or late'; 2='a texel is not hit where it is drawn, or the solid texels are not the packer''s'
+            3='a shot is unaccounted for'; 4='a shot did not strike the ring where the ring begins'; 5='a lance passed through a wall'
+            6='a shot struck the empty corner of a picture'; 7='the drone did not die of its third hit, for its worth'
+            8='a near miss hurt the ship, or a touch did not, or hurt it twice, or was not felt'; 9='the particles are not six a hit and 48 a death, or a style let in more than its cap, or some never died'
+            10='the sounds asked for are not the things that happened'; 11='the traffic or the passes of a frame are not what the plan allows' }
+        $frames = [int]$state.frames
+        Assert-True ($frames -eq 280 -and [int]$state.events -eq $frames) 'The hits proof did not run its script'
+        Assert-True ([int]$state.solid -eq $packed) "The hits proof was built against $($state.solid) solid texels; the packer counted $packed"
+        Assert-True ([int]$state.fired -eq [int]$state.struck + [int]$state.escaped + [int]$state.flying) 'A shot is unaccounted for at the end'
+        Write-Host ("[myhits] $mode/05 hits: {0} solid texels hit exactly where drawn, through four poses; {1} fired = {2} struck + {3} missed; a lance at 50 units a tick still struck a wall 12 thick; {4} killed for {5}; hurt {6} time by a touch and not by a near miss; {7} particles asked for, {8} left; sounds for {9} shots, {10} hits, {11} death, {12} hurt; {13} passes and {14} draws a frame" -f `
+            $state.solid, $state.fired, $state.struck, $state.escaped, $state.kills, $state.score, $state.hurts, $state.particles_asked, $state.particles_live,
+            $state.heard_shots, $state.heard_hits, $state.heard_bursts, $state.heard_hurts, ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
     }
 } finally {
     $env:VK_INSTANCE_LAYERS = $previousLayers

@@ -35,7 +35,6 @@ boundary RangeWorld
 	u32 pad
 end boundary
 GAME_BYTES := 96
-BODY_BYTES := 64
 WORLD_BYTES := GAME_BYTES + 2 * CAPACITY * BODY_BYTES + TRACE * 8
 CURVES_BYTES := EASE_CURVES * SAMPLES * 4
 

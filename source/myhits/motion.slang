@@ -24,6 +24,8 @@ struct Body
     uint seed;          // odd: its moves are mirrored
     uint flags;
     uint born;          // the tick it was made in
+    float health;       // hits it can still take
+    uint struck;        // the tick it was last hit in, for the flash
 };
 
 // What a moving body may look at.
@@ -57,6 +59,8 @@ Body new_body(Tables tables, uint kind, float2 at, float angle, uint seed, uint 
     body.seed = seed;
     body.flags = made.flags;
     body.born = tick;
+    body.health = made.health;
+    body.struck = 0;
     return body;
 }
 
