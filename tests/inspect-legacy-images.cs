@@ -42,5 +42,28 @@ namespace VkFasmgTests {
                     Pixels[i+2] != other.Pixels[i+2]) ++count;
             return count;
         }
+
+        public void CheckLayout(FractalImage render, int canvasTop, int footerTop, int footerBottom) {
+            if (render.Width != Width || canvasTop < 0 ||
+                canvasTop + render.Height != footerTop - 12 ||
+                footerTop < 0 || footerBottom != Height - 12 || footerTop >= footerBottom)
+                throw new InvalidDataException("Render does not fill client width or footer is not anchored");
+            for (int y = 0; y < render.Height; ++y)
+                for (int x = 0; x < Width; ++x) {
+                    int a = ((y + canvasTop) * Width + x) * 4;
+                    int b = (y * Width + x) * 4;
+                    if (Pixels[a] != render.Pixels[b] || Pixels[a+1] != render.Pixels[b+1] ||
+                        Pixels[a+2] != render.Pixels[b+2])
+                        throw new InvalidDataException("Canvas was cropped, stretched, or painted with sidebars");
+                }
+            int textPixels = 0;
+            for (int y = footerTop; y < footerBottom; ++y)
+                for (int x = 16; x < Width - 16; ++x) {
+                    int i = (y * Width + x) * 4;
+                    // Dark background is RGB(10, 15, 26); footer text is brighter.
+                    if (Pixels[i] > 40 || Pixels[i+1] > 40 || Pixels[i+2] > 40) ++textPixels;
+                }
+            if (textPixels < 50) throw new InvalidDataException("Footer text is missing or clipped");
+        }
     }
 }

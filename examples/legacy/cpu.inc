@@ -1,28 +1,30 @@
-; SSE2 double precision is an application alternate, not emulated shaderFloat64.
+; SSE2 double precision is the alternate when GPU shaderFloat64 is unavailable.
 ; All controls/export use the same camera and palette, whichever renderer wins.
 section '.text$cpu' code readable executable align 16
 proc render_cpu uses rbx rsi rdi
 	movsd xmm0,[view_scale]
 	divsd xmm0,[frame_height_double]
 	movsd [cpu_step],xmm0
-	movsd xmm1,[half_width]
+	movsd xmm1,[frame_half_width]
+	subsd xmm1,[half_double]
 	mulsd xmm1,xmm0
 	movsd xmm2,[center_x]
 	subsd xmm2,xmm1
 	movsd [cpu_first_x],xmm2
-	movsd xmm1,[half_height]
+	movsd xmm1,[frame_half_height]
+	subsd xmm1,[half_double]
 	mulsd xmm1,xmm0
 	movsd xmm2,[center_y]
 	subsd xmm2,xmm1
 	movsd [cpu_y],xmm2
-	lea rdi,[pixels]
-	mov r8d,FRAME_HEIGHT
+	mov rdi,[pixels]
+	mov r8d,[frame_height]
 	mov ebx,[palette]
 	imul ebx,41
 .row:
 	movsd xmm0,[cpu_first_x]
 	movsd [cpu_x],xmm0
-	mov r9d,FRAME_WIDTH
+	mov r9d,[frame_width]
 .pixel:
 	xorpd xmm0,xmm0
 	xorpd xmm1,xmm1
@@ -89,14 +91,20 @@ proc render_frame uses rbx
 	je .cpu
 	cmp [software_override],0
 	jne .cpu
-	; Host double precision retains the camera when float coordinates collapse.
+	mov [gpu_precision],1
+	; Prefer native shaderFloat64 for deep zoom; retain the host alternate.
 	movsd xmm0,[view_scale]
 	ucomisd xmm0,[float_scale_floor]
-	jb .cpu
+	jae .gpu
+	test [active_caps],CAP_FLOAT64
+	jz .cpu
+	mov [gpu_precision],2
+.gpu:
 	fastcall render_gpu
 	test eax,eax
 	jz .lost
-	mov [last_backend],1
+	mov eax,[gpu_precision]
+	mov [last_backend],eax
 	jmp .done
 .lost:
 	mov [gpu_ready],0
@@ -127,9 +135,7 @@ cpu_first_x dq 0.0
 cpu_step dq 0.0
 
 section '.rdata$camera' data readable align 8
-frame_height_double dq FRAME_HEIGHT * 1.0
-half_width dq FRAME_WIDTH * 0.5 - 0.5
-half_height dq FRAME_HEIGHT * 0.5 - 0.5
+half_double dq 0.5
 escape_radius dq 4.0
 float_scale_floor dq 0.0001
 minimum_scale dq 0.0000000000001
@@ -141,6 +147,3 @@ default_scale dq 3.0
 deep_x dq -0.743643887037151
 deep_y dq 0.13182590420533
 deep_scale dq 0.00001
-
-section '.bss$pixels' readable writeable align 64
-pixels rb FRAME_BYTES

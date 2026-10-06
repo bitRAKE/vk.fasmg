@@ -52,6 +52,11 @@ The explorer's descriptors negotiate these five independent operations:
 | Inline shader code | 1.4 | `VK_KHR_maintenance5`, effective API at least 1.3 | Create/destroy shader modules |
 | Timeline completion | 1.2 | `VK_KHR_timeline_semaphore`, effective API at least 1.1 | Resettable completion fence |
 
+The sixth capability is the optional core 1.0 `shaderFloat64` feature. Query
+and enable it before creating the double-precision shader pipeline. Normal
+views retain float32 rendering; deep zoom chooses GPU float64 when available.
+[Core feature definition](https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceFeatures.html).
+
 These extension floors deliberately keep dependency handling small. Dynamic
 rendering below 1.2 needs additional dependencies; maintenance5 below 1.3 needs
 an extension route for dynamic rendering. The examples choose their older
@@ -61,7 +66,8 @@ implementation instead of claiming to implement that dependency closure.
 
 Build the query chain from eligible descriptors, inspect the returned feature
 bits, and rebuild the device-create chain with only selected supported bits.
-Clear unrelated core features populated by the query. Querying is not enabling:
+Clear unrelated core features populated by the query, keeping only selected
+`shaderFloat64` support. Querying is not enabling:
 `VkPhysicalDeviceFeatures2` controls enabled features only when used in device
 creation. Do not put both an aggregate Vulkan-version feature structure and an
 individual structure describing the same features into the create chain.
@@ -110,17 +116,19 @@ alone is not a general replacement for that API.
 
 **Application alternates** preserve user-visible functionality when native API
 semantics cannot be supplied. GPU float precision eventually stops resolving
-nearby coordinates. The explorer changes to SSE2 double precision while keeping
-its camera, palette, and exporter. Missing Vulkan runtime, unusable GPU setup,
-or a failed render also selects CPU rendering. This does not report an emulated
-`shaderFloat64` feature.
+nearby coordinates. The explorer first uses native `shaderFloat64` if enabled;
+otherwise SSE2 double precision keeps its camera, palette, and exporter working.
+Missing Vulkan runtime, unusable GPU setup, or a failed render also selects CPU
+rendering. The CPU alternate does not report an emulated `shaderFloat64` feature.
 
 Resource limits are a decomposition problem when the algorithm permits it.
-The compatibility example renders a 512 by 384 result through a reusable image
-of at most 128 by 128, then assembles the tiles into the full output. Actual
+The compatibility example renders the window-sized result through a reusable
+image of at most 128 by 128, then assembles the tiles into the full output. Actual
 image-format and physical-device limits further bound allocation. Shader
 coordinates retain the full-image origin, so tiling does not lower export
-resolution or remove controls. The forced ceiling is a test policy, not a
+resolution or remove controls. The host image follows the render area's width
+and height, so presentation fills that area without stretching or bars. The
+forced ceiling is a test policy, not a
 claim that the driver reports a smaller hardware limit.
 
 ## Build contracts and regression checks
@@ -141,7 +149,8 @@ startup failure or an application alternate when it cannot be met.
 Keep downgrade controls from the start. The explorer masks individual
 capabilities, forces advertised KHR routes, and can request an API 1.2 ceiling.
 Its tests drive real GUI command handlers, compare complete exports across GPU
-paths, check CPU precision and reset/recovery, and test an unavailable driver.
+paths, check native FP64 and masked-FP64 CPU recovery, verify resize/footer
+layout and reset, and test an unavailable driver.
 Khronos core and synchronization validation check every route. The tests report
 when no GPU is available rather than claiming GPU coverage from CPU output.
 

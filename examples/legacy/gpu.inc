@@ -121,6 +121,22 @@ proc create_gpu_resources uses rbx
 	mov [pipeline_info.pNext],rax
 .create_pipeline:
 	require_vk vkCreateGraphicsPipelines [device],0,1,addr pipeline_info,0,addr pipeline
+	test [active_caps],CAP_FLOAT64
+	jz .modules_done
+	test [active_caps],CAP_INLINE
+	jz .double_module
+	lea rax,[fragment64_module_info]
+	mov [fragment_stage.pNext],rax
+	jmp .double_pipeline
+.double_module:
+	vkDestroyShaderModule [device],[fragment_module],0
+	mov [fragment_module],0
+	require_vk vkCreateShaderModule [device],addr fragment64_module_info,0,addr fragment_module
+	mov rax,[fragment_module]
+	mov [fragment_stage.module],rax
+.double_pipeline:
+	require_vk vkCreateGraphicsPipelines [device],0,1,addr pipeline_info,0,addr pipeline64
+.modules_done:
 	; Inline code and explicit modules have identical pipeline semantics.
 	cmp [vertex_module],0
 	je .completion
@@ -195,6 +211,12 @@ proc image_barrier phase
 endp
 
 proc render_gpu uses rbx rsi rdi
+	lea rax,[push_data+16]
+	mov [push_origin],rax
+	mov rax,[pipeline]
+	mov [draw_pipeline],rax
+	cmp [gpu_precision],2
+	je .double
 	cvtsd2ss xmm0,[center_x]
 	movss [push_data],xmm0
 	cvtsd2ss xmm0,[center_y]
@@ -203,11 +225,34 @@ proc render_gpu uses rbx rsi rdi
 	movss [push_data+8],xmm0
 	mov eax,[palette]
 	mov [push_data+12],eax
+	cvtsi2ss xmm0,dword [frame_width]
+	movss [push_data+24],xmm0
+	cvtsi2ss xmm0,dword [frame_height]
+	movss [push_data+28],xmm0
+	jmp .start
+.double:
+	lea rax,[push_data+32]
+	mov [push_origin],rax
+	mov rax,[pipeline64]
+	mov [draw_pipeline],rax
+	mov rax,[center_x]
+	mov [push_data],rax
+	mov rax,[center_y]
+	mov [push_data+8],rax
+	mov rax,[view_scale]
+	mov [push_data+16],rax
+	mov eax,[palette]
+	mov [push_data+24],eax
+	cvtsi2ss xmm0,dword [frame_width]
+	movss [push_data+40],xmm0
+	cvtsi2ss xmm0,dword [frame_height]
+	movss [push_data+44],xmm0
+.start:
 	mov [tile_x],0
 	mov [tile_y],0
 	mov [tile_count],0
 .tile:
-	mov eax,FRAME_WIDTH
+	mov eax,[frame_width]
 	sub eax,[tile_x]
 	cmp eax,[tile_size]
 	jbe .width
@@ -221,7 +266,7 @@ proc render_gpu uses rbx rsi rdi
 	mov [copy2_region.imageExtent.width],eax
 	cvtsi2ss xmm0,eax
 	movss [viewport.width],xmm0
-	mov eax,FRAME_HEIGHT
+	mov eax,[frame_height]
 	sub eax,[tile_y]
 	cmp eax,[tile_size]
 	jbe .height
@@ -236,9 +281,10 @@ proc render_gpu uses rbx rsi rdi
 	cvtsi2ss xmm0,eax
 	movss [viewport.height],xmm0
 	cvtsi2ss xmm0,dword [tile_x]
-	movss [push_data+16],xmm0
+	mov rdx,[push_origin]
+	movss [rdx],xmm0
 	cvtsi2ss xmm0,dword [tile_y]
-	movss [push_data+20],xmm0
+	movss [rdx+4],xmm0
 	require_vk vkResetCommandBuffer [command_buffer],0
 	require_vk vkBeginCommandBuffer [command_buffer],addr command_begin
 	fastcall image_barrier,0
@@ -249,10 +295,10 @@ proc render_gpu uses rbx rsi rdi
 .renderpass:
 	vkCmdBeginRenderPass [command_buffer],addr renderpass_begin,VK_SUBPASS_CONTENTS_INLINE
 .draw:
-	vkCmdBindPipeline [command_buffer],VK_PIPELINE_BIND_POINT_GRAPHICS,[pipeline]
+	vkCmdBindPipeline [command_buffer],VK_PIPELINE_BIND_POINT_GRAPHICS,[draw_pipeline]
 	vkCmdSetViewport [command_buffer],0,1,addr viewport
 	vkCmdSetScissor [command_buffer],0,1,addr scissor
-	vkCmdPushConstants [command_buffer],[pipeline_layout],VK_SHADER_STAGE_FRAGMENT_BIT,0,32,addr push_data
+	vkCmdPushConstants [command_buffer],[pipeline_layout],VK_SHADER_STAGE_FRAGMENT_BIT,0,48,addr push_data
 	vkCmdDraw [command_buffer],3,1,0,0
 	test [active_caps],CAP_RENDER
 	jz .end_renderpass
@@ -305,16 +351,16 @@ proc render_gpu uses rbx rsi rdi
 	require_vk vkInvalidateMappedMemoryRanges [device],1,addr invalidate_info
 .rows:
 	mov eax,[tile_y]
-	imul eax,FRAME_WIDTH
+	imul eax,[frame_width]
 	add eax,[tile_x]
-	lea rdi,[pixels]
+	mov rdi,[pixels]
 	lea rdi,[rdi+rax*4]
 	mov rsi,[mapped_pixels]
 	mov ebx,[tile_height]
 .row:
 	mov ecx,[tile_width]
 	rep movsd
-	mov eax,FRAME_WIDTH
+	mov eax,[frame_width]
 	sub eax,[tile_width]
 	lea rdi,[rdi+rax*4]
 	dec ebx
@@ -322,11 +368,13 @@ proc render_gpu uses rbx rsi rdi
 	inc [tile_count]
 	mov eax,[tile_size]
 	add [tile_x],eax
-	cmp [tile_x],FRAME_WIDTH
+	mov ecx,[frame_width]
+	cmp [tile_x],ecx
 	jb .tile
 	mov [tile_x],0
 	add [tile_y],eax
-	cmp [tile_y],FRAME_HEIGHT
+	mov ecx,[frame_height]
+	cmp [tile_y],ecx
 	jb .tile
 	mov eax,1
 	ret
@@ -346,7 +394,7 @@ proc destroy_gpu
 	mov [mapped_pixels],0
 .objects:
 	iterate <handle,function>, \
-		pipeline,vkDestroyPipeline,pipeline_layout,vkDestroyPipelineLayout, \
+		pipeline,vkDestroyPipeline,pipeline64,vkDestroyPipeline,pipeline_layout,vkDestroyPipelineLayout, \
 		vertex_module,vkDestroyShaderModule,fragment_module,vkDestroyShaderModule, \
 		framebuffer,vkDestroyFramebuffer,render_pass,vkDestroyRenderPass, \
 		image_view,vkDestroyImageView,render_image,vkDestroyImage,staging_buffer,vkDestroyBuffer, \
@@ -392,6 +440,10 @@ render_pass dq 0
 framebuffer dq 0
 pipeline_layout dq 0
 pipeline dq 0
+pipeline64 dq 0
+draw_pipeline dq 0
+push_origin dq 0
+gpu_precision dd 1
 vertex_module dq 0
 fragment_module dq 0
 timeline_semaphore dq 0
@@ -406,7 +458,9 @@ tile_height dd 0
 tile_count dd 0
 legacy_src_stage dd 0
 legacy_dst_stage dd 0
-push_data dd 0.0,0.0,0.0,0,0.0,0.0,FRAME_WIDTH*1.0,FRAME_HEIGHT*1.0
+align 8
+push_data:
+	rb 48
 pool_info VkCommandPoolCreateInfo sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,flags: VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
 command_allocate VkCommandBufferAllocateInfo sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,level: VK_COMMAND_BUFFER_LEVEL_PRIMARY,commandBufferCount: 1
 command_begin VkCommandBufferBeginInfo sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,flags: VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
@@ -424,10 +478,11 @@ attachment_ref VkAttachmentReference attachment: 0,layout: VK_IMAGE_LAYOUT_COLOR
 subpass VkSubpassDescription pipelineBindPoint: VK_PIPELINE_BIND_POINT_GRAPHICS,colorAttachmentCount: 1,pColorAttachments: attachment_ref
 renderpass_info VkRenderPassCreateInfo sType: VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,attachmentCount: 1,pAttachments: attachment,subpassCount: 1,pSubpasses: subpass
 framebuffer_info VkFramebufferCreateInfo sType: VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,attachmentCount: 1,pAttachments: image_view,layers: 1
-push_range VkPushConstantRange stageFlags: VK_SHADER_STAGE_FRAGMENT_BIT,size: 32
+push_range VkPushConstantRange stageFlags: VK_SHADER_STAGE_FRAGMENT_BIT,size: 48
 layout_info VkPipelineLayoutCreateInfo sType: VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,pushConstantRangeCount: 1,pPushConstantRanges: push_range
 vertex_module_info VkShaderModuleCreateInfo sType: VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,codeSize: vertex_code.size,pCode: vertex_code
 fragment_module_info VkShaderModuleCreateInfo sType: VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,codeSize: fragment_code.size,pCode: fragment_code
+fragment64_module_info VkShaderModuleCreateInfo sType: VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,codeSize: fragment64_code.size,pCode: fragment64_code
 entry_name GLOBSTR 'main',0
 shader_stages:
 vertex_stage VkPipelineShaderStageCreateInfo sType: VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,stage: VK_SHADER_STAGE_VERTEX_BIT,pName: entry_name
@@ -478,3 +533,6 @@ vertex_code.size = $ - vertex_code
 align 4
 fragment_code file 'build\legacy_fractal.spv'
 fragment_code.size = $ - fragment_code
+align 4
+fragment64_code file 'build\legacy_fractal64.spv'
+fragment64_code.size = $ - fragment64_code

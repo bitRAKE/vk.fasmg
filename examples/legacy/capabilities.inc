@@ -6,6 +6,7 @@ CAP_SYNC := 2
 CAP_COPY := 4
 CAP_INLINE := 8
 CAP_TIMELINE := 16
+CAP_FLOAT64 := 32
 
 extrn LoadLibraryW:qword
 extrn FreeLibrary:qword
@@ -122,7 +123,7 @@ proc probe_gpu uses rbx rsi rdi
 	lea rax,[adapters]
 	mov rax,[rax+rbx*8]
 	mov [physical_device],rax
-	if CAP_MASK
+	if CAP_MASK and 31
 		vkGetPhysicalDeviceProperties2 [physical_device],addr properties2
 	else
 		vkGetPhysicalDeviceProperties [physical_device],addr properties2.properties
@@ -156,7 +157,7 @@ proc probe_gpu uses rbx rsi rdi
 .selected:
 	mov [queue_info.queueFamilyIndex],edi
 	mov [pool_info.queueFamilyIndex],edi
-	if CAP_MASK
+	if CAP_MASK and 31
 		vkGetPhysicalDeviceMemoryProperties2 [physical_device],addr memory_properties2
 	else
 		vkGetPhysicalDeviceMemoryProperties [physical_device],addr memory_properties2.memoryProperties
@@ -229,14 +230,25 @@ proc probe_gpu uses rbx rsi rdi
 	add rsi,sizeof.Route
 	jmp .route
 .query:
-	if CAP_MASK
+	if CAP_MASK and 31
 		vkGetPhysicalDeviceFeatures2 [physical_device],addr features2
+	else
+		vkGetPhysicalDeviceFeatures [physical_device],addr features2.features
 	end if
-	; The query filled every core 1.0 bit; none is required by this renderer.
+	mov eax,[features2.features.shaderFloat64]
+	mov [float64_supported],eax
+	; Clear queried bits, then enable only the selected core 1.0 feature.
 	lea rdi,[features2.features]
 	mov ecx,sizeof.VkPhysicalDeviceFeatures / 4
 	xor eax,eax
 	rep stosd
+	test [requested_caps],CAP_FLOAT64
+	jz .no_float64
+	cmp [float64_supported],VK_TRUE
+	jne .no_float64
+	or [active_caps],CAP_FLOAT64
+	mov [features2.features.shaderFloat64],VK_TRUE
+.no_float64:
 	mov [features2.pNext],0
 	xor ebx,ebx
 	lea rsi,[routes]
@@ -271,9 +283,12 @@ proc probe_gpu uses rbx rsi rdi
 .device:
 	mov eax,[active_caps]
 	and [extension_routes],eax
-	if CAP_MASK
+	if CAP_MASK and 31
 		lea rax,[features2]
 		mov [device_info.pNext],rax
+	else
+		lea rax,[features2.features]
+		mov [device_info.pEnabledFeatures],rax
 	end if
 	vkCreateDevice [physical_device],addr device_info,0,addr device
 	test eax,eax
@@ -328,6 +343,7 @@ messenger dq 0
 loader_api dd VK_API_VERSION_1_0
 device_api dd 0
 active_caps dd 0
+float64_supported dd 0
 requested_caps dd CAP_MASK
 force_khr dd 0
 api_ceiling dd VK_API_VERSION_1_4

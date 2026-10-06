@@ -72,8 +72,9 @@ example against an absent DLL to verify its ordinary initialization failure.
 It also verifies the [debug-utils examples](examples/debug/README.md), including
 actual Windows debugger events and runs under the Khronos validation layer.
 The [legacy examples](examples/legacy/README.md) compare full images across
-modern, compatibility, KHR, and API 1.2 routes; exercise GUI controls and CPU
-precision recovery; and run with an unavailable driver and synchronization validation.
+modern, compatibility, KHR, and API 1.2 routes; exercise GUI resizing, footer
+layout, and GPU float64/CPU precision recovery; and run with an unavailable
+driver and synchronization validation.
 
 ## Repository layout
 

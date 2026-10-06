@@ -26,9 +26,9 @@ public mainCRTStartup
 
 iterate function,GetModuleHandleW,GetCommandLineW,GetTickCount64,GetLastError,OutputDebugStringW,ExitProcess,CreateFileW,WriteFile,CloseHandle, \
 	RegisterClassExW,CreateWindowExW,DefWindowProcW,DestroyWindow,ShowWindow,UpdateWindow,GetMessageW,TranslateMessage,DispatchMessageW, \
-	PostQuitMessage,BeginPaint,EndPaint,GetClientRect,InvalidateRect,LoadCursorW,SendMessageW,MessageBoxW,SetFocus, \
+	PostQuitMessage,BeginPaint,EndPaint,GetClientRect,InvalidateRect,LoadCursorW,SendMessageW,MessageBoxW,SetFocus,MoveWindow,SetWindowPos,GetDC,ReleaseDC, \
 	CreateSolidBrush,DeleteObject,SelectObject,SetTextColor,SetBkMode,DrawTextW,FillRect,StretchDIBits, \
-	CreateFontW,CreateCompatibleDC,DeleteDC,CreateDIBSection,SetViewportOrgEx,GetSaveFileNameW,StrStrIW,wsprintfW
+	CreateFontW,CreateCompatibleDC,DeleteDC,CreateDIBSection,SetViewportOrgEx,GetSaveFileNameW,StrStrIW,wsprintfW,VirtualAlloc,VirtualFree
 	extrn function:qword
 end iterate
 
@@ -90,7 +90,7 @@ proc export_dialog
 	fastcall GetSaveFileNameW,addr save_dialog
 	test eax,eax
 	jz .done
-	fastcall save_bitmap,addr save_path,addr pixels,FRAME_WIDTH,FRAME_HEIGHT
+	fastcall save_bitmap,addr save_path,[pixels],[frame_width],[frame_height]
 	test eax,eax
 	jnz .done
 	fastcall MessageBoxW,[window],<W,'Could not write the bitmap.'>,<W,'Vulkan Atlas'>,MB_ICONERROR
@@ -192,8 +192,11 @@ proc update_status uses rbx rsi rdi
 	cmp [last_backend],0
 	je .status
 	lea rbx,[gpu_status]
+	cmp [last_backend],2
+	jne .status
+	lea rbx,[gpu64_status]
 .status:
-	fastcall wsprintfW,addr status_text,<W,'%s   |   %u ms   |   palette %u   |   tile %u px'>,rbx,[render_ms],[palette],[tile_size]
+	fastcall wsprintfW,addr status_text,<W,'%s   |   %u × %u   |   %u ms   |   palette %u'>,rbx,[frame_width],[frame_height],[render_ms],[palette]
 	lea rbx,[renderpass_text]
 	lea rsi,[sync1_text]
 	lea rdi,[copy1_text]
@@ -229,68 +232,161 @@ proc update_status uses rbx rsi rdi
 	ret
 endp
 
+; Derive every rectangle from the client, wrap toolbar controls, and replace
+; only the host image on resize. The reusable GPU tile resources stay bounded.
+proc update_layout uses rbx rsi rdi r12 r13
+	fastcall GetClientRect,[window],addr client_rect
+	cmp [client_rect.right],0
+	jle .unchanged
+	cmp [client_rect.bottom],0
+	jle .unchanged
+	mov eax,[client_rect.right]
+	sub eax,16
+	mov [title_rect.right],eax
+	mov [subtitle_rect.right],eax
+	mov [status_rect.right],eax
+	mov [route_rect.right],eax
+	mov [footer_rect.right],eax
+	mov [footer_rect.top],0
+	mov [footer_rect.bottom],0
+	fastcall GetDC,[window]
+	test rax,rax
+	jz .failed
+	mov rbx,rax
+	fastcall SelectObject,rbx,[body_font]
+	mov rdi,rax
+	fastcall DrawTextW,rbx,addr footer_text,-1,addr footer_rect,DT_WORDBREAK or DT_CALCRECT
+	mov esi,eax
+	fastcall SelectObject,rbx,rdi
+	fastcall ReleaseDC,[window],rbx
+	mov eax,[client_rect.right]
+	sub eax,16
+	mov [footer_rect.right],eax
+	mov eax,[client_rect.bottom]
+	sub eax,12
+	mov [footer_rect.bottom],eax
+	sub eax,esi
+	mov [footer_rect.top],eax
+	lea rsi,[buttons]
+	xor ebx,ebx
+	mov r12d,16
+	mov r13d,88
+.button:
+	mov eax,[rsi+Button.width]
+	add eax,r12d
+	cmp eax,[footer_rect.right]
+	jbe .place
+	cmp r12d,16
+	je .place
+	mov r12d,16
+	add r13d,42
+.place:
+	mov [rsi+Button.x],r12d
+	mov [rsi+Button.y],r13d
+	lea rcx,[button_handles]
+	mov rcx,[rcx+rbx*8]
+	fastcall MoveWindow,rcx,r12,r13,[rsi+Button.width],34,1
+	add r12d,[rsi+Button.width]
+	add r12d,8
+	add rsi,sizeof.Button
+	inc ebx
+	cmp ebx,7
+	jb .button
+	lea eax,[r13d+38]
+	mov [status_rect.top],eax
+	add eax,20
+	mov [status_rect.bottom],eax
+	inc eax
+	mov [route_rect.top],eax
+	add eax,20
+	mov [route_rect.bottom],eax
+	inc eax
+	mov [canvas_top],eax
+	mov ecx,[footer_rect.top]
+	sub ecx,12
+	sub ecx,eax
+	cmp ecx,1
+	jge .height
+	mov ecx,1
+.height:
+	mov [canvas_height],ecx
+	mov eax,[client_rect.right]
+	mov [canvas_width],eax
+	mov [canvas_left],0
+	cmp [pixels],0
+	je .allocate
+	cmp eax,[frame_width]
+	jne .allocate
+	cmp ecx,[frame_height]
+	je .unchanged
+.allocate:
+	imul rax,rcx
+	lea rdx,[rax*4]
+	fastcall VirtualAlloc,0,rdx,MEM_RESERVE or MEM_COMMIT,PAGE_READWRITE
+	test rax,rax
+	jz .failed
+	mov rsi,rax
+	cmp [pixels],0
+	je .dimensions
+	fastcall VirtualFree,[pixels],0,MEM_RELEASE
+.dimensions:
+	mov [pixels],rsi
+	mov eax,[canvas_width]
+	mov [frame_width],eax
+	mov [dib_info.biWidth],eax
+	cvtsi2sd xmm0,eax
+	movsd [frame_width_double],xmm0
+	mulsd xmm0,[half_double]
+	movsd [frame_half_width],xmm0
+	mov eax,[canvas_height]
+	mov [frame_height],eax
+	neg eax
+	mov [dib_info.biHeight],eax
+	neg eax
+	cvtsi2sd xmm0,eax
+	movsd [frame_height_double],xmm0
+	mulsd xmm0,[half_double]
+	movsd [frame_half_height],xmm0
+	mov eax,1
+	ret
+.failed:
+	mov [app_io_failed],1
+.unchanged:
+	xor eax,eax
+	ret
+endp
+
 proc paint_canvas uses rbx rsi rdi,dc
 	mov rbx,rcx
-	fastcall GetClientRect,[window],addr client_rect
 	fastcall FillRect,rbx,addr client_rect,[background_brush]
 	fastcall SetBkMode,rbx,TRANSPARENT
 	fastcall SetTextColor,rbx,0F4F0E8h
 	fastcall SelectObject,rbx,[title_font]
-	fastcall DrawTextW,rbx,<W,'VULKAN ATLAS'>,-1,addr title_rect,DT_SINGLELINE
+	fastcall DrawTextW,rbx,<W,'VULKAN ATLAS'>,-1,addr title_rect,DT_SINGLELINE or DT_END_ELLIPSIS
 	fastcall SelectObject,rbx,[body_font]
 	fastcall SetTextColor,rbx,0BEB3A1h
-	fastcall DrawTextW,rbx,addr subtitle_text,-1,addr subtitle_rect,DT_SINGLELINE
+	fastcall DrawTextW,rbx,addr subtitle_text,-1,addr subtitle_rect,DT_SINGLELINE or DT_END_ELLIPSIS
 	fastcall update_status
-	fastcall DrawTextW,rbx,addr status_text,-1,addr status_rect,DT_SINGLELINE
+	fastcall DrawTextW,rbx,addr status_text,-1,addr status_rect,DT_SINGLELINE or DT_END_ELLIPSIS
 	fastcall SetTextColor,rbx,089A388h
-	fastcall DrawTextW,rbx,addr route_text,-1,addr route_rect,DT_SINGLELINE
-	; Fit the 4:3 image to the client instead of distorting it during resize.
-	mov eax,[client_rect.right]
-	sub eax,32
-	mov ecx,[client_rect.bottom]
-	sub ecx,CANVAS_TOP+50
-	jle .done
-	imul ecx,4
-	xor edx,edx
-	mov esi,3
-	xchg eax,ecx
-	div esi
-	cmp ecx,eax
-	jbe .fit
-	mov ecx,eax
-.fit:
-	mov [canvas_width],ecx
-	mov eax,ecx
-	imul eax,3
-	shr eax,2
-	mov [canvas_height],eax
-	mov eax,[client_rect.right]
-	sub eax,ecx
-	shr eax,1
-	mov [canvas_left],eax
-	fastcall StretchDIBits,rbx,[canvas_left],CANVAS_TOP,[canvas_width],[canvas_height], \
-		0,0,FRAME_WIDTH,FRAME_HEIGHT,addr pixels,addr dib_info,DIB_RGB_COLORS,SRCCOPY
-	mov eax,[client_rect.bottom]
-	sub eax,38
-	mov [footer_rect.top],eax
-	mov eax,[client_rect.right]
-	sub eax,16
-	mov [footer_rect.right],eax
-	fastcall DrawTextW,rbx,<W,'Wheel / +/-: zoom    Arrows: pan    P: palette    R: reset    D: deep zoom    S: export'>,-1,addr footer_rect,DT_SINGLELINE
-.done:
+	fastcall DrawTextW,rbx,addr route_text,-1,addr route_rect,DT_SINGLELINE or DT_END_ELLIPSIS
+	; The image dimensions match the entire render rectangle: no bars or stretch.
+	fastcall StretchDIBits,rbx,0,[canvas_top],[canvas_width],[canvas_height], \
+		0,0,[frame_width],[frame_height],[pixels],addr dib_info,DIB_RGB_COLORS,SRCCOPY
+	fastcall DrawTextW,rbx,addr footer_text,-1,addr footer_rect,DT_WORDBREAK
 	ret
 endp
 
 proc recenter position
 	movsx eax,cx
 	sar ecx,16
-	cmp ecx,CANVAS_TOP
+	cmp ecx,[canvas_top]
 	jl .done
 	sub eax,[canvas_left]
 	js .done
 	cmp eax,[canvas_width]
 	jae .done
-	sub ecx,CANVAS_TOP
+	sub ecx,[canvas_top]
 	cmp ecx,[canvas_height]
 	jae .done
 	cvtsi2sd xmm0,eax
@@ -327,7 +423,9 @@ proc window_proc hwnd,message,wparam,lparam
 	cmp edx,WM_PRINTCLIENT
 	je .print
 	cmp edx,WM_SIZE
-	je .invalidate
+	je .size
+	cmp edx,WM_GETMINMAXINFO
+	je .minimum
 	cmp edx,WM_ERASEBKGND
 	je .erased
 	cmp edx,WM_COMMAND
@@ -373,6 +471,15 @@ proc window_proc hwnd,message,wparam,lparam
 	fastcall recenter,r9
 .render:
 	fastcall render_frame
+	jmp .invalidate
+.size:
+	cmp [window],0
+	je .handled
+	cmp [wparam],SIZE_MINIMIZED
+	je .handled
+	fastcall update_layout
+	test eax,eax
+	jnz .render
 .invalidate:
 	fastcall InvalidateRect,[hwnd],0,0
 	jmp .handled
@@ -392,6 +499,10 @@ proc window_proc hwnd,message,wparam,lparam
 .erased:
 	mov eax,1
 	ret
+.minimum:
+	mov dword [r9+MINMAXINFO.ptMinTrackSize+POINT.x],420
+	mov dword [r9+MINMAXINFO.ptMinTrackSize+POINT.y],420
+	jmp .handled
 endp
 
 proc create_gui uses rbx rsi
@@ -409,7 +520,7 @@ proc create_gui uses rbx rsi
 	mov [title_font],rax
 	fastcall CreateFontW,-16,0,0,0,FW_NORMAL,0,0,0,DEFAULT_CHARSET,0,0,CLEARTYPE_QUALITY,0,<W,'Segoe UI'>
 	mov [body_font],rax
-	fastcall CreateWindowExW,0,addr class_name,<W,'Vulkan Atlas — Mandelbrot explorer'>,WS_OVERLAPPEDWINDOW, \
+	fastcall CreateWindowExW,0,addr class_name,<W,'Vulkan Atlas — Mandelbrot explorer'>,WS_OVERLAPPEDWINDOW or WS_CLIPCHILDREN, \
 		CW_USEDEFAULT,CW_USEDEFAULT,1000,760,0,0,[app_module],0
 	test rax,rax
 	jz .failed
@@ -431,6 +542,9 @@ proc create_gui uses rbx rsi
 	add rsi,sizeof.Button
 	cmp ebx,107
 	jb .button
+	fastcall update_layout
+	cmp [pixels],0
+	je .failed
 	mov eax,1
 	ret
 .failed:
@@ -441,7 +555,8 @@ proc create_gui uses rbx rsi
 	ret
 endp
 
-proc save_gui_snapshot uses rbx rsi rdi
+proc save_gui_snapshot uses rbx rsi rdi,filename
+	mov [filename],rcx
 	fastcall GetClientRect,[window],addr client_rect
 	mov eax,[client_rect.right]
 	mov [snapshot_info.biWidth],eax
@@ -468,7 +583,8 @@ proc save_gui_snapshot uses rbx rsi rdi
 	imul eax,sizeof.Button
 	lea rcx,[buttons]
 	mov edx,[rcx+rax+Button.x]
-	fastcall SetViewportOrgEx,rbx,rdx,88,0
+	mov r8d,[rcx+rax+Button.y]
+	fastcall SetViewportOrgEx,rbx,rdx,r8,0
 	lea rcx,[button_handles]
 	mov rcx,[rcx+rdi*8]
 	fastcall SendMessageW,rcx,WM_PRINT,rbx,PRF_CLIENT or PRF_ERASEBKGND
@@ -476,7 +592,7 @@ proc save_gui_snapshot uses rbx rsi rdi
 	cmp edi,7
 	jb .button
 	fastcall SetViewportOrgEx,rbx,0,0,0
-	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.gui.bmp'>,[snapshot_pixels],[client_rect.right],[client_rect.bottom]
+	fastcall save_bitmap,[filename],[snapshot_pixels],[client_rect.right],[client_rect.bottom]
 	fastcall SelectObject,rbx,[snapshot_old_bitmap]
 	fastcall DeleteObject,rsi
 	fastcall DeleteDC,rbx
@@ -488,31 +604,9 @@ proc save_gui_snapshot uses rbx rsi rdi
 	ret
 endp
 
-proc self_test uses rbx
-	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.bmp'>,addr pixels,FRAME_WIDTH,FRAME_HEIGHT
-	fastcall SendMessageW,[window],WM_COMMAND,100,0
-	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.zoom.bmp'>,addr pixels,FRAME_WIDTH,FRAME_HEIGHT
-	fastcall SendMessageW,[window],WM_COMMAND,108,0
-	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.pan.bmp'>,addr pixels,FRAME_WIDTH,FRAME_HEIGHT
-	fastcall SendMessageW,[window],WM_COMMAND,103,0
-	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.changed.bmp'>,addr pixels,FRAME_WIDTH,FRAME_HEIGHT
-	fastcall SendMessageW,[window],WM_COMMAND,102,0
-	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.reset.bmp'>,addr pixels,FRAME_WIDTH,FRAME_HEIGHT
-	fastcall SendMessageW,[window],WM_COMMAND,106,0
-	mov eax,[last_backend]
-	mov [deep_backend],eax
-	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.deep.bmp'>,addr pixels,FRAME_WIDTH,FRAME_HEIGHT
-	fastcall SendMessageW,[window],WM_COMMAND,102,0
-	fastcall SendMessageW,[window],WM_COMMAND,105,0
-	mov eax,[last_backend]
-	mov [cpu_backend],eax
-	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.cpu.bmp'>,addr pixels,FRAME_WIDTH,FRAME_HEIGHT
-	fastcall SendMessageW,[window],WM_COMMAND,105,0
-	fastcall save_gui_snapshot
-	fastcall wsprintfW,addr report_text,<W,'profile=%s',13,10,'backend=%u',13,10,'caps=%u',13,10,'extensions=%u',13,10,'tile=%u',13,10,'tiles=%u',13,10,'deep_backend=%u',13,10,'cpu_backend=%u',13,10,'frames=%u',13,10,'gpu_error=%d',13,10,'api=%u',13,10>, \
-		addr profile_name,[last_backend],[active_caps],[extension_routes],[tile_size],[tile_count],[deep_backend],[cpu_backend],[frame_count],[gpu_error],[device_api]
-	; Materialize the report as UTF-16 without a BOM, keeping wide Win32 I/O.
-	fastcall CreateFileW,<W,'build\legacy_' bappend PROFILE_TAG bappend '.report.txt'>,GENERIC_WRITE,FILE_SHARE_READ,0,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,0
+; Save the shared report buffer as UTF-16 without a BOM.
+proc save_report uses rbx,filename
+	fastcall CreateFileW,rcx,GENERIC_WRITE,FILE_SHARE_READ,0,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,0
 	cmp rax,-1
 	je .failed
 	mov rbx,rax
@@ -544,6 +638,53 @@ proc self_test uses rbx
 	ret
 endp
 
+proc save_layout_report uses rbx,filename
+	mov rbx,rcx
+	fastcall wsprintfW,addr report_text,<W,'width=%u',13,10,'height=%u',13,10,'canvas_top=%u',13,10,'footer_top=%u',13,10,'footer_bottom=%u',13,10,'client_height=%u',13,10>, \
+		[frame_width],[frame_height],[canvas_top],[footer_rect.top],[footer_rect.bottom],[client_rect.bottom]
+	fastcall save_report,rbx
+	ret
+endp
+
+proc self_test
+	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.bmp'>,[pixels],[frame_width],[frame_height]
+	fastcall SendMessageW,[window],WM_COMMAND,100,0
+	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.zoom.bmp'>,[pixels],[frame_width],[frame_height]
+	fastcall SendMessageW,[window],WM_COMMAND,108,0
+	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.pan.bmp'>,[pixels],[frame_width],[frame_height]
+	fastcall SendMessageW,[window],WM_COMMAND,103,0
+	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.changed.bmp'>,[pixels],[frame_width],[frame_height]
+	fastcall SendMessageW,[window],WM_COMMAND,102,0
+	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.reset.bmp'>,[pixels],[frame_width],[frame_height]
+	fastcall SendMessageW,[window],WM_COMMAND,106,0
+	mov eax,[last_backend]
+	mov [deep_backend],eax
+	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.deep.bmp'>,[pixels],[frame_width],[frame_height]
+	fastcall save_gui_snapshot,<W,'build\legacy_' bappend PROFILE_TAG bappend '.deep.gui.bmp'>
+	fastcall SendMessageW,[window],WM_COMMAND,105,0
+	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.deep.cpu.bmp'>,[pixels],[frame_width],[frame_height]
+	fastcall SendMessageW,[window],WM_COMMAND,105,0
+	fastcall SendMessageW,[window],WM_COMMAND,102,0
+	fastcall SendMessageW,[window],WM_COMMAND,105,0
+	mov eax,[last_backend]
+	mov [cpu_backend],eax
+	fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.cpu.bmp'>,[pixels],[frame_width],[frame_height]
+	fastcall SendMessageW,[window],WM_COMMAND,105,0
+	fastcall save_gui_snapshot,<W,'build\legacy_' bappend PROFILE_TAG bappend '.gui.bmp'>
+	fastcall save_layout_report,<W,'build\legacy_' bappend PROFILE_TAG bappend '.layout.txt'>
+	iterate <size_tag,width,height>, 'wide',1400,900,'short',1000,420,'narrow',440,650
+		fastcall SetWindowPos,[window],0,0,0,width,height,SWP_NOMOVE or SWP_NOZORDER or SWP_NOACTIVATE
+		fastcall save_bitmap,<W,'build\legacy_' bappend PROFILE_TAG bappend '.' bappend size_tag bappend '.bmp'>,[pixels],[frame_width],[frame_height]
+		fastcall save_gui_snapshot,<W,'build\legacy_' bappend PROFILE_TAG bappend '.' bappend size_tag bappend '.gui.bmp'>
+		fastcall save_layout_report,<W,'build\legacy_' bappend PROFILE_TAG bappend '.' bappend size_tag bappend '.layout.txt'>
+	end iterate
+	fastcall SetWindowPos,[window],0,0,0,1000,760,SWP_NOMOVE or SWP_NOZORDER or SWP_NOACTIVATE
+	fastcall wsprintfW,addr report_text,<W,'profile=%s',13,10,'backend=%u',13,10,'caps=%u',13,10,'extensions=%u',13,10,'tile=%u',13,10,'tiles=%u',13,10,'deep_backend=%u',13,10,'cpu_backend=%u',13,10,'frames=%u',13,10,'gpu_error=%d',13,10,'api=%u',13,10,'width=%u',13,10,'height=%u',13,10,'float64_supported=%u',13,10>, \
+		addr profile_name,[last_backend],[active_caps],[extension_routes],[tile_size],[tile_count],[deep_backend],[cpu_backend],[frame_count],[gpu_error],[device_api],[frame_width],[frame_height],[float64_supported]
+	fastcall save_report,<W,'build\legacy_' bappend PROFILE_TAG bappend '.report.txt'>
+	ret
+endp
+
 proc mainCRTStartup uses rbx
 	fastcall GetCommandLineW
 	mov rbx,rax
@@ -562,7 +703,7 @@ proc mainCRTStartup uses rbx
 	jz .mask
 	mov [api_ceiling],VK_API_VERSION_1_2
 .mask:
-	iterate <option,flag>, '--no-rendering',CAP_RENDER,'--no-sync2',CAP_SYNC,'--no-copy2',CAP_COPY,'--no-inline',CAP_INLINE,'--no-timeline',CAP_TIMELINE
+	iterate <option,flag>, '--no-rendering',CAP_RENDER,'--no-sync2',CAP_SYNC,'--no-copy2',CAP_COPY,'--no-inline',CAP_INLINE,'--no-timeline',CAP_TIMELINE,'--no-float64',CAP_FLOAT64
 		.local_name#flag GLOBWSTR option,0
 		fastcall StrStrIW,rbx,addr .local_name#flag
 		test rax,rax
@@ -604,6 +745,10 @@ proc mainCRTStartup uses rbx
 	mov [app_io_failed],1
 .finish:
 	fastcall destroy_gpu
+	cmp [pixels],0
+	je .fonts
+	fastcall VirtualFree,[pixels],0,MEM_RELEASE
+.fonts:
 	fastcall DeleteObject,[background_brush]
 	fastcall DeleteObject,[title_font]
 	fastcall DeleteObject,[body_font]
@@ -620,6 +765,7 @@ struct Button
 	text dq ?
 	x dd ?
 	width dd ?
+	y dd 88
 ends
 
 section '.data$gui' data readable writeable align 16
@@ -634,8 +780,16 @@ button_handles rq 7
 shader_status dq 0
 completion_status dq 0
 canvas_left dd 16
+canvas_top dd CANVAS_TOP
 canvas_width dd 512
 canvas_height dd 384
+frame_width dd FRAME_WIDTH
+frame_height dd FRAME_HEIGHT
+pixels dq 0
+frame_width_double dq FRAME_WIDTH*1.0
+frame_height_double dq FRAME_HEIGHT*1.0
+frame_half_width dq FRAME_WIDTH*0.5
+frame_half_height dq FRAME_HEIGHT*0.5
 app_io_failed dd 0
 test_mode dd 0
 deep_backend dd 0
@@ -644,9 +798,11 @@ save_byte_count dd 0
 written dd 0
 class_name GLOBWSTR 'VkFasmgLegacyExplorer',0
 profile_name GLOBWSTR PROFILE_NAME,0
-subtitle_text GLOBWSTR 'MANDELBROT EXPLORER   /   ' bappend PROFILE_NAME bappend ' profile   /   512 × 384 export',0
+subtitle_text GLOBWSTR 'MANDELBROT EXPLORER   /   ' bappend PROFILE_NAME bappend ' profile   /   full-resolution export',0
 cpu_status GLOBWSTR 'CPU double precision — all controls available',0
-gpu_status GLOBWSTR 'Vulkan GPU — all controls available',0
+gpu_status GLOBWSTR 'Vulkan GPU float32',0
+gpu64_status GLOBWSTR 'Vulkan GPU float64',0
+footer_text GLOBWSTR 'Wheel / +/-: zoom    Arrows: pan    P: palette    R: reset    D: deep zoom    S: export',0
 renderpass_text GLOBWSTR 'Render-pass cache',0
 rendering_text GLOBWSTR 'Dynamic rendering',0
 sync1_text GLOBWSTR 'Sync1 / submit1',0
@@ -693,11 +849,6 @@ backend_text GLOBWSTR 'CPU / GPU',0
 backend_button Button text: backend_text,x: 528,width: 112
 deep_text GLOBWSTR 'Deep zoom',0
 deep_button Button text: deep_text,x: 648,width: 112
-
-section '.rdata$gui' data readable align 8
-frame_width_double dq FRAME_WIDTH*1.0
-frame_half_width dq FRAME_WIDTH*0.5
-frame_half_height dq FRAME_HEIGHT*0.5
 
 section '.bss$gui' readable writeable align 16
 save_path rw 512

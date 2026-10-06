@@ -31,7 +31,7 @@ DEBUG_BODY = examples\debug\context.inc examples\debug\sink.inc $(EXAMPLE_STRING
 DEBUG_EXAMPLES = $(BUILD)\debug_lifecycle.exe $(BUILD)\debug_outputs.exe $(BUILD)\debug_objects.exe
 DEBUG_SINK_PROBE = $(BUILD)\debug_sink_probe.exe
 LEGACY_BODY = examples\legacy\explorer.inc examples\legacy\capabilities.inc examples\legacy\gpu.inc examples\legacy\cpu.inc examples\debug\sink.inc $(EXAMPLE_STRINGS) $(OBJECT_BASE) vk\loader\static.inc vk\loader\lazy.inc $(VK_VALIDATED) $(BUILD_READY)
-LEGACY_SHADERS = $(BUILD)\legacy_fullscreen.spv $(BUILD)\legacy_fractal.spv
+LEGACY_SHADERS = $(BUILD)\legacy_fullscreen.spv $(BUILD)\legacy_fractal.spv $(BUILD)\legacy_fractal64.spv
 LEGACY_EXAMPLES = $(BUILD)\legacy_adaptive.exe $(BUILD)\legacy_compatibility.exe $(BUILD)\legacy_software.exe
 LINK_LEGACY = link /NOLOGO /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup /NODEFAULTLIB /OPT:REF /OPT:ICF /MAP:$(@R).map /OUT:$@ $** kernel32.lib user32.lib gdi32.lib comdlg32.lib shlwapi.lib
 
@@ -159,6 +159,10 @@ $(BUILD)\legacy_fullscreen.spv: examples\legacy\fullscreen.vert $(BUILD_READY)
 
 $(BUILD)\legacy_fractal.spv: examples\legacy\fractal.frag $(BUILD_READY)
 	"$(VULKAN_SDK)\Bin\glslangValidator.exe" -V --target-env vulkan1.0 -o $@ examples\legacy\fractal.frag
+	"$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.0 $@
+
+$(BUILD)\legacy_fractal64.spv: examples\legacy\fractal64.frag $(BUILD_READY)
+	"$(VULKAN_SDK)\Bin\glslangValidator.exe" -V --target-env vulkan1.0 -o $@ examples\legacy\fractal64.frag
 	"$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.0 $@
 
 $(BUILD)\legacy_adaptive.obj: examples\legacy\00_adaptive.asm $(LEGACY_BODY) $(LEGACY_SHADERS)
