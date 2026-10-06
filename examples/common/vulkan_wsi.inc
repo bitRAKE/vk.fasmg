@@ -257,18 +257,24 @@ proc wsi_create_frames uses rbx rsi
 	mov [wsi_retired],rax
 	test rax,rax
 	jz .failed
-	test [active_caps],CAP_TIMELINE
-	jz .contexts
-	mov rax,[timeline_semaphore]
-	mov [wsi_work_signal.semaphore],rax
-	mov [wsi_work_handle],rax
-	mov rax,[retirement_semaphore]
-	mov [wsi_retire_signal.semaphore],rax
-	mov [wsi_retire_handle],rax
-	mov [wsi_submit2.signalSemaphoreInfoCount],2
-	mov [wsi_submit1.signalSemaphoreCount],2
-	lea rax,[wsi_work_timeline]
-	mov [wsi_submit1.pNext],rax
+	route CAP_TIMELINE,.contexts
+		route CAP_SYNC
+			mov rax,[timeline_semaphore]
+			mov [wsi_work_signal.semaphore],rax
+			mov rax,[retirement_semaphore]
+			mov [wsi_retire_signal.semaphore],rax
+			mov [wsi_submit2.signalSemaphoreInfoCount],2
+		end route
+		alternate CAP_SYNC
+			mov rax,[timeline_semaphore]
+			mov [wsi_work_handle],rax
+			mov rax,[retirement_semaphore]
+			mov [wsi_retire_handle],rax
+			mov [wsi_submit1.signalSemaphoreCount],2
+			lea rax,[wsi_work_timeline]
+			mov [wsi_submit1.pNext],rax
+		end alternate
+	end route
 .contexts:
 	xor ebx,ebx
 	lea rsi,[wsi_frames]
@@ -304,9 +310,9 @@ proc wsi_create_context uses rbx,context
 	vkCreateSemaphore [device],addr wsi_semaphore_info,0,addr rbx+WsiFrame.acquired
 	test eax,eax
 	jnz .done
-	test [active_caps],CAP_TIMELINE
-	jnz .done
-	vkCreateFence [device],addr wsi_fence_info,0,addr rbx+WsiFrame.fence
+	alternate CAP_TIMELINE,.done
+		vkCreateFence [device],addr wsi_fence_info,0,addr rbx+WsiFrame.fence
+	end alternate
 .done:
 	ret
 endp
@@ -555,44 +561,48 @@ proc wsi_submit_frame uses rbx
 	vkEndCommandBuffer [command_buffer]
 	test eax,eax
 	jnz .failed
-	test [active_caps],CAP_TIMELINE
-	jnz .signals
-	vkResetFences [device],1,addr rbx+WsiFrame.fence
-	test eax,eax
-	jnz .failed
+	alternate CAP_TIMELINE,.signals
+		vkResetFences [device],1,addr rbx+WsiFrame.fence
+		test eax,eax
+		jnz .failed
+	end alternate
 .signals:
 	fastcall reserve_submission
-	mov rax,[rbx+WsiFrame.acquired]
-	mov [wsi_acquired_handle],rax
-	mov [wsi_wait_info.semaphore],rax
 	mov rax,[wsi_current_image]
 	mov rax,[rax+WsiImage.rendered]
 	mov [wsi_rendered_handle],rax
-	mov [wsi_signal_info.semaphore],rax
-	mov rax,[completion_value]
-	mov [wsi_work_signal.value],rax
-	mov [wsi_signal_values+8],rax
-	mov rax,[retirement_value]
-	mov [wsi_retire_signal.value],rax
-	mov rax,[command_buffer]
-	mov [wsi_command_submit.commandBuffer],rax
-	test [active_caps],CAP_SYNC
-	jz .submit1
-	mov edx,1
-	test [active_caps],CAP_TIMELINE
-	jz .submit2_count
-	mov edx,2
-.submit2_count:
-	; Count is the second argument, so earlier queue setup cannot overwrite it.
-	vkQueueSubmit2 [queue],rdx,addr wsi_submit2,[rbx+WsiFrame.fence]
-	jmp .submitted
-.submit1:
-	mov edx,1
-	test [active_caps],CAP_TIMELINE
-	jz .submit1_count
-	mov edx,2
-.submit1_count:
-	vkQueueSubmit [queue],rdx,addr wsi_submit1,[rbx+WsiFrame.fence]
+	; The batch count is the second argument, so queue setup cannot overwrite it.
+	route CAP_SYNC,.submit1
+		mov [wsi_signal_info.semaphore],rax
+		mov rax,[rbx+WsiFrame.acquired]
+		mov [wsi_wait_info.semaphore],rax
+		mov rax,[command_buffer]
+		mov [wsi_command_submit.commandBuffer],rax
+		mov edx,1
+		route CAP_TIMELINE,.submit2
+			mov rax,[completion_value]
+			mov [wsi_work_signal.value],rax
+			mov rax,[retirement_value]
+			mov [wsi_retire_signal.value],rax
+			mov edx,2
+		end route
+	.submit2:
+		vkQueueSubmit2 [queue],rdx,addr wsi_submit2,[rbx+WsiFrame.fence]
+		jmp .submitted
+	end route
+	alternate CAP_SYNC
+	.submit1:
+		mov rax,[rbx+WsiFrame.acquired]
+		mov [wsi_acquired_handle],rax
+		mov edx,1
+		route CAP_TIMELINE,.submit1_count
+			mov rax,[completion_value]
+			mov [wsi_signal_values+8],rax
+			mov edx,2
+		end route
+	.submit1_count:
+		vkQueueSubmit [queue],rdx,addr wsi_submit1,[rbx+WsiFrame.fence]
+	end alternate
 .submitted:
 	test eax,eax
 	jnz .cancel
@@ -686,21 +696,34 @@ wsi_surface_info VkWin32SurfaceCreateInfoKHR sType: VK_STRUCTURE_TYPE_WIN32_SURF
 wsi_pool_info VkCommandPoolCreateInfo sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,flags: VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
 wsi_command_allocate VkCommandBufferAllocateInfo sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,level: VK_COMMAND_BUFFER_LEVEL_PRIMARY,commandBufferCount: 1
 wsi_semaphore_info VkSemaphoreCreateInfo sType: VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
-wsi_fence_info VkFenceCreateInfo sType: VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,flags: VK_FENCE_CREATE_SIGNALED_BIT
+alternate CAP_TIMELINE
+	wsi_fence_info VkFenceCreateInfo sType: VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,flags: VK_FENCE_CREATE_SIGNALED_BIT
+end alternate
 wsi_view_info VkImageViewCreateInfo sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,viewType: VK_IMAGE_VIEW_TYPE_2D,subresourceRange: <aspectMask: VK_IMAGE_ASPECT_COLOR_BIT,levelCount: 1,layerCount: 1>
 wsi_swapchain_info VkSwapchainCreateInfoKHR sType: VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,imageArrayLayers: 1,imageUsage: VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,pQueueFamilyIndices: wsi_queue_families,presentMode: VK_PRESENT_MODE_FIFO_KHR,clipped: VK_TRUE
-wsi_wait_stage dd VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
-wsi_wait_info VkSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,stageMask: VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
-wsi_signal_info VkSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,stageMask: VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
-wsi_work_signal VkSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,stageMask: VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
-wsi_retire_signal VkSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,stageMask: VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
-wsi_command_submit VkCommandBufferSubmitInfo sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO
-wsi_submit2 VkSubmitInfo2 sType: VK_STRUCTURE_TYPE_SUBMIT_INFO_2,waitSemaphoreInfoCount: 1,pWaitSemaphoreInfos: wsi_wait_info,commandBufferInfoCount: 1,pCommandBufferInfos: wsi_command_submit,signalSemaphoreInfoCount: 1,pSignalSemaphoreInfos: wsi_signal_info
-	VkSubmitInfo2 sType: VK_STRUCTURE_TYPE_SUBMIT_INFO_2,signalSemaphoreInfoCount: 1,pSignalSemaphoreInfos: wsi_retire_signal
-wsi_submit1 VkSubmitInfo sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,waitSemaphoreCount: 1,pWaitSemaphores: wsi_acquired_handle,pWaitDstStageMask: wsi_wait_stage,commandBufferCount: 1,pCommandBuffers: command_buffer,signalSemaphoreCount: 1,pSignalSemaphores: wsi_rendered_handle
-	VkSubmitInfo sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,pNext: wsi_retire_timeline,signalSemaphoreCount: 1,pSignalSemaphores: wsi_retire_handle
-wsi_work_timeline VkTimelineSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,waitSemaphoreValueCount: 1,pWaitSemaphoreValues: wsi_binary_value,signalSemaphoreValueCount: 2,pSignalSemaphoreValues: wsi_signal_values
-wsi_retire_timeline VkTimelineSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,signalSemaphoreValueCount: 1,pSignalSemaphoreValues: retirement_value
+; Each submission is one batch, or two when a second advances retirement.
+route CAP_SYNC
+	wsi_wait_info VkSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,stageMask: VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
+	wsi_command_submit VkCommandBufferSubmitInfo sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO
+	wsi_signal_info VkSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,stageMask: VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
+	route CAP_TIMELINE
+		wsi_work_signal VkSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,stageMask: VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
+		wsi_retire_signal VkSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,stageMask: VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
+	end route
+	wsi_submit2 VkSubmitInfo2 sType: VK_STRUCTURE_TYPE_SUBMIT_INFO_2,waitSemaphoreInfoCount: 1,pWaitSemaphoreInfos: wsi_wait_info,commandBufferInfoCount: 1,pCommandBufferInfos: wsi_command_submit,signalSemaphoreInfoCount: 1,pSignalSemaphoreInfos: wsi_signal_info
+	route CAP_TIMELINE
+		VkSubmitInfo2 sType: VK_STRUCTURE_TYPE_SUBMIT_INFO_2,signalSemaphoreInfoCount: 1,pSignalSemaphoreInfos: wsi_retire_signal
+	end route
+end route
+alternate CAP_SYNC
+	wsi_wait_stage dd VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+	wsi_submit1 VkSubmitInfo sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,waitSemaphoreCount: 1,pWaitSemaphores: wsi_acquired_handle,pWaitDstStageMask: wsi_wait_stage,commandBufferCount: 1,pCommandBuffers: command_buffer,signalSemaphoreCount: 1,pSignalSemaphores: wsi_rendered_handle
+	route CAP_TIMELINE
+		VkSubmitInfo sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,pNext: wsi_retire_timeline,signalSemaphoreCount: 1,pSignalSemaphores: wsi_retire_handle
+		wsi_work_timeline VkTimelineSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,waitSemaphoreValueCount: 1,pWaitSemaphoreValues: wsi_binary_value,signalSemaphoreValueCount: 2,pSignalSemaphoreValues: wsi_signal_values
+		wsi_retire_timeline VkTimelineSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,signalSemaphoreValueCount: 1,pSignalSemaphoreValues: retirement_value
+	end route
+end alternate
 wsi_present_info VkPresentInfoKHR sType: VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,waitSemaphoreCount: 1,pWaitSemaphores: wsi_rendered_handle,swapchainCount: 1,pSwapchains: swapchain,pImageIndices: wsi_image_index
 wsi_present_fence_info VkSwapchainPresentFenceInfoKHR sType: VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_KHR,swapchainCount: 1,pFences: wsi_present_fence_handle
 include 'vulkan_wsi_retirement.inc'

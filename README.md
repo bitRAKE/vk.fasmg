@@ -3,9 +3,9 @@
 This is a minimal Windows x64 repository for projecting the Vulkan registry
 into fasmg/fasm2 includes and demonstrating how to bind the resulting functions.
 It contains the projection generator, ABI verification, five loader strategies
-demonstrated by six console programs, three debug-utils examples, and three
-fractal explorer GUI profiles demonstrating graceful fallback, and a GPU-only
-port of the NoGraphicsAPI textured cube, with focused tests.
+demonstrated by six console programs, three debug-utils examples, a fractal
+explorer built under three contracts over Vulkan's legacy operations, and a
+GPU-only port of the NoGraphicsAPI textured cube, with focused tests.
 
 ## Requirements
 
@@ -16,11 +16,13 @@ port of the NoGraphicsAPI textured cube, with focused tests.
 - A Vulkan 1.1 capable driver for running the loader examples, including
   `VK_KHR_surface` and, except for the IAT example, `VK_EXT_debug_utils`.
 - The Vulkan SDK's `glslangValidator` and `spirv-val` for the explorer shaders.
+  Running the explorer needs a Vulkan 1.1 device with Win32 presentation; its
+  modern contract also needs the five promoted routes, core or KHR.
 - For the cube, a recent SDK with descriptor-heap/address-command registry
   entries and bundled Slang supporting `spvDescriptorHeapEXT` (tested with
   SDK 1.4.363.0). Running the cube's fallback paths needs a Vulkan 1.1 GPU.
 - The Vulkan SDK's Khronos validation layer for `check-debug`, `check-legacy`,
-  and `check`. The explorer's software profile needs no Vulkan runtime to run.
+  `check-noAPI_cube`, and `check`.
 
 The makefile defaults to `..\fasm2\fasm2.cmd` and
 `%ProgramFiles%\LLVM\bin\clang.exe`. Override either when needed:
@@ -44,7 +46,7 @@ rem Build and verify the three debug-utils examples:
 build.cmd debug
 rem Repeat debug checks with the Khronos validation layer:
 build.cmd check-debug
-rem Build and check the three fractal explorer profiles:
+rem Build and check the fractal explorer under its three contracts:
 build.cmd legacy
 rem Repeat explorer checks with core and synchronization validation:
 build.cmd check-legacy
@@ -79,10 +81,13 @@ examples, checks their imports and dense slot tables, and links the delay-load
 example against an absent DLL to verify its ordinary initialization failure.
 It also verifies the [debug-utils examples](examples/debug/README.md), including
 actual Windows debugger events and runs under the Khronos validation layer.
-The [legacy examples](examples/legacy/README.md) compare full images across
-modern, compatibility, KHR, and API 1.2 routes; exercise GUI resizing, footer
-layout, and GPU float64/CPU precision recovery; and run with an unavailable
-driver and synchronization validation.
+The [legacy examples](examples/legacy/README.md) hold each executable to its
+build contract through the Vulkan functions its link map names; compare full
+exports to the pixel across contracts, modern, KHR, API-ceiling and original
+routes, and tile sizes; compare float64 deep zoom with its float-pair
+alternate; run the animated tour to every stop; and check the errors for an
+unmet contract and an unavailable driver, all repeated under synchronization
+validation.
 The [NoGraphicsAPI cube](examples/noAPI_cube/README.md) compares GPU pointer,
 binding, command, depth, and color-format fallbacks; checks animation, controls,
 and resizes; and reports an explicit error when a GPU is unavailable. It renders
@@ -98,9 +103,9 @@ tools/                 projection generator, SDK verifier, assembler wrapper
 vk/loader/             handwritten IAT, delay, static, dynamic, COMDAT loaders
 examples/loaders/      six builds of one instance/device program; stdout helper
 examples/debug/        lifecycle, severity/output routing, object names/tags/labels
-examples/legacy/       fractal explorer: adaptive, compatibility/tiled, software
+examples/legacy/       fractal explorer under adaptive, compatibility, modern contracts
 examples/noAPI_cube/   GPU-only textured cube with negotiated Vulkan fallbacks
-examples/common/       shared Vulkan context, memory, commands, WSI, math, export
+examples/common/       shared build contract, context, memory, commands, WSI, math
 examples/strings.inc   pooled UTF-8/UTF-16 literals for the examples
 tests/                 projection/loader/debug/explorer/cube checks and native probes
 macro/struct.inc       fasm2 struct macro with escaped-member alignment fix
@@ -145,4 +150,5 @@ and [the six loader examples](examples/loaders/README.md). The
 [debug-utils examples](examples/debug/README.md) demonstrate message callbacks,
 console/debugger/file sinks, and object/workload annotations.
 The [legacy examples](examples/legacy/README.md) apply
-[graceful fallback](docs/legacy.md) to a complete GUI application.
+[graceful fallback](docs/legacy.md) to one Vulkan application, and show a
+contract deciding at assembly time which side of each operation exists.

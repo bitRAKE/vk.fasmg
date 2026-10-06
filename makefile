@@ -30,17 +30,16 @@ DEBUG_LOGGER_OBJ = $(BUILD)\debug_logger.obj
 DEBUG_BODY = examples\debug\context.inc examples\debug\sink.inc $(EXAMPLE_STRINGS) $(OBJECT_BASE) vk\loader\static.inc vk\loader\lazy.inc $(VK_VALIDATED) $(BUILD_READY)
 DEBUG_EXAMPLES = $(BUILD)\debug_lifecycle.exe $(BUILD)\debug_outputs.exe $(BUILD)\debug_objects.exe
 DEBUG_SINK_PROBE = $(BUILD)\debug_sink_probe.exe
-LEGACY_BODY = examples\legacy\explorer.inc examples\legacy\capabilities.inc examples\legacy\gpu.inc examples\legacy\cpu.inc examples\debug\sink.inc $(EXAMPLE_STRINGS) $(OBJECT_BASE) vk\loader\static.inc vk\loader\lazy.inc $(VK_VALIDATED) $(BUILD_READY)
-SHARED_EXAMPLE_BODY = examples\common\vulkan_context.inc examples\common\vulkan_memory.inc examples\common\vulkan_commands.inc examples\common\bitmap.inc
-LEGACY_BODY = $(LEGACY_BODY) $(SHARED_EXAMPLE_BODY)
-LEGACY_SHADERS = $(BUILD)\legacy_fullscreen.spv $(BUILD)\legacy_fractal.spv $(BUILD)\legacy_fractal64.spv
-LEGACY_EXAMPLES = $(BUILD)\legacy_adaptive.exe $(BUILD)\legacy_compatibility.exe $(BUILD)\legacy_software.exe
-LINK_LEGACY = link /NOLOGO /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup /NODEFAULTLIB /OPT:REF /OPT:ICF /MAP:$(@R).map /OUT:$@ $** kernel32.lib user32.lib gdi32.lib comdlg32.lib shlwapi.lib
-CUBE_BODY = examples\noAPI_cube\features.inc examples\noAPI_cube\scene.inc examples\noAPI_cube\gpu.inc examples\noAPI_cube\target.inc examples\noAPI_cube\capture.inc examples\noAPI_cube\present_test.inc examples\noAPI_cube\material.inc examples\noAPI_cube\pipeline.inc examples\common\vulkan_wsi.inc examples\common\math3d.inc examples\common\vulkan_barriers.inc examples\common\command_options.inc $(SHARED_EXAMPLE_BODY) $(DEBUG_BODY)
+# Every example that negotiates a device shares these; the contract of vulkan_routes.inc shapes each of them.
+SHARED_EXAMPLE_BODY = examples\common\vulkan_routes.inc examples\common\vulkan_context.inc examples\common\vulkan_memory.inc examples\common\vulkan_pools.inc examples\common\range_allocator.inc examples\common\cpu_arena.inc examples\common\vulkan_commands.inc examples\common\vulkan_barriers.inc examples\common\vulkan_wsi.inc examples\common\vulkan_wsi_retirement.inc examples\common\command_options.inc examples\common\bitmap.inc $(DEBUG_BODY)
+LEGACY_BODY = examples\legacy\explorer.inc examples\legacy\view.inc examples\legacy\tour.inc examples\legacy\gpu.inc examples\legacy\export.inc $(SHARED_EXAMPLE_BODY)
+LEGACY_SHADERS = $(BUILD)\legacy_fullscreen.spv $(BUILD)\legacy_fractal.spv $(BUILD)\legacy_fractal64.spv $(BUILD)\legacy_fractal32x2.spv
+LEGACY_EXAMPLES = $(BUILD)\legacy_adaptive.exe $(BUILD)\legacy_compatibility.exe $(BUILD)\legacy_modern.exe
+LINK_WINDOW = link /NOLOGO /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup /NODEFAULTLIB /OPT:REF /OPT:ICF /MAP:$(@R).map /OUT:$@ $** kernel32.lib user32.lib comdlg32.lib shell32.lib advapi32.lib
+CUBE_BODY = examples\noAPI_cube\features.inc examples\noAPI_cube\scene.inc examples\noAPI_cube\gpu.inc examples\noAPI_cube\target.inc examples\noAPI_cube\capture.inc examples\noAPI_cube\present_test.inc examples\noAPI_cube\memory_test.inc examples\noAPI_cube\material.inc examples\noAPI_cube\pipeline.inc examples\common\math3d.inc $(SHARED_EXAMPLE_BODY)
 CUBE_SHADERS = $(BUILD)\noAPI_cube_bindings.spv $(BUILD)\noAPI_cube_pointer.spv $(BUILD)\noAPI_cube_fragment.spv $(BUILD)\noAPI_cube_heap_vertex.spv $(BUILD)\noAPI_cube_heap_fragment.spv
 CUBE_EXAMPLE = $(BUILD)\noAPI_cube.exe
 RANGE_PROBE = $(BUILD)\vk_ranges_test.dll
-CUBE_BODY = $(CUBE_BODY) examples\noAPI_cube\memory_test.inc examples\common\cpu_arena.inc examples\common\range_allocator.inc examples\common\vulkan_pools.inc examples\common\vulkan_retirement.inc examples\common\vulkan_wsi_retirement.inc
 
 VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
@@ -172,29 +171,34 @@ $(BUILD)\legacy_fractal64.spv: examples\legacy\fractal64.frag $(BUILD_READY)
 	"$(VULKAN_SDK)\Bin\glslangValidator.exe" -V --target-env vulkan1.0 -o $@ examples\legacy\fractal64.frag
 	"$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.0 $@
 
+$(BUILD)\legacy_fractal32x2.spv: examples\legacy\fractal32x2.frag $(BUILD_READY)
+	"$(VULKAN_SDK)\Bin\glslangValidator.exe" -V --target-env vulkan1.0 -o $@ examples\legacy\fractal32x2.frag
+	"$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.0 $@
+
+# One explorer under each build contract. Only the contract lines differ.
 $(BUILD)\legacy_adaptive.obj: examples\legacy\00_adaptive.asm $(LEGACY_BODY) $(LEGACY_SHADERS)
 	$(ASSEMBLE) -Source examples\legacy\00_adaptive.asm -Output $@
 
 $(BUILD)\legacy_compatibility.obj: examples\legacy\01_compatibility.asm $(LEGACY_BODY) $(LEGACY_SHADERS)
 	$(ASSEMBLE) -Source examples\legacy\01_compatibility.asm -Output $@
 
-$(BUILD)\legacy_software.obj: examples\legacy\02_software.asm $(LEGACY_BODY) $(LEGACY_SHADERS)
-	$(ASSEMBLE) -Source examples\legacy\02_software.asm -Output $@
+$(BUILD)\legacy_modern.obj: examples\legacy\02_modern.asm $(LEGACY_BODY) $(LEGACY_SHADERS)
+	$(ASSEMBLE) -Source examples\legacy\02_modern.asm -Output $@
 
 $(BUILD)\legacy_adaptive.exe: $(BUILD)\legacy_adaptive.obj $(DEBUG_LOGGER_OBJ)
-	$(LINK_LEGACY)
+	$(LINK_WINDOW)
 
 $(BUILD)\legacy_compatibility.exe: $(BUILD)\legacy_compatibility.obj $(DEBUG_LOGGER_OBJ)
-	$(LINK_LEGACY)
+	$(LINK_WINDOW)
 
-$(BUILD)\legacy_software.exe: $(BUILD)\legacy_software.obj $(DEBUG_LOGGER_OBJ)
-	$(LINK_LEGACY)
+$(BUILD)\legacy_modern.exe: $(BUILD)\legacy_modern.obj $(DEBUG_LOGGER_OBJ)
+	$(LINK_WINDOW)
 
 legacy: $(LEGACY_EXAMPLES)
-	$(POWERSHELL) -File tests\verify-legacy-examples.ps1 -BuildDir "$(BUILD)"
+	$(POWERSHELL) -File tests\verify-legacy-examples.ps1 -Fasm2 "$(FASM2)" -BuildDir "$(BUILD)"
 
 check-legacy: $(LEGACY_EXAMPLES)
-	$(POWERSHELL) -File tests\verify-legacy-examples.ps1 -BuildDir "$(BUILD)" -Validation
+	$(POWERSHELL) -File tests\verify-legacy-examples.ps1 -Fasm2 "$(FASM2)" -BuildDir "$(BUILD)" -Validation
 
 $(BUILD)\noAPI_cube_bindings.spv: examples\noAPI_cube\cube.vert $(BUILD_READY)
 	"$(VULKAN_SDK)\Bin\glslangValidator.exe" -V --target-env vulkan1.0 -DPOINTER_VERTICES=0 -o $@ examples\noAPI_cube\cube.vert
@@ -220,7 +224,7 @@ $(BUILD)\noAPI_cube.obj: examples\noAPI_cube\cube.asm examples\noAPI_cube\lunarg
 	$(ASSEMBLE) -Source examples\noAPI_cube\cube.asm -Output $@
 
 $(CUBE_EXAMPLE): $(BUILD)\noAPI_cube.obj $(DEBUG_LOGGER_OBJ)
-	link /NOLOGO /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup /NODEFAULTLIB /OPT:REF /OPT:ICF /MAP:$(@R).map /OUT:$@ $** kernel32.lib user32.lib comdlg32.lib shell32.lib advapi32.lib
+	$(LINK_WINDOW)
 
 noAPI_cube: $(CUBE_EXAMPLE)
 	$(POWERSHELL) -File tests\verify-noAPI-cube.ps1 -BuildDir "$(BUILD)"

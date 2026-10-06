@@ -1,4 +1,5 @@
 section '.text$wsi_retirement' code readable executable align 16
+alternate CAP_TIMELINE
 proc wsi_poll_fences uses rbx rsi
 	xor ebx,ebx
 	lea rsi,[wsi_frames]
@@ -35,44 +36,47 @@ proc wsi_poll_fences uses rbx rsi
 .done:
 	ret
 endp
+end alternate
 
 proc wsi_wait_work uses rbx rsi
-	test [active_caps],CAP_TIMELINE
-	jz .fences
-	fastcall wait_retirement,[retirement_value]
-	ret
-.fences:
-	xor ebx,ebx
-	lea rsi,[wsi_frames]
-.frame:
-	cmp ebx,[wsi_frame_count]
-	jae .serial
-	mov rax,[rsi+WsiFrame.retirement]
-	cmp rax,[completed_retirement]
-	jbe .next
-	vkWaitForFences [device],1,addr rsi+WsiFrame.fence,VK_TRUE,5000000000
-	test eax,eax
-	jnz .done
-	mov rax,[rsi+WsiFrame.retirement]
-	mov [completed_retirement],rax
-.next:
-	inc ebx
-	add rsi,sizeof.WsiFrame
-	jmp .frame
-.serial:
-	mov rax,[serial_retirement]
-	cmp rax,[completed_retirement]
-	jbe .ready
-	vkWaitForFences [device],1,addr completion_fence,VK_TRUE,5000000000
-	test eax,eax
-	jnz .done
-	mov rax,[serial_retirement]
-	mov [completed_retirement],rax
-.ready:
-	fastcall collect_gpu_deletes
-	xor eax,eax
-.done:
-	ret
+	route CAP_TIMELINE,.fences
+		fastcall wait_retirement,[retirement_value]
+		ret
+	end route
+	alternate CAP_TIMELINE
+	.fences:
+		xor ebx,ebx
+		lea rsi,[wsi_frames]
+	.frame:
+		cmp ebx,[wsi_frame_count]
+		jae .serial
+		mov rax,[rsi+WsiFrame.retirement]
+		cmp rax,[completed_retirement]
+		jbe .next
+		vkWaitForFences [device],1,addr rsi+WsiFrame.fence,VK_TRUE,5000000000
+		test eax,eax
+		jnz .done
+		mov rax,[rsi+WsiFrame.retirement]
+		mov [completed_retirement],rax
+	.next:
+		inc ebx
+		add rsi,sizeof.WsiFrame
+		jmp .frame
+	.serial:
+		mov rax,[serial_retirement]
+		cmp rax,[completed_retirement]
+		jbe .ready
+		vkWaitForFences [device],1,addr completion_fence,VK_TRUE,5000000000
+		test eax,eax
+		jnz .done
+		mov rax,[serial_retirement]
+		mov [completed_retirement],rax
+	.ready:
+		fastcall collect_gpu_deletes
+		xor eax,eax
+	.done:
+		ret
+	end alternate
 endp
 
 proc wsi_wait_present_images uses rbx rsi,images,count

@@ -285,10 +285,13 @@ proc create_buffer uses rbx rsi rdi,owner,bytes,usage,addressable
 	mov r9d,VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT
 .allocate:
 	mov esi,1
-	test [memory_buffer_info.usage],VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT
-	jz .ordinary
-	mov esi,3
-.ordinary:
+	if definite VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT
+		; Where the projection has descriptor heaps, their buffers keep to blocks of their own.
+		test [memory_buffer_info.usage],VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT
+		jz .ordinary
+		mov esi,3
+	.ordinary:
+	end if
 	fastcall allocate_gpu_memory,rbx,rax,rsi,r9
 	test eax,eax
 	jz .failed

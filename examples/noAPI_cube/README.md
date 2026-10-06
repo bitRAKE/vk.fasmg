@@ -135,9 +135,8 @@ geometry and transform; `material.inc` owns uploads and descriptor bindings;
 selection and resizable attachments; `gpu.inc` records the scene; `capture.inc`
 owns on-demand export; `cube.asm` owns the window and controls. The shared
 `vulkan_wsi.inc` owns presentation; `cpu_arena.inc`, `range_allocator.inc`,
-`vulkan_pools.inc`, and the retirement modules own memory and resource lifetimes.
-The other
-[shared modules](../common/README.md) also serve the fractal examples.
+`vulkan_pools.inc`, and `vulkan_commands.inc` own memory and resource lifetimes.
+The [shared modules](../common/README.md) also serve the fractal explorer.
 
 Builds need an SDK containing the descriptor-heap/address-command registry
 entries, `glslangValidator`, `spirv-val`, and Slang with `spvDescriptorHeapEXT`

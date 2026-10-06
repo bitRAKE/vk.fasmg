@@ -1,12 +1,7 @@
-; Shared device negotiation. Optional application hooks add scene-specific features.
+; Shared device negotiation under the build contract of vulkan_routes.inc.
+; Optional application hooks add scene-specific features.
 ; Extension routes below use a 1.2 floor for dynamic rendering/copy2, avoiding
 ; the extra dependency closure needed on 1.1. Older devices keep the full app.
-CAP_RENDER := 1
-CAP_SYNC := 2
-CAP_COPY := 4
-CAP_INLINE := 8
-CAP_TIMELINE := 16
-CAP_FLOAT64 := 32
 
 extrn LoadLibraryW:qword
 extrn FreeLibrary:qword
@@ -15,8 +10,9 @@ extrn debug_callback:qword
 extrn debug_validation_failed:dword
 extrn debug_io_failed:dword
 
-; Satisfy the existing static loader's sole import with an explicitly loaded DLL.
-; A missing runtime therefore selects the CPU application path before any call.
+; Satisfy the static loader's sole import with an explicitly loaded DLL. A
+; missing runtime is then a failure the application reports, where an import
+; would have kept Windows from starting the process.
 public own_gipa as '__imp_vkGetInstanceProcAddr'
 
 section '.text$caps' code readable executable align 16
@@ -57,10 +53,6 @@ proc chain_feature feature
 endp
 
 proc probe_gpu uses rbx rsi rdi
-	if FORCE_CPU
-		xor eax,eax
-		ret
-	end if
 	fastcall LoadLibraryW,<W,'vulkan-1.dll'>
 	test rax,rax
 	jz .failed
@@ -71,7 +63,7 @@ proc probe_gpu uses rbx rsi rdi
 	mov [own_gipa],rax
 	fastcall [own_gipa],0,'vkEnumerateInstanceVersion'
 	test rax,rax
-	jz .failed                       ; GPU path requires 1.1; CPU has no Vulkan floor.
+	jz .failed                       ; Negotiation starts at Vulkan 1.1.
 	fastcall rax,addr loader_api
 	test eax,eax
 	jnz .failed
@@ -187,7 +179,7 @@ proc probe_gpu uses rbx rsi rdi
 	else
 		vkGetPhysicalDeviceMemoryProperties [physical_device],addr memory_properties2.memoryProperties
 	end if
-	; B8G8R8A8 bytes match the top-down Win32 DIB used for presentation/export.
+	; B8G8R8A8 bytes match the top-down bitmap an export writes.
 	vkGetPhysicalDeviceFormatProperties [physical_device],VK_FORMAT_B8G8R8A8_UNORM,addr format_properties
 	mov eax,[format_properties.optimalTilingFeatures]
 	and eax,VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT or VK_FORMAT_FEATURE_TRANSFER_SRC_BIT
@@ -222,6 +214,8 @@ proc probe_gpu uses rbx rsi rdi
 		test eax,eax
 		jz .next_adapter
 	end if
+	; A contract that can select none of the five routes has none to walk.
+	if CAP_MASK and 31
 	; One route descriptor per optional operation; feature-bearing routes link
 	; their individual structs, never aggregate and individual aliases together.
 	xor ebx,ebx
@@ -259,6 +253,7 @@ proc probe_gpu uses rbx rsi rdi
 	inc ebx
 	add rsi,sizeof.Route
 	jmp .route
+	end if
 .query:
 	if definite GPU_WSI
 		fastcall wsi_query_features
@@ -289,6 +284,7 @@ proc probe_gpu uses rbx rsi rdi
 	mov [features2.features.shaderFloat64],VK_TRUE
 .no_float64:
 	mov [features2.pNext],0
+	if CAP_MASK and 31
 	xor ebx,ebx
 	lea rsi,[routes]
 .enable:
@@ -319,6 +315,7 @@ proc probe_gpu uses rbx rsi rdi
 	inc ebx
 	add rsi,sizeof.Route
 	jmp .enable
+	end if
 .device:
 	if definite GPU_WSI
 		fastcall wsi_enable_features
@@ -328,6 +325,13 @@ proc probe_gpu uses rbx rsi rdi
 	end if
 	mov eax,[active_caps]
 	and [extension_routes],eax
+	if CAP_REQUIRED
+		; What the build cannot do without is settled before a device exists.
+		not eax
+		and eax,CAP_REQUIRED
+		mov [missing_caps],eax
+		jnz .failed
+	end if
 	if CAP_MASK and 31
 		lea rax,[features2]
 		mov [device_info.pNext],rax
@@ -353,19 +357,19 @@ proc probe_gpu uses rbx rsi rdi
 		CAP_TIMELINE,vkWaitSemaphores,'vkWaitSemaphores','vkWaitSemaphoresKHR', \
 		CAP_TIMELINE,vkGetSemaphoreCounterValue,'vkGetSemaphoreCounterValue','vkGetSemaphoreCounterValueKHR', \
 		CAP_TIMELINE,vkSignalSemaphore,'vkSignalSemaphore','vkSignalSemaphoreKHR'
-			test [active_caps],bit
-			jz .skip#function
-			.command_name#function GLOBSTR coreName,0
-			.alias_name#function GLOBSTR khrName,0
-			lea rdx,[.command_name#function]
-			test [extension_routes],bit
-			jz .resolve#function
-			lea rdx,[.alias_name#function]
-		.resolve#function:
-			vkGetDeviceProcAddr [device],rdx
-			test rax,rax
-			jz .failed
-			mov [function],rax
+			route bit,.skip#function
+				.command_name#function GLOBSTR coreName,0
+				.alias_name#function GLOBSTR khrName,0
+				lea rdx,[.command_name#function]
+				test [extension_routes],bit
+				jz .resolve#function
+				lea rdx,[.alias_name#function]
+			.resolve#function:
+				vkGetDeviceProcAddr [device],rdx
+				test rax,rax
+				jz .failed
+				mov [function],rax
+			end route
 		.skip#function:
 	end iterate
 	if definite GPU_EXTRA_FEATURES
@@ -400,6 +404,7 @@ device_api dd 0
 active_caps dd 0
 float64_supported dd 0
 requested_caps dd CAP_MASK
+missing_caps dd 0                   ; required by the build, unavailable here
 force_khr dd 0
 api_ceiling dd VK_API_VERSION_1_4
 candidate_caps dd 0
@@ -414,13 +419,10 @@ debug_name GLOBSTR 'VK_EXT_debug_utils',0
 debug_extension dq debug_name
 if definite GPU_APP_NAME
 app_name GLOBSTR GPU_APP_NAME,0
-else
-app_name GLOBSTR 'Vulkan Atlas fractal explorer',0
-end if
-if definite GPU_APP_NAME
 debug_label GLOBSTR GPU_APP_NAME,0
 else
-debug_label GLOBSTR 'legacy explorer',0
+app_name GLOBSTR 'Vulkan example',0
+debug_label GLOBSTR 'Vulkan example',0
 end if
 bootstrap_sink DebugSink kind: DEBUG_DEBUGGER,handle: -1,label: debug_label
 bootstrap_info VkDebugUtilsMessengerCreateInfoEXT \
@@ -437,6 +439,9 @@ device_info VkDeviceCreateInfo sType: VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,queue
 properties2 VkPhysicalDeviceProperties2 sType: VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2
 memory_properties2 VkPhysicalDeviceMemoryProperties2 sType: VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2
 features2 VkPhysicalDeviceFeatures2 sType: VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2
+format_properties VkFormatProperties
+image_properties VkImageFormatProperties
+if CAP_MASK and 31
 render_feature VkPhysicalDeviceDynamicRenderingFeatures sType: VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES
 sync_feature VkPhysicalDeviceSynchronization2Features sType: VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
 inline_feature VkPhysicalDeviceMaintenance5Features sType: VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_5_FEATURES
@@ -452,10 +457,12 @@ sync_route Route coreVersion: VK_API_VERSION_1_3,extensionFloor: VK_API_VERSION_
 copy_route Route coreVersion: VK_API_VERSION_1_3,extensionFloor: VK_API_VERSION_1_2,name: copy_name
 inline_route Route coreVersion: VK_API_VERSION_1_4,extensionFloor: VK_API_VERSION_1_3,name: inline_name,feature: inline_feature
 timeline_route Route coreVersion: VK_API_VERSION_1_2,extensionFloor: VK_API_VERSION_1_1,name: timeline_name,feature: timeline_feature
+end if
+
+; Enumeration results need no place in the file.
+section '.bss$caps' readable writeable align 16
 enabled_extensions rq 16
-instance_extensions rb 256 * sizeof.VkExtensionProperties
-device_extensions rb 256 * sizeof.VkExtensionProperties
 adapters rq 16
 queues rb 32 * sizeof.VkQueueFamilyProperties
-format_properties VkFormatProperties
-image_properties VkImageFormatProperties
+instance_extensions rb 256 * sizeof.VkExtensionProperties
+device_extensions rb 256 * sizeof.VkExtensionProperties

@@ -26,8 +26,8 @@ include '..\strings.inc'
 include '..\common\command_options.inc'
 
 CAP_MASK = 479
-FORCE_CPU = 0
 TILE_CEILING = 16384
+include '..\common\vulkan_routes.inc'
 public mainCRTStartup
 iterate function,GetModuleHandleW,GetCommandLineW,OutputDebugStringW,ExitProcess,CreateFileW,WriteFile,CloseHandle,VirtualAlloc,VirtualFree, \
 	RegisterClassExW,CreateWindowExW,DefWindowProcW,DestroyWindow,ShowWindow,UpdateWindow,GetMessageW,TranslateMessage,DispatchMessageW, \
@@ -40,8 +40,6 @@ iterate function,GetLargePageMinimum,GetLastError,SetLastError,OpenProcessToken,
 	extrn function:qword
 end iterate
 include '..\common\cpu_arena.inc'
-GPU_MEMORY_POOLS := 1
-GPU_RETIREMENT := 1
 include 'features.inc'
 GPU_WSI := 1
 include '..\common\vulkan_wsi.inc'
