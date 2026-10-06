@@ -1,0 +1,4 @@
+/build
+/tests/vk/.validated
+/vk/*
+!/vk/loader
