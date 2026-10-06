@@ -7,34 +7,12 @@ macro require_vk line&
 end macro
 
 section '.text$gpu' code readable executable align 16
-proc memory_index uses rbx rsi,bits,required
-	mov ebx,ecx
-	lea rsi,[memory_properties2.memoryProperties.memoryTypes]
-	xor eax,eax
-.type:
-	cmp eax,[memory_properties2.memoryProperties.memoryTypeCount]
-	jae .failed
-	bt ebx,eax
-	jnc .next
-	mov ecx,[rsi+VkMemoryType.propertyFlags]
-	and ecx,edx
-	cmp ecx,edx
-	je .done
-.next:
-	inc eax
-	add rsi,sizeof.VkMemoryType
-	jmp .type
-.failed:
-	mov eax,-1
-.done:
-	ret
-endp
+include '..\common\vulkan_memory.inc'
+include '..\common\vulkan_commands.inc'
+section '.text$gpu' code readable executable align 16
 
 proc create_gpu_resources uses rbx
-	require_vk vkCreateCommandPool [device],addr pool_info,0,addr command_pool
-	mov rax,[command_pool]
-	mov [command_allocate.commandPool],rax
-	require_vk vkAllocateCommandBuffers [device],addr command_allocate,addr command_buffer
+	require_vk fastcall create_commands
 	mov eax,[tile_size]
 	mov [image_info.extent.width],eax
 	mov [image_info.extent.height],eax
@@ -145,21 +123,6 @@ proc create_gpu_resources uses rbx
 	vkDestroyShaderModule [device],[fragment_module],0
 	mov [fragment_module],0
 .completion:
-	test [active_caps],CAP_TIMELINE
-	jz .fence
-	require_vk vkCreateSemaphore [device],addr semaphore_info,0,addr timeline_semaphore
-	mov rax,[timeline_semaphore]
-	mov [signal_info.semaphore],rax
-	mov [submit1.signalSemaphoreCount],1
-	lea rax,[timeline_submit]
-	mov [submit1.pNext],rax
-	mov [submit2.signalSemaphoreInfoCount],1
-	jmp .ready
-.fence:
-	require_vk vkCreateFence [device],addr fence_info,0,addr completion_fence
-.ready:
-	mov rax,[command_buffer]
-	mov [command_submit.commandBuffer],rax
 	mov eax,1
 	ret
 .failed:
@@ -285,8 +248,7 @@ proc render_gpu uses rbx rsi rdi
 	movss [rdx],xmm0
 	cvtsi2ss xmm0,dword [tile_y]
 	movss [rdx+4],xmm0
-	require_vk vkResetCommandBuffer [command_buffer],0
-	require_vk vkBeginCommandBuffer [command_buffer],addr command_begin
+	require_vk fastcall begin_commands
 	fastcall image_barrier,0
 	test [active_caps],CAP_RENDER
 	jz .renderpass
@@ -322,29 +284,7 @@ proc render_gpu uses rbx rsi rdi
 .host1:
 	vkCmdPipelineBarrier [command_buffer],VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,addr host_barrier1,0,0,0,0
 .end:
-	require_vk vkEndCommandBuffer [command_buffer]
-	test [active_caps],CAP_TIMELINE
-	jz .reset_fence
-	inc [completion_value]
-	mov rax,[completion_value]
-	mov [signal_info.value],rax
-	jmp .submit
-.reset_fence:
-	require_vk vkResetFences [device],1,addr completion_fence
-.submit:
-	test [active_caps],CAP_SYNC
-	jz .submit1
-	require_vk vkQueueSubmit2 [queue],1,addr submit2,[completion_fence]
-	jmp .wait
-.submit1:
-	require_vk vkQueueSubmit [queue],1,addr submit1,[completion_fence]
-.wait:
-	test [active_caps],CAP_TIMELINE
-	jz .wait_fence
-	require_vk vkWaitSemaphores [device],addr timeline_wait,5000000000
-	jmp .read
-.wait_fence:
-	require_vk vkWaitForFences [device],1,addr completion_fence,VK_TRUE,5000000000
+	require_vk fastcall submit_commands
 .read:
 	cmp [staging_coherent],0
 	jne .rows
@@ -398,14 +338,15 @@ proc destroy_gpu
 		vertex_module,vkDestroyShaderModule,fragment_module,vkDestroyShaderModule, \
 		framebuffer,vkDestroyFramebuffer,render_pass,vkDestroyRenderPass, \
 		image_view,vkDestroyImageView,render_image,vkDestroyImage,staging_buffer,vkDestroyBuffer, \
-		image_memory,vkFreeMemory,staging_memory,vkFreeMemory, \
-		timeline_semaphore,vkDestroySemaphore,completion_fence,vkDestroyFence,command_pool,vkDestroyCommandPool
+		image_memory,vkFreeMemory,staging_memory,vkFreeMemory
+
 		cmp [handle],0
 		je .skip#handle
 		function [device],[handle],0
 		mov [handle],0
 	.skip#handle:
 	end iterate
+	fastcall destroy_commands
 	vkDestroyDevice [device],0
 	mov [device],0
 .instance:
@@ -428,8 +369,6 @@ proc destroy_gpu
 endp
 
 section '.data$gpu' data readable writeable align 16
-command_pool dq 0
-command_buffer dq 0
 render_image dq 0
 image_memory dq 0
 image_view dq 0
@@ -446,9 +385,6 @@ push_origin dq 0
 gpu_precision dd 1
 vertex_module dq 0
 fragment_module dq 0
-timeline_semaphore dq 0
-completion_fence dq 0
-completion_value dq 0
 gpu_error dd 0
 staging_coherent dd 0
 tile_x dd 0
@@ -461,9 +397,6 @@ legacy_dst_stage dd 0
 align 8
 push_data:
 	rb 48
-pool_info VkCommandPoolCreateInfo sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,flags: VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
-command_allocate VkCommandBufferAllocateInfo sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,level: VK_COMMAND_BUFFER_LEVEL_PRIMARY,commandBufferCount: 1
-command_begin VkCommandBufferBeginInfo sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,flags: VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
 image_info VkImageCreateInfo sType: VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,imageType: VK_IMAGE_TYPE_2D,format: VK_FORMAT_B8G8R8A8_UNORM, \
 	extent: <depth: 1>,mipLevels: 1,arrayLayers: 1,samples: VK_SAMPLE_COUNT_1_BIT,tiling: VK_IMAGE_TILING_OPTIMAL,usage: VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT or VK_IMAGE_USAGE_TRANSFER_SRC_BIT
 image_view_info VkImageViewCreateInfo sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,viewType: VK_IMAGE_VIEW_TYPE_2D,format: VK_FORMAT_B8G8R8A8_UNORM, \
@@ -501,15 +434,6 @@ pipeline_rendering VkPipelineRenderingCreateInfo sType: VK_STRUCTURE_TYPE_PIPELI
 pipeline_info VkGraphicsPipelineCreateInfo sType: VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,stageCount: 2,pStages: shader_stages, \
 	pVertexInputState: vertex_input,pInputAssemblyState: input_assembly,pViewportState: viewport_state,pRasterizationState: raster_state, \
 	pMultisampleState: multisample_state,pColorBlendState: blend_state,pDynamicState: dynamic_state,basePipelineIndex: -1
-semaphore_type VkSemaphoreTypeCreateInfo sType: VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,semaphoreType: VK_SEMAPHORE_TYPE_TIMELINE
-semaphore_info VkSemaphoreCreateInfo sType: VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,pNext: semaphore_type
-fence_info VkFenceCreateInfo sType: VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
-signal_info VkSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,stageMask: VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
-command_submit VkCommandBufferSubmitInfo sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO
-submit2 VkSubmitInfo2 sType: VK_STRUCTURE_TYPE_SUBMIT_INFO_2,commandBufferInfoCount: 1,pCommandBufferInfos: command_submit,pSignalSemaphoreInfos: signal_info
-timeline_submit VkTimelineSemaphoreSubmitInfo sType: VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,signalSemaphoreValueCount: 1,pSignalSemaphoreValues: completion_value
-submit1 VkSubmitInfo sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,commandBufferCount: 1,pCommandBuffers: command_buffer,pSignalSemaphores: timeline_semaphore
-timeline_wait VkSemaphoreWaitInfo sType: VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,semaphoreCount: 1,pSemaphores: timeline_semaphore,pValues: completion_value
 viewport VkViewport minDepth: 0.0,maxDepth: 1.0
 scissor VkRect2D
 render_attachment VkRenderingAttachmentInfo sType: VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,imageLayout: VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,loadOp: VK_ATTACHMENT_LOAD_OP_DONT_CARE,storeOp: VK_ATTACHMENT_STORE_OP_STORE

@@ -4,7 +4,8 @@ This is a minimal Windows x64 repository for projecting the Vulkan registry
 into fasmg/fasm2 includes and demonstrating how to bind the resulting functions.
 It contains the projection generator, ABI verification, five loader strategies
 demonstrated by six console programs, three debug-utils examples, and three
-fractal explorer GUI profiles demonstrating graceful fallback, with focused tests.
+fractal explorer GUI profiles demonstrating graceful fallback, and a GPU-only
+port of the NoGraphicsAPI textured cube, with focused tests.
 
 ## Requirements
 
@@ -15,6 +16,9 @@ fractal explorer GUI profiles demonstrating graceful fallback, with focused test
 - A Vulkan 1.1 capable driver for running the loader examples, including
   `VK_KHR_surface` and, except for the IAT example, `VK_EXT_debug_utils`.
 - The Vulkan SDK's `glslangValidator` and `spirv-val` for the explorer shaders.
+- For the cube, a recent SDK with descriptor-heap/address-command registry
+  entries and bundled Slang supporting `spvDescriptorHeapEXT` (tested with
+  SDK 1.4.363.0). Running the cube's fallback paths needs a Vulkan 1.1 GPU.
 - The Vulkan SDK's Khronos validation layer for `check-debug`, `check-legacy`,
   and `check`. The explorer's software profile needs no Vulkan runtime to run.
 
@@ -44,7 +48,11 @@ rem Build and check the three fractal explorer profiles:
 build.cmd legacy
 rem Repeat explorer checks with core and synchronization validation:
 build.cmd check-legacy
-rem Run all projection, loader, debug, and explorer checks:
+rem Build and check the GPU-only textured cube and fallback routes:
+build.cmd noAPI_cube
+rem Repeat cube checks with core and synchronization validation:
+build.cmd check-noAPI_cube
+rem Run all projection, loader, debug, explorer, and cube checks:
 build.cmd check
 rem Run just the projection and loader checks:
 build.cmd check-api
@@ -75,6 +83,13 @@ The [legacy examples](examples/legacy/README.md) compare full images across
 modern, compatibility, KHR, and API 1.2 routes; exercise GUI resizing, footer
 layout, and GPU float64/CPU precision recovery; and run with an unavailable
 driver and synchronization validation.
+The [NoGraphicsAPI cube](examples/noAPI_cube/README.md) compares GPU pointer,
+binding, command, depth, and color-format fallbacks; checks animation, controls,
+and resizes; and reports an explicit error when a GPU is unavailable. It renders
+directly into a Vulkan swapchain, including during window movement, and checks
+modern/compatibility presentation through 4K without CPU image readback.
+It also checks a configurable large-page startup arena, pooled GPU allocations,
+deferred range reuse, and graphics/presentation retirement.
 
 ## Repository layout
 
@@ -84,8 +99,10 @@ vk/loader/             handwritten IAT, delay, static, dynamic, COMDAT loaders
 examples/loaders/      six builds of one instance/device program; stdout helper
 examples/debug/        lifecycle, severity/output routing, object names/tags/labels
 examples/legacy/       fractal explorer: adaptive, compatibility/tiled, software
+examples/noAPI_cube/   GPU-only textured cube with negotiated Vulkan fallbacks
+examples/common/       shared Vulkan context, memory, commands, WSI, math, export
 examples/strings.inc   pooled UTF-8/UTF-16 literals for the examples
-tests/                 projection/loader/debug/explorer checks and native probes
+tests/                 projection/loader/debug/explorer/cube checks and native probes
 macro/struct.inc       fasm2 struct macro with escaped-member alignment fix
 newcoff.inc            common AMD64 NEWCOFF and procedure setup
 docs/                  projection format, loader contracts, fallback design

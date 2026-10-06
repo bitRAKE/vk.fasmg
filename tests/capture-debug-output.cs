@@ -55,11 +55,37 @@ namespace VkFasmgTests {
             byte[] buffer, UIntPtr count, out UIntPtr read);
         [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
         [DllImport("kernel32.dll")] static extern bool TerminateProcess(IntPtr process, uint code);
+        [StructLayout(LayoutKind.Sequential)] struct Luid { public uint low; public int high; }
+        [StructLayout(LayoutKind.Sequential)] struct TokenPrivileges { public uint count; public Luid luid; public uint attributes; }
+        [DllImport("advapi32.dll", SetLastError=true)] static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+        [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool LookupPrivilegeValueW(string system, string name, out Luid luid);
+        [DllImport("advapi32.dll", SetLastError=true)] static extern bool AdjustTokenPrivileges(IntPtr token, bool disableAll, ref TokenPrivileges privileges, uint size, IntPtr previous, IntPtr returned);
+
+        static void RemoveLargePagePrivilege(IntPtr process) {
+            IntPtr token;
+            if (!OpenProcessToken(process,0x28,out token)) throw new Win32Exception(Marshal.GetLastWin32Error());
+            try {
+                var privileges = new TokenPrivileges();
+                privileges.count = 1;
+                privileges.attributes = 4; // SE_PRIVILEGE_REMOVED: only this disposable child's token.
+                if (!LookupPrivilegeValueW(null,"SeLockMemoryPrivilege",out privileges.luid) ||
+                    !AdjustTokenPrivileges(token,false,ref privileges,0,IntPtr.Zero,IntPtr.Zero))
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                int error = Marshal.GetLastWin32Error();
+                if (error != 0 && error != 1300) throw new Win32Exception(error); // Already absent is fine.
+            } finally { CloseHandle(token); }
+        }
 
         public static string Run(string executable, string directory) {
             return Run(executable, directory, "");
         }
         public static string Run(string executable, string directory, string arguments) {
+            return RunCore(executable,directory,arguments,false);
+        }
+        public static string RunWithoutLargePagesPrivilege(string executable, string directory, string arguments) {
+            return RunCore(executable,directory,arguments,true);
+        }
+        static string RunCore(string executable, string directory, string arguments, bool removeLargePagePrivilege) {
             if (IntPtr.Size != 8) throw new InvalidOperationException("Use x64 PowerShell.");
             var startup = new StartupInfo();
             startup.cb = Marshal.SizeOf(typeof(StartupInfo));
@@ -94,6 +120,7 @@ namespace VkFasmgTests {
                     pending = true;
                     uint status = 0x00010002; // DBG_CONTINUE.
                     if (current.code == 3 || current.code == 6) { // CREATE_PROCESS / LOAD_DLL.
+                        if (current.code == 3 && removeLargePagePrivilege) RemoveLargePagePrivilege(process.process);
                         if (current.dataPointer != IntPtr.Zero) CloseHandle(current.dataPointer);
                     } else if (current.code == 8) { // OUTPUT_DEBUG_STRING_EVENT.
                         // nDebugStringLength is a byte count for both formats.

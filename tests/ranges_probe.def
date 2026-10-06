@@ -1,0 +1,8 @@
+LIBRARY vk_ranges_test
+EXPORTS
+    range_test_create
+    range_test_allocate
+    range_test_offset
+    range_test_free
+    range_test_destroy
+    range_test_capacity

@@ -31,15 +31,22 @@ DEBUG_BODY = examples\debug\context.inc examples\debug\sink.inc $(EXAMPLE_STRING
 DEBUG_EXAMPLES = $(BUILD)\debug_lifecycle.exe $(BUILD)\debug_outputs.exe $(BUILD)\debug_objects.exe
 DEBUG_SINK_PROBE = $(BUILD)\debug_sink_probe.exe
 LEGACY_BODY = examples\legacy\explorer.inc examples\legacy\capabilities.inc examples\legacy\gpu.inc examples\legacy\cpu.inc examples\debug\sink.inc $(EXAMPLE_STRINGS) $(OBJECT_BASE) vk\loader\static.inc vk\loader\lazy.inc $(VK_VALIDATED) $(BUILD_READY)
+SHARED_EXAMPLE_BODY = examples\common\vulkan_context.inc examples\common\vulkan_memory.inc examples\common\vulkan_commands.inc examples\common\bitmap.inc
+LEGACY_BODY = $(LEGACY_BODY) $(SHARED_EXAMPLE_BODY)
 LEGACY_SHADERS = $(BUILD)\legacy_fullscreen.spv $(BUILD)\legacy_fractal.spv $(BUILD)\legacy_fractal64.spv
 LEGACY_EXAMPLES = $(BUILD)\legacy_adaptive.exe $(BUILD)\legacy_compatibility.exe $(BUILD)\legacy_software.exe
 LINK_LEGACY = link /NOLOGO /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup /NODEFAULTLIB /OPT:REF /OPT:ICF /MAP:$(@R).map /OUT:$@ $** kernel32.lib user32.lib gdi32.lib comdlg32.lib shlwapi.lib
+CUBE_BODY = examples\noAPI_cube\features.inc examples\noAPI_cube\scene.inc examples\noAPI_cube\gpu.inc examples\noAPI_cube\target.inc examples\noAPI_cube\capture.inc examples\noAPI_cube\present_test.inc examples\noAPI_cube\material.inc examples\noAPI_cube\pipeline.inc examples\common\vulkan_wsi.inc examples\common\math3d.inc examples\common\vulkan_barriers.inc examples\common\command_options.inc $(SHARED_EXAMPLE_BODY) $(DEBUG_BODY)
+CUBE_SHADERS = $(BUILD)\noAPI_cube_bindings.spv $(BUILD)\noAPI_cube_pointer.spv $(BUILD)\noAPI_cube_fragment.spv $(BUILD)\noAPI_cube_heap_vertex.spv $(BUILD)\noAPI_cube_heap_fragment.spv
+CUBE_EXAMPLE = $(BUILD)\noAPI_cube.exe
+RANGE_PROBE = $(BUILD)\vk_ranges_test.dll
+CUBE_BODY = $(CUBE_BODY) examples\noAPI_cube\memory_test.inc examples\common\cpu_arena.inc examples\common\range_allocator.inc examples\common\vulkan_pools.inc examples\common\vulkan_retirement.inc examples\common\vulkan_wsi_retirement.inc
 
 VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
 VULKAN_DELAY_OBJ = $(BUILD)\vk_delay.obj
 
-all: $(LOADER_EXAMPLES) $(DEBUG_EXAMPLES) $(LEGACY_EXAMPLES)
+all: $(LOADER_EXAMPLES) $(DEBUG_EXAMPLES) $(LEGACY_EXAMPLES) $(CUBE_EXAMPLE)
 
 $(BUILD_READY):
 	if not exist "$(BUILD)" mkdir "$(BUILD)"
@@ -189,7 +196,45 @@ legacy: $(LEGACY_EXAMPLES)
 check-legacy: $(LEGACY_EXAMPLES)
 	$(POWERSHELL) -File tests\verify-legacy-examples.ps1 -BuildDir "$(BUILD)" -Validation
 
-check: check-api check-debug check-legacy
+$(BUILD)\noAPI_cube_bindings.spv: examples\noAPI_cube\cube.vert $(BUILD_READY)
+	"$(VULKAN_SDK)\Bin\glslangValidator.exe" -V --target-env vulkan1.0 -DPOINTER_VERTICES=0 -o $@ examples\noAPI_cube\cube.vert
+	"$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.0 $@
+
+$(BUILD)\noAPI_cube_pointer.spv: examples\noAPI_cube\cube.vert $(BUILD_READY)
+	"$(VULKAN_SDK)\Bin\glslangValidator.exe" -V --target-env vulkan1.2 -DPOINTER_VERTICES=1 -o $@ examples\noAPI_cube\cube.vert
+	"$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.2 $@
+
+$(BUILD)\noAPI_cube_fragment.spv: examples\noAPI_cube\cube.frag $(BUILD_READY)
+	"$(VULKAN_SDK)\Bin\glslangValidator.exe" -V --target-env vulkan1.0 -o $@ examples\noAPI_cube\cube.frag
+	"$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.0 $@
+
+$(BUILD)\noAPI_cube_heap_vertex.spv: examples\noAPI_cube\cube.slang $(BUILD_READY)
+	"$(VULKAN_SDK)\Bin\slangc.exe" examples\noAPI_cube\cube.slang -target spirv -profile spirv_1_5 -emit-spirv-directly -fvk-use-entrypoint-name -fvk-use-c-layout -matrix-layout-row-major -capability spvDescriptorHeapEXT -entry vertexMain -stage vertex -o $@
+	"$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.4 --scalar-block-layout $@
+
+$(BUILD)\noAPI_cube_heap_fragment.spv: examples\noAPI_cube\cube.slang $(BUILD_READY)
+	"$(VULKAN_SDK)\Bin\slangc.exe" examples\noAPI_cube\cube.slang -target spirv -profile spirv_1_5 -emit-spirv-directly -fvk-use-entrypoint-name -fvk-use-c-layout -matrix-layout-row-major -capability spvDescriptorHeapEXT -entry fragmentMain -stage fragment -o $@
+	"$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.4 --scalar-block-layout $@
+
+$(BUILD)\noAPI_cube.obj: examples\noAPI_cube\cube.asm examples\noAPI_cube\lunarg_logo_256x256.rgba8 $(CUBE_BODY) $(CUBE_SHADERS)
+	$(ASSEMBLE) -Source examples\noAPI_cube\cube.asm -Output $@
+
+$(CUBE_EXAMPLE): $(BUILD)\noAPI_cube.obj $(DEBUG_LOGGER_OBJ)
+	link /NOLOGO /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup /NODEFAULTLIB /OPT:REF /OPT:ICF /MAP:$(@R).map /OUT:$@ $** kernel32.lib user32.lib comdlg32.lib shell32.lib advapi32.lib
+
+noAPI_cube: $(CUBE_EXAMPLE)
+	$(POWERSHELL) -File tests\verify-noAPI-cube.ps1 -BuildDir "$(BUILD)"
+
+$(BUILD)\ranges_probe.obj: tests\ranges_probe.asm examples\common\cpu_arena.inc examples\common\range_allocator.inc $(EXAMPLE_STRINGS) $(OBJECT_BASE) $(BUILD_READY)
+	$(ASSEMBLE) -Source tests\ranges_probe.asm -Output $@
+
+$(RANGE_PROBE): $(BUILD)\ranges_probe.obj tests\ranges_probe.def
+	link /NOLOGO /DLL /NOENTRY /NODEFAULTLIB /OUT:$@ /IMPLIB:$(BUILD)\vk_ranges_test.lib /DEF:tests\ranges_probe.def $(BUILD)\ranges_probe.obj kernel32.lib advapi32.lib
+
+check-noAPI_cube: $(CUBE_EXAMPLE) $(RANGE_PROBE)
+	$(POWERSHELL) -File tests\verify-noAPI-cube.ps1 -BuildDir "$(BUILD)" -Validation
+
+check: check-api check-debug check-legacy check-noAPI_cube
 
 # Generated includes and manifests survive clean; the next build reuses them.
 clean:
