@@ -521,7 +521,8 @@ void direct()
 
     // What last tick did to the ship. A hurt costs a life and some rank, and
     // buys a while in which nothing more can hurt.
-    bool hit = playing && game.ship_hits != 0 && (game.hurt_tick == 0 || tick + 1 - game.hurt_tick >= GRACE_TICKS);
+    // (Nothing hurts a ghost: a level is looked at that way, without being survived.)
+    bool hit = playing && game.ship_hits != 0 && (root.flags & ROOT_GHOST) == 0 && (game.hurt_tick == 0 || tick + 1 - game.hurt_tick >= GRACE_TICKS);
     if (hit && game.shield != 0)
     {
         // The shield takes it: no life, no rank, no stop. The grace is the same.

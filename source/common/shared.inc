@@ -114,6 +114,7 @@ shared ROOT_PAUSED,1
 shared ROOT_SCRIPTED,2
 shared ROOT_RELOADED,4			; the tables were laid down again before this frame: what ran by the old ones goes
 shared ROOT_REFUSED,8			; tables were offered that this program cannot take: it says so
+shared ROOT_GHOST,16			; nothing hurts: for looking at what a program does without having to survive it
 
 ; CPU to GPU, every frame, as push constants.
 boundary Root

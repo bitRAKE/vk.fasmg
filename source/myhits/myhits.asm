@@ -23,6 +23,9 @@
 ;	    --record file, --replay file	the same, to or from a file of that name;
 ;					both together, a run played back and kept
 ;					again, with whatever is then played after it
+;	    --self-test --replay file --strip n	that run unseen, but for a picture of it
+;					every n seconds: tools\strip.ps1 makes a
+;					page of them
 ;	build\myhits.exe --self-test	a scripted run of four games, every claim checked
 ;
 ; Its window has no caption. While it plays the pointer is the crosshair and
@@ -759,6 +762,18 @@ proc play_frame uses rbx
 	; (A run being played back may be kept again as it goes.)
 	fastcall record_frame
 	mov dword [root+Root.beat],0
+	; And a strip may be being made of it: then a frame is shown, to be
+	; pictured, each time so much more of the run has gone by, and no other is.
+	cmp [strip_every],0
+	je .open
+	mov [machine_unseen],1
+	mov rax,[ticks_run]
+	cmp rax,[strip_next]
+	jb .open
+	mov [machine_unseen],0
+	mov [strip_now],1
+	mov eax,[strip_every]
+	add [strip_next],rax
 .open:
 	fastcall machine_open
 	cmp eax,1
@@ -801,6 +816,8 @@ proc play_frame uses rbx
 	; And of the fourth: the tables just taken again, which is said along the
 	; top, and nothing left of the three that had come; and the five that
 	; came in their place.
+	cmp [replayed],0
+	jne .strip
 	iterate when, 37,110,165,235,300,320,395,444,468,500,555,568,596,625,900,PAUSED_FRAME, \
 		1011,1056,1066,1082,1091,1136,1176,1290,1313
 		cmp dword [root+Root.frame],when
@@ -808,6 +825,20 @@ proc play_frame uses rbx
 		fastcall snapshot_take,when
 	.no_#when:
 	end iterate
+.strip:
+	; A run being played back for a strip: this is one of its pictures.
+	cmp [strip_now],0
+	je .unpictured
+	mov [strip_now],0
+	fastcall snapshot_take,[strip_index]
+	; Its line is written when its own events are in hand: how the run
+	; stood in the picture, and not a frame before it.
+	mov eax,[root+Root.frame]
+	inc eax
+	mov [strip_frame],eax
+	mov eax,dword [ticks_run]
+	mov [strip_ticks],eax
+.unpictured:
 	fastcall machine_close
 	ret
 .skipped:
@@ -872,6 +903,7 @@ proc consume_events uses rbx rsi rdi,events
 	jbe .counted
 	mov [worst_latency],eax
 .counted:
+	fastcall strip_line,rsi
 	; What the frame came to: kept, in a run that is being kept; and held to
 	; its record, in a run that is being played back.
 	fastcall record_came,rsi,[rbx+Events.debug+12]
@@ -2150,10 +2182,34 @@ endp
 ; frame as the record has it, until the record is over. What it comes to is
 ; one number, made of every frame's sum of the world; the proof runner holds
 ; it to the scripted run's own.
+; A line for a picture of the strip, from the events of the frame that was
+; pictured (ECX which frame these are): which picture it is, how far into
+; the run, and how the run stood: its score, the squads begun, the lives,
+; what is alive.
+proc strip_line frame
+	inc ecx
+	cmp ecx,[strip_frame]
+	jne .done
+	mov [strip_frame],0
+	cmp [strip_file],0
+	je .counted
+	fastcall wsprintfW,addr title_text,<W,'%u %u %u %u %u %u',13,10>,[strip_index],[strip_ticks],[last_score],[last_wave],[last_lives],[last_alive]
+	lea r8d,[eax*2]
+	fastcall file_more,[strip_file],addr title_text,r8
+.counted:
+	inc [strip_index]
+.done:
+	ret
+endp
+
 proc replayed_run
 	; Nobody is watching: its frames are run and not shown, which is as
 	; quick as the device is, and not as slow as a monitor.
 	mov [machine_unseen],1
+	cmp [strip_every],0
+	je .frame
+	fastcall file_begin,<W,'build\myhits_game.strip.txt'>
+	mov [strip_file],rax
 .frame:
 	fastcall play_frame
 	cmp eax,3
@@ -2167,6 +2223,8 @@ proc replayed_run
 	jnz .report
 	mov [app_io_failed],1
 .report:
+	fastcall file_done,[strip_file]
+	mov [strip_file],0
 	fastcall wsprintfW,addr report_text,<W,'proof=game_replay',13,10,'failure=%u',13,10,'frames=%u',13,10,'events=%u',13,10,'frames_sum=%08X',13,10, \
 		'replay_left=%u',13,10,'replay_held=%u',13,10,'ticks=%u',13,10,'score=%u',13,10,'kills=%u',13,10,'squads=%u',13,10,'lives=%u',13,10,'state=%u',13,10, \
 		'caps=%u',13,10,'required=%u',13,10,'gpu_error=%d',13,10,'failure_stage=%u',13,10>, \
@@ -2366,6 +2424,14 @@ proc mainCRTStartup
 	fastcall run_file_name,<W,'--record'>
 	fastcall record_start,addr run_path
 .played_back:
+	; A picture of it every so many seconds, if a strip is being made.
+	fastcall command_number,<W,'--strip'>
+	imul eax,eax,TICK_RATE
+	mov [strip_every],eax
+	test eax,eax
+	jz .unpictured
+	fastcall snapshot_start
+.unpictured:
 	fastcall replayed_run
 	jmp .finish
 .scripted:
@@ -2533,12 +2599,14 @@ iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,l
 	fired_mark,nova_frame,nova_score,nova_kills,score_before,kills_before,struck_mark,last_music_faults, \
 	start_whole,last_counts,stage_ship_y,stage_phase,stage_round,stage_followed,stage_hurts,stage_recoiled,room_occupied,room_refused, \
 	sum_first,sum_second,sum_third,sum_fourth,stage_score,stage_kills,stage_rank, \
-	replaying,replayed,replay_left,replay_held,frames_sum,run_at,run_end,watching,watch_result,reload_owed,reloads_taken,reloads_refused,reload_bytes,reload_dispatches,home_groups,bank_groups,fit_expected,sum_at_start,bank_at_start,music_at_start, \
+	strip_every,strip_now,strip_index,strip_frame,strip_ticks,replaying,replayed,replay_left,replay_held,frames_sum,run_at,run_end,watching,watch_result,reload_owed,reloads_taken,reloads_refused,reload_bytes,reload_dispatches,home_groups,bank_groups,fit_expected,sum_at_start,bank_at_start,music_at_start, \
 	lock_x,lock_y,fire_x,fire_y
 	name dd 0
 end iterate
 
 run_file dq 0				; the record being written, if one is
+strip_file dq 0				; the lines that go with a strip's pictures
+strip_next dq 0				; the tick the next of them is due at
 run_head dd 'MRUN',RUN_VERSION,TABLE_PRINT,TICK_RATE
 run_mark dd RUN_IMAGE,0
 run_came dd RUN_CAME,0,0,0

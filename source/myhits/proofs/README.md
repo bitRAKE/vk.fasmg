@@ -532,6 +532,10 @@ build\myhits.exe --replay
 rem The same, to and from a file of your choosing:
 build\myhits.exe --record build\good.run
 build\myhits.exe --replay build\good.run
+rem A run on a page: the level as a ghost meets it, or a run that was kept:
+powershell -File source\myhits\tools\strip.ps1
+powershell -File source\myhits\tools\strip.ps1 -Run build\good.run -Every 4
+build\myhits_strip.png
 rem The scripted run as it sounded, and how loud everything in it is:
 build\myhits_run.wav
 build\myhits_checks\default\game\run.md
@@ -707,9 +711,10 @@ short fourth, like the first, for the tables to be changed under.
 | 32 | The tables are taken again while the game runs | Images of the tables are offered from files, between frames, as a watched game is offered them. One with the game's names and a few things changed (`07_game\tables_alt.asm`: a first squad of five and not three, a squad more, a shot's sound twice as long) is taken: the frame after says so; the device's own sum of the tables it holds is the file's, and what it makes of how many lines each table has is the file's too; the bank is another bank, in which the music is sample for sample what it was, further in; and the music is playing from there. One with a kind the game was not built with (`07_game\tables_bad.asm`) is refused, which is said, and nothing changes. The game's own, by the watcher: the device holds it and the bank is to the bit the bank made at start. The watcher again: the file is as it was and is not looked into. The game's own outright: no change. All of that is in the first game's first frames, before anything has come, and the three games after it sum to what they always did. The fourth game is where there is something to let go of. The changed image is taken in the very tick the first squad is due: the squad loses none to that. With two of its five out, the game's own: within the frame the two are gone and the squad has begun again, as three. With those three out and their squad done, the changed image again: the three are gone, the squad has begun again, and five come. Before the run, images spoiled five ways are each told for what they are: not an image, tables that do not come to what it says, a file shorter than it says, other names, too large. And a whole image of the game's names is still refused if anything in it points outside it: the game's own does not, and eight spoiled ones do, by a kind whose moves begin past the last, a picture that is none, a squad of no kind, a move that goes back past the first, a move that fires no kind, a sound that does not begin where the ones before it end, moves that do not end as a program ends, and a table gone altogether. And on the pictures: the frame after a taking has words along its top, and a frame long before has none |
 | 33 | The run can be listened to, and nothing in it is out of line | Held by the proof runner. The scripted run keeps what every frame asked of the voices and of the music, and writes out the sounds as the device rendered them. [mix.cs](../tools/mix.cs) plays the first three games back into `build\myhits_run.wav` the way `audio.inc` would: sixteen voices in turn, a sound's level by how many asked, its place by where it happened, its pitch a little off, the stems coming and going with how much is happening. Every sound the run asked for is in what was kept; the mix's level is between 40 and 6 decibels under all a speaker goes to; fewer than one sample in ten thousand is louder than that, and none by three decibels; and no sound's level is more than twelve decibels from the middle of them. `run.md`, beside the run's pictures, is the table |
 | 34 | A run that was recorded is the same run played back | Held by the proof runner. As the scripted run goes, every frame's ticks, steering, aim, buttons and flags go to a file, and so do the tables it takes on the way, whole, and what each frame came to: 91 KB for 1,330 frames and five takings. The game is then run from that file and not from its script, with no frame of it shown. Every frame comes to what the record says it came to; and all of them, folded into one number, to what the scripted run's did. Then a run somebody played, [played.run](07_game/played.run): 68 seconds, 11,072 frames of no ticks, one, two and three as a clock had it. It was kept before records said what their frames came to, so it is played back once and kept again as it goes, and that record is played back and held to itself: every frame, and the same number |
+| 35 | A run can be read on a page, and a level looked at without being survived | Held by the proof runner, with [strip.ps1](../tools/strip.ps1). The scripted run's record is played back unseen but for a picture every ten seconds, and the pictures are laid side by side with how the run stood in each: there are nine, each of the tick asked for; two of them, ten and forty seconds in, are not alike; and the run comes to what it did, pictured or not. Then two runs the tool makes itself, of a ship that does nothing for forty seconds: a ghost, which nothing hurts, still has its three lives, and a ship that can be hurt has not. `strip.png`, `ghost.png` and `mortal.png` are beside the run's pictures |
 
 Last result here, GTX 1080 Ti, default and validation alike: all
-thirty-four hold. A tick costs the device 62 microseconds: 15 for the director, 8 for
+thirty-five hold. A tick costs the device 62 microseconds: 15 for the director, 8 for
 the bodies, 31 for the shots, 4 for the struck, 4 for the particles. A
 picture, at the unseen window's 960 by 540, costs 103, nearly all of it the
 backdrop. (Of a device left idle. One just played on is a third quicker in
@@ -754,6 +759,18 @@ drawing changes nothing that is simulated. The played run, 68 seconds of
 play, takes under two. The machine has the frame for it now
 (`machine_unseen`), and it is what getting to the middle of a level, or of
 a bug, will cost.
+
+**Claim 35's checks bite.** A ghost that can be hurt has no lives left after
+forty seconds; a picture taken half as often makes a page of five.
+
+**Finding: the level is thirty-two seconds long.** The first page the tool
+made was of a ghost that does nothing: swoopers at four seconds, weavers at
+eight, the worm at twelve, turrets at twenty, divers at twenty-four, and at
+thirty-two the dragon, which holds the level until it is dead and so, for a
+ghost, for ever. The second was of the run that is kept here, by someone
+who can play: the same table, dragon and all, cleared in the same
+thirty-two seconds, twice round in a minute, three lives from first to
+last. Both were known as numbers. Neither had been seen.
 
 **What 34 cannot hold.** That a record is what a hand did: it is what the
 device was given, which is the same thing only by the way the record is

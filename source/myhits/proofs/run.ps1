@@ -360,7 +360,40 @@ try {
                 $kept += ' the played run that is kept is of other names than the game now has, and was not played back;'
             }
         }
-        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through four games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; the run as it sounded is $BuildDir\myhits_run.wav, $($mix.seconds) seconds at $($mix.level) dB, its peak $($mix.peak) dB with $($mix.clipped) samples cut off, and $($mix.furthest) the sound furthest from the rest, by $($mix.apart) dB; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks and bursts where it locked, is dodged by moving and not stopped by killing; the window pauses, moves, takes its monitor and is remembered; nothing alive is written over, and what there is no room for is refused; its tables are taken again from a file as it runs ($($state.reload_bytes) bytes in five takings), and refused when their names are not its own; two runs sum to the same ($gameSums);$kept $costs; {9} passes and {10} draws a frame" -f `
+        # 35: a run can be read on a page, and a level looked at without being survived. The strip
+        # tool plays the scripted run's record back unseen but for a picture every ten seconds, and
+        # lays the pictures side by side: there are nine, at the times asked; they are pictures, and
+        # not one picture nine times; and the run comes to what it did, pictured or not. Then two
+        # runs the tool makes itself, of a ship that does nothing for forty seconds: a ghost, which
+        # nothing hurts, still has its three lives; a ship that can be hurt has lost some.
+        $read = ''
+        if ($mode -eq 'default') {
+            $tool = Join-Path $PSScriptRoot '..\tools\strip.ps1'
+            $page = Join-Path $logRoot 'strip.png'
+            $lines = Join-Path $BuildDir 'myhits_game.strip.txt'
+            & $tool -Run (Join-Path $BuildDir 'myhits_game.run') -Every 10 -Out $page -BuildDir $BuildDir 6>$null
+            $pictures = @([IO.File]::ReadAllLines((Resolve-Path -LiteralPath $lines).Path, [Text.Encoding]::Unicode) | Where-Object { $_ })
+            $pictured = Read-State (Join-Path $BuildDir 'myhits_game.report.txt')
+            Assert-True ($pictures.Count -eq 9) "game check 35 failed: a picture every ten seconds of the run is nine pictures, and there are $($pictures.Count)"
+            foreach ($index in 1..8) { Assert-True ([int]($pictures[$index] -split ' ')[1] -eq 1200 * $index) "game check 35 failed: picture $index is of tick $(($pictures[$index] -split ' ')[1]), not $(1200 * $index)" }
+            Assert-True ($pictured.frames_sum -eq $state.frames_sum) "game check 35 failed: pictured, the run came to $($pictured.frames_sum) and not $($state.frames_sum)"
+            $bitmap = New-Object System.Drawing.Bitmap $page
+            Assert-True ($bitmap.Width -eq 2880 -and $bitmap.Height -eq 584) "game check 35 failed: the page is $($bitmap.Width) by $($bitmap.Height)"
+            # The second picture and the fifth, at the same places in each: a page of one picture would have them alike.
+            $unlike = 0
+            foreach ($y in 60, 120, 180, 240) { foreach ($x in 40, 120, 200, 280, 360, 440) { if ($bitmap.GetPixel(480 + $x, 22 + $y).ToArgb() -ne $bitmap.GetPixel(4 * 480 + $x, 22 + $y).ToArgb()) { ++$unlike } } }
+            $bitmap.Dispose()
+            Assert-True ($unlike -ge 6) "game check 35 failed: two pictures of the page ten and forty seconds into the run differ in only $unlike of 24 places"
+            $lives = @{}
+            foreach ($sort in 'ghost', 'mortal') {
+                & $tool -Seconds 40 -Every 20 -Mortal:($sort -eq 'mortal') -Out (Join-Path $logRoot "$sort.png") -BuildDir $BuildDir 6>$null
+                $last = @([IO.File]::ReadAllLines((Resolve-Path -LiteralPath $lines).Path, [Text.Encoding]::Unicode) | Where-Object { $_ })[-1] -split ' '
+                $lives[$sort] = [int]$last[4]
+            }
+            Assert-True ($lives.ghost -eq 3 -and $lives.mortal -lt 3) "game check 35 failed: after forty seconds of doing nothing a ghost has $($lives.ghost) lives and a ship that can be hurt has $($lives.mortal)"
+            $read = " a run is read on a page of nine pictures, and comes to the same pictured; a ghost keeps its three lives where a ship keeps $($lives.mortal);"
+        }
+        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through four games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; the run as it sounded is $BuildDir\myhits_run.wav, $($mix.seconds) seconds at $($mix.level) dB, its peak $($mix.peak) dB with $($mix.clipped) samples cut off, and $($mix.furthest) the sound furthest from the rest, by $($mix.apart) dB; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks and bursts where it locked, is dodged by moving and not stopped by killing; the window pauses, moves, takes its monitor and is remembered; nothing alive is written over, and what there is no room for is refused; its tables are taken again from a file as it runs ($($state.reload_bytes) bytes in five takings), and refused when their names are not its own; two runs sum to the same ($gameSums);$kept$read $costs; {9} passes and {10} draws a frame" -f `
             $frames, $state.ticks_a_frame, ([int]$state.kinds - 1), $state.moves, $state.squads, [int]([int]$state.world_bytes / 1024), $state.head_died_frame, $state.hurts_heard, $voices,
             ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
     }

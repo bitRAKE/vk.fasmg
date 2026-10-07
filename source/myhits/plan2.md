@@ -49,12 +49,15 @@ is now the first rule of every choreography here.
 - The game runs: squads from a table, chains, a boss the level waits for,
   rank that reads the shooting, bonuses, a companion in three stages, a
   backdrop that is the level's, music that listens; and now charge, a dash,
-  the near miss, and the first choreographed attack. Thirty-four numbered
+  the near miss, and the first choreographed attack. Thirty-five numbered
   claims hold on a scripted run of four games, under validation too.
 - Milestone 8, the ground, is built: each of its problems below is done, or
   was measured and found not to need doing. Its list for a hand is untried.
 - Its content is thin: 24 kinds, 6 squads in one loop, 14 sounds, 3 stems of
-  two bars, 4 particle styles, 41 pictures, one place in three inks.
+  two bars, 4 particle styles, 41 pictures, one place in three inks. The
+  strip put a number on thin: the whole table of squads is thirty-two
+  seconds, and someone who can play clears it, dragon and all, in those
+  thirty-two seconds without losing a life.
 - It has never been tuned. The author of its code has not heard it or played
   it.
 - Changing a number in the tables no longer costs a rebuild and a restart:
@@ -97,7 +100,9 @@ is now the first rule of every choreography here.
 - **Reloading the tables.** `--watch`, `build\myhits_tables.bin` and
   `source\myhits\tools\watch.ps1`; `reload.inc` in the layer. Claim 32.
   The first of milestone 9's tools, and the one the others stand on.
-- **Runs kept.** `--record` and `--replay`. Claim 34.
+- **Runs kept.** `--record` and `--replay`, held to the record frame by
+  frame; frames that are run and not shown. Claim 34.
+- **The strip, and the ghost.** A run on a page. Claim 35.
 - **The mix and the loudness report.** The scripted run, as it sounded, in
   `build\myhits_run.wav`, and every sound's level in a table. Claim 33. It
   found the mix a decibel over full scale in five samples.
@@ -397,10 +402,14 @@ level that can slow or stop, carried through.
 | Tab and a click | A kind, by name; one of it where the crosshair is. H hurts it to half, which is how a choreography is rehearsed |
 | The overlay | The squad's name, what is alive, the budget, what was refused; for a marked thing, the time from its tell |
 
-**The strip.** `strip.ps1`, with the game's tools, runs a stage unseen and tiles a picture every
-two seconds into one wide image with the squads' names: a level on a page,
-to be read, compared before and after an edit, and looked at by someone who
-cannot play it.
+**The strip.** Built: `source\myhits\tools\strip.ps1` plays a run back
+unseen but for a picture every few seconds, and tiles the pictures into one
+image with the time, the squad, the score and the lives under each: a level
+on a page, to be read, compared before and after an edit, and looked at by
+someone who cannot play it. With no run given it makes one: a ghost, which
+nothing hurts (`ROOT_GHOST`), doing nothing or firing ahead. With one, it
+is that run on a page. Two minutes of play are a page in four seconds.
+Claim 35.
 
 **Runs kept.** Built: `--record` writes what the device was given in every
 frame, as it is played, the tables taken on the way, and what each frame

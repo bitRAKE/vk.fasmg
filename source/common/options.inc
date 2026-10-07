@@ -7,6 +7,7 @@
 ;					option (begins with no dash): copied to
 ;					`place` with its end, `room` characters at
 ;					most. How many characters, or none
+;	command_number	name		the number after it, in digits; or none
 ;
 ; An argument is the whole of what stands between two spaces: --no-wait does
 ; not ask for --no. A value may be in quotes, and then may have spaces in it.
@@ -129,6 +130,25 @@ proc command_value uses rbx rsi rdi,name,place,room
 	ret
 endp
 
+proc command_number name
+	fastcall command_value,rcx,addr option_text,16
+	test eax,eax
+	jz .done
+	xor eax,eax
+	lea rdx,[option_text]
+.digit:
+	movzx ecx,word [rdx]
+	sub ecx,'0'
+	cmp ecx,9
+	ja .done
+	imul eax,eax,10
+	add eax,ecx
+	add rdx,2
+	jmp .digit
+.done:
+	ret
+endp
+
 ; (Kept for the programs that ask before they look: there is nothing to read
 ; ahead of time and nothing to give back.)
 proc read_options
@@ -138,3 +158,6 @@ endp
 proc free_options
 	ret
 endp
+
+section '.bss$options' readable writeable align 8
+option_text rw 16
