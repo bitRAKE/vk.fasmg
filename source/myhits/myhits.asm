@@ -25,8 +25,8 @@ HOSTILES := 384
 PARTICLES := 16384
 TRAILS := 32
 REQUESTS := 256
-INSTANCES := 160 + BODIES + 4 + 21
-GAME_BYTES := 256
+INSTANCES := 160 + BODIES + 5 + 21 + 5 * 9
+GAME_BYTES := 384
 POOL_BYTES := 8 + STYLE_LIMIT * 4
 WORLD_BYTES := GAME_BYTES + POOL_BYTES + 2 * BODIES * BODY_BYTES + BODIES * 4 + TRAILS * TRAIL_POINTS * 8 + REQUESTS * REQUEST_BYTES + PARTICLES * PARTICLE_BYTES
 TICK_DISPATCHES := 5			; the director, the bodies, the shots, the struck, the particles
@@ -174,7 +174,8 @@ proc play_frame uses rbx
 	; The script, in frames of eight ticks. The first game: up out of the way,
 	; eight shots at nothing, a long wait, down to a turret's row, seven shots
 	; at it; and then nothing, until it is over. The second: up to the worm's
-	; row, and fire at its head as it comes.
+	; row; three frames of fire with RAPID in force, and three with SPREAD
+	; too; and fire at the worm's head as it comes.
 	mov dword [root+Root.move],0
 	mov dword [root+Root.move+4],0
 	mov dword [root+Root.held],0
@@ -188,7 +189,7 @@ proc play_frame uses rbx
 		mov dword [root+Root.move+4],way
 	.still_#from:
 	end iterate
-	iterate <from,to>, 11,16, 290,294, 543,566
+	iterate <from,to>, 11,16, 290,294, 430,432, 442,444, 543,566
 		cmp eax,from
 		jb .quiet_#from
 		cmp eax,to
@@ -226,8 +227,10 @@ proc play_frame uses rbx
 	fastcall draw_world
 	; The scripted run leaves pictures of itself: the swoopers, the weavers,
 	; the worm coming and turning, the turrets with the level stopped, the run
-	; over, and the worm's head under fire.
-	iterate when, 37,110,165,235,300,395,560
+	; over; and of the second game three volleys with RAPID and SPREAD, the
+	; nova going off, the shield about to take a rammer, and the worm's head
+	; under fire.
+	iterate when, 37,110,165,235,300,395,444,468,500,555
 		cmp dword [root+Root.frame],when
 		jne .no_#when
 		fastcall snapshot_take,when
@@ -495,6 +498,104 @@ proc consume_events uses rbx rsi rdi,events
 	jle .ripple
 	fail 9
 .ripple:
+	; 15: a bonus is taken by coming near it, once. The second game is given
+	; one of each in front of the ship: each is in hand, and only one of it, a
+	; few frames after it was set down.
+	at_frame 418,Events.report+16,1,.bonus_wrong
+	at_frame 429,Events.report+8,1,.bonus_wrong
+	at_frame 441,Events.report+12,1,.bonus_wrong
+	at_frame 454,Events.report+24,1,.bonus_wrong
+	at_frame 471,Events.report+20,1,.bonus_wrong
+	jmp .bonus
+.bonus_wrong:
+	fail 15
+.bonus:
+	; 16: the shield takes the next hurt. It is held from frame 418; a rammer
+	; comes along the ship's row; by frame 505 the shield is spent on it, and
+	; no life was.
+	at_frame 418,Events.report+28,1,.shield_wrong
+	at_frame 505,Events.report+32,1,.shield_wrong
+	at_frame 505,Events.report+28,0,.shield_wrong
+	at_frame 505,Events.lives,3,.shield_wrong
+	jmp .shield
+.shield_wrong:
+	fail 16
+.shield:
+	; 17: RAPID halves the wait between shots and SPREAD makes each three.
+	; Three frames of fire are four shots without either; they are eight with
+	; RAPID, and twenty-four with both.
+	mov eax,[rbx+Events.reserved+4]
+	cmp esi,429
+	je .mark
+	cmp esi,441
+	jne .rapid
+.mark:
+	mov [fired_mark],eax
+.rapid:
+	sub eax,[fired_mark]
+	cmp esi,432
+	jne .spread
+	cmp eax,8
+	jne .rate_wrong
+.spread:
+	cmp esi,444
+	jne .rate
+	cmp eax,24
+	je .rate
+.rate_wrong:
+	fail 17
+.rate:
+	; 18: a nova strikes everything at once, and DOUBLE doubles what a kill is
+	; worth. In the frame the nova is taken or the next, the drone set down
+	; for it dies, and whatever swoopers were left; nothing that can be hit is
+	; alive after; and the score has grown by exactly twice their worth at the
+	; rank of the moment.
+	mov eax,[rbx+Events.report+20]
+	cmp [nova_frame],0
+	jne .nova_after
+	test eax,eax
+	jz .nova
+	mov [nova_frame],esi
+	mov eax,[score_before]
+	mov [nova_score],eax
+	mov eax,[kills_before]
+	mov [nova_kills],eax
+	jmp .nova
+.nova_after:
+	mov eax,[nova_frame]
+	inc eax
+	cmp esi,eax
+	jne .nova
+	cmp dword [rbx+Events.reserved+28],0
+	jne .nova_wrong
+	mov ecx,[rbx+Events.reserved+20]
+	sub ecx,[nova_kills]
+	jle .nova_wrong
+	dec ecx					; the swoopers among them
+	movss xmm1,dword [rbx+Events.rank]
+	addss xmm1,[rank_unit]
+	movss xmm0,[worth_swooper]
+	mulss xmm0,xmm1
+	addss xmm0,[rank_round]
+	cvttss2si eax,xmm0
+	imul eax,ecx
+	movss xmm0,[worth_drone]
+	mulss xmm0,xmm1
+	addss xmm0,[rank_round]
+	cvttss2si edx,xmm0
+	add eax,edx
+	shl eax,1
+	mov edx,[rbx+Events.score]
+	sub edx,[nova_score]
+	cmp eax,edx
+	je .nova
+.nova_wrong:
+	fail 18
+.nova:
+	mov eax,[rbx+Events.score]
+	mov [score_before],eax
+	mov eax,[rbx+Events.reserved+20]
+	mov [kills_before],eax
 	; 13: the score the HUD shows chases the real one and never passes it.
 	mov eax,[rbx+Events.report]
 	cmp eax,[rbx+Events.score]
@@ -536,6 +637,9 @@ proc scripted_run uses rbx rsi
 	cmp [head_died],0
 	jne .seen
 .unseen:
+	fail 10
+	cmp [nova_frame],0
+	jne .seen
 	fail 10
 .seen:
 	; 13, in part: by the end the HUD has caught up, and there is a score to show.
@@ -606,11 +710,11 @@ proc scripted_run uses rbx rsi
 	mov [title_rank],eax
 	fastcall wsprintfW,addr report_text,<W,'proof=game',13,10,'failure=%u',13,10,'failure_frame=%u',13,10,'frames=%u',13,10,'events=%u',13,10, \
 		'ticks_a_frame=%u',13,10,'bodies=%u',13,10,'particles=%u',13,10,'kinds=%u',13,10,'moves=%u',13,10,'squads=%u',13,10,'world_bytes=%u',13,10, \
-		'head_died_frame=%u',13,10,'rise_checked=%u',13,10,'falls_checked=%u',13,10,'hurts_heard=%u',13,10,'sounds_asked=%u',13,10,'plays=%u',13,10,'refused=%u',13,10,'device=%u',13,10, \
+		'head_died_frame=%u',13,10,'nova_frame=%u',13,10,'rise_checked=%u',13,10,'falls_checked=%u',13,10,'hurts_heard=%u',13,10,'sounds_asked=%u',13,10,'plays=%u',13,10,'refused=%u',13,10,'device=%u',13,10, \
 		'score=%u',13,10,'kills=%u',13,10,'rank_thousandths=%u',13,10,'bytes_down=%I64u',13,10,'bytes_up=%I64u',13,10,'startup_dispatches=%u',13,10,'dispatches=%u',13,10,'draws=%u',13,10, \
 		'worst_latency=%u',13,10,'caps=%u',13,10,'required=%u',13,10,'gpu_error=%d',13,10,'failure_stage=%u',13,10>, \
 		[proof_failure],[proof_failure_frame],[root+Root.frame],[events_seen],GAME_TICKS,BODIES,PARTICLES,TABLE_KINDS,TABLE_MOVES,TABLE_WAVES,WORLD_BYTES, \
-		[head_died],[rise_checked],[falls_checked],[heard_hurts],[sounds_asked],[audio_plays],[audio_failures],[audio_ready],[last_score],[last_kills],[title_rank], \
+		[head_died],[nova_frame],[rise_checked],[falls_checked],[heard_hurts],[sounds_asked],[audio_plays],[audio_failures],[audio_ready],[last_score],[last_kills],[title_rank], \
 		[traffic_down],[traffic_up],[startup_dispatches],[dispatch_count],[draw_count],[worst_latency],[active_caps],CAP_REQUIRED,[gpu_error],[failure_stage]
 	fastcall machine_write_report,rax
 	ret
@@ -706,6 +810,10 @@ rank_fall dd 0.15
 spacing dd 112.0
 spacing_least dd 104.0			; what the worm's tightest turn can bring two neighbors to
 spacing_most dd 112.6
+rank_unit dd 1.0
+rank_round dd 0.5
+worth_swooper dd 200.0
+worth_drone dd 150.0
 felt_all dd 1.0
 felt_half dd 0.5
 full_pace dd 240.0
@@ -720,7 +828,8 @@ iterate name, begin,direct,update,collide,resolve,drift,report,render,scene,part
 end iterate
 iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,last_latency,worst_latency,title_rank,sounds_asked,heard_hurts, \
 	last_score,last_lives,last_wave,last_state,last_rank,last_fired,last_struck,last_kills,last_hurts,last_alive, \
-	hurts_before,rank_before,scroll_before,hurt_frame,hurts_total,rise_checked,falls_checked,chain_seen,head_died,alive_before,last_shown,last_stopped
+	hurts_before,rank_before,scroll_before,hurt_frame,hurts_total,rise_checked,falls_checked,chain_seen,head_died,alive_before,last_shown,last_stopped, \
+	fired_mark,nova_frame,nova_score,nova_kills,score_before,kills_before
 	name dd 0
 end iterate
 

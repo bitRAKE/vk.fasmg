@@ -150,6 +150,15 @@ SHOT_TICKS := 6			; between the player's shots while fire is held
 table_line '// Written by source\myhits\tables.asm from tables.inc. Do not edit.'
 table_line 'static const uint SHOT_TICKS = 6;'
 
+; How every bonus goes.
+macro bonus_drift
+	move 0,LINEAR,THRUST,150
+	move 0.45,OUT_SINE,ALONG,0,22
+	move 0.9,INOUT_SINE,ALONG,0,-44
+	move 0.9,INOUT_SINE,ALONG,0,44
+	again 2
+end macro
+
 macro game_tables
 	; The player's shot: at speed from the first tick.
 	mover SHOT,FRAME_BOLT,1.5
@@ -230,6 +239,25 @@ macro game_tables
 	mover PELLET,FRAME_NOVA,0.45
 		move 0,LINEAR,THRUST,520
 	end mover
+
+	; The bonuses, in the order the game and the HUD know them by. Each comes
+	; drifting back toward the player, bobbing, until it is taken or gone.
+	; (Spelled out: a name joined by an iterate would reach `mover` unjoined.)
+	mover BONUS_RAPID,FRAME_BONUS_RAPID,1.3,KIND_PICKUP
+		bonus_drift
+	end mover
+	mover BONUS_SPREAD,FRAME_BONUS_SPREAD,1.3,KIND_PICKUP
+		bonus_drift
+	end mover
+	mover BONUS_SHIELD,FRAME_BONUS_SHIELD,1.3,KIND_PICKUP
+		bonus_drift
+	end mover
+	mover BONUS_NOVA,FRAME_BONUS_NOVA,1.3,KIND_PICKUP
+		bonus_drift
+	end mover
+	mover BONUS_DOUBLE,FRAME_BONUS_DOUBLE,1.3,KIND_PICKUP
+		bonus_drift
+	end mover
 end macro
 
 ; What comes, in order, and then again from the top.
@@ -265,6 +293,8 @@ macro game_sounds
 	tone HIT,0.07,SINE,900,300,OUT_QUAD,0.001,OUT_QUAD,0.6,0.5
 	tone BURST,0.6,SINE,220,40,OUT_CUBIC,0.004,OUT_QUAD,0.85,0.8
 	tone HURT,0.4,SAW,300,90,INOUT_SINE,0.005,IN_QUAD,0.3,0.6
+	tone BONUS,0.28,TRIANGLE,520,1560,OUT_QUAD,0.004,IN_QUAD,0.0,0.5
+	tone BLOCK,0.22,SQUARE,240,720,OUT_CUBIC,0.002,OUT_QUAD,0.35,0.4
 	TABLE_SOUNDS := table.sounds
 	BANK_SAMPLES := table.samples
 	repeat 1, sounds:table.sounds, samples:table.samples

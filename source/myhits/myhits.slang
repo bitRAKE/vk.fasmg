@@ -12,8 +12,16 @@ static const uint PARTICLES = 16384;
 static const uint TRAILS = 32;
 static const uint REQUESTS = 256;
 static const uint STARS = 160;
-static const uint HUD = 21;                     // eight digits, three lives, ten pips of rank
-static const uint INSTANCES = STARS + BODIES + 4 + HUD;
+static const uint BONUSES = 5;                  // in the order of their kinds and their pictures:
+static const uint BONUS_RAPID = 0;              // shots twice as often
+static const uint BONUS_SPREAD = 1;             // three at a time
+static const uint BONUS_SHIELD = 2;             // the next hurt is not one
+static const uint BONUS_NOVA = 3;               // everything on the playfield is struck, now
+static const uint BONUS_DOUBLE = 4;             // kills are worth twice
+static const uint BONUS_TICKS = 960;            // how long one lasts, before rank adds to it
+static const uint HUD = 21 + BONUSES * 9;       // eight digits, three lives, ten pips of rank; an icon and eight pips a bonus
+static const uint SHIP_PARTS = 5;               // flare, muzzle, ship, shield, crosshair
+static const uint INSTANCES = STARS + BODIES + SHIP_PARTS + HUD;
 static const uint STOP_TICKS = 4;               // a hurt stops the world this long: it is felt
 static const uint SPRITE_INK = 16;              // a sprite's flags from here are which ink it is drawn in
 static const float SHIP_SPEED = 600.0;
@@ -78,6 +86,16 @@ struct Game
     uint stop;              // ticks of stillness still to come
     uint frozen;            // whether this tick is one of them
     uint stopped;           // ticks ever spent so
+    uint began;             // the tick this run began in
+    uint runs;              // runs before this one
+    uint life_tick;         // when a life was last lost, plus one
+    uint until[5];          // the tick each timed bonus lasts to
+    uint got[5];            // when each was last taken, plus one: its slot in the HUD jumps
+    uint collected[5];      // taken since the director last looked, by atomics
+    uint taken[5];          // taken this run
+    uint shield;            // hurts it will still take
+    uint blocked;           // hurts it has taken
+    uint nova_tick;         // when the last nova went off, plus one
 };
 struct Request { uint kind; float2 at; float angle; uint seed; };
 // The header the CPU writes once: GameWorld in myhits.asm.
@@ -118,6 +136,9 @@ void new_game(Game* game)
     fresh.pace_due = 0; fresh.pace_wanted = 1.0;
     fresh.requests = 0; fresh.requested = 0; fresh.alive = 0; fresh.probe = 0;
     fresh.shown = 0; fresh.score_seen = 0; fresh.score_tick = 0; fresh.stop = 0; fresh.frozen = 0; fresh.stopped = game.stopped;
+    fresh.began = game.tick; fresh.runs = game.runs; fresh.life_tick = 0;
+    for (uint bonus = 0; bonus < BONUSES; ++bonus) { fresh.until[bonus] = 0; fresh.got[bonus] = 0; fresh.collected[bonus] = 0; fresh.taken[bonus] = 0; }
+    fresh.shield = 0; fresh.blocked = 0; fresh.nova_tick = 0;
     *game = fresh;
 }
 
@@ -132,6 +153,7 @@ void begin()
     world.game.scroll = 0.0;
     world.game.scroll_before = 0.0;
     world.game.stopped = 0;
+    world.game.runs = 0;
     new_game(world.game);
     for (uint body = 0; body < 2 * BODIES; ++body) { world.bodies[body].kind = 0; world.bodies[body].born = 0; }
     for (uint slot = 0; slot < BODIES; ++slot) world.damage[slot] = 0;
@@ -197,6 +219,7 @@ void direct()
     {
         if (first && (root.pressed & BUTTON_START) != 0 && tick - game.over_tick > 60)
         {
+            game.runs += 1;
             new_game(game);
             for (uint body = 0; body < 2 * BODIES; ++body) world.bodies[body].kind = 0;
         }
@@ -229,10 +252,22 @@ void direct()
 
     // What last tick did to the ship. A hurt costs a life and some rank, and
     // buys a while in which nothing more can hurt.
-    if (playing && game.ship_hits != 0 && (game.hurt_tick == 0 || tick + 1 - game.hurt_tick >= GRACE_TICKS))
+    bool hit = playing && game.ship_hits != 0 && (game.hurt_tick == 0 || tick + 1 - game.hurt_tick >= GRACE_TICKS);
+    if (hit && game.shield != 0)
+    {
+        // The shield takes it: no life, no rank, no stop. The grace is the same.
+        hit = false;
+        game.shield -= 1;
+        game.blocked += 1;
+        game.hurt_tick = tick + 1;
+        trigger(SOUND_BLOCK, ship.x);
+        emit(world, STYLE_SPARK, ship, float2(1.0, 0.0), float2(0.0, 0.0), 64, tick, tick + 1);
+    }
+    if (hit)
     {
         game.hurts += 1;
         game.hurt_tick = tick + 1;
+        game.life_tick = tick + 1;
         game.lives -= 1;
         game.rank = max(game.rank - 0.15, 0.0);
         game.stop = STOP_TICKS;
@@ -248,6 +283,46 @@ void direct()
         }
     }
     game.ship_hits = 0;
+
+    // The bonuses taken since last tick. A harder game pays more: rank adds
+    // up to half again to how long one lasts.
+    for (uint bonus = 0; bonus < BONUSES; ++bonus)
+    {
+        uint count = game.collected[bonus];
+        if (count == 0) continue;
+        game.collected[bonus] = 0;
+        game.taken[bonus] += count;
+        game.got[bonus] = tick + 1;
+        if (bonus == BONUS_SHIELD) game.shield = min(game.shield + count, 3u);
+        else if (bonus == BONUS_NOVA)
+        {
+            // Everything that can be hurt is, at once. The director is alone
+            // here, so it may write what the shots otherwise add to.
+            for (uint slot = HOSTILE_FIRST; slot < HOSTILE_FIRST + HOSTILES; ++slot)
+            {
+                uint kind = world.bodies[(tick & 1) * BODIES + slot].kind;
+                if (kind != 0 && world.tables.kinds[kind].health > 0.0) world.damage[slot] += 3;
+            }
+            game.nova_tick = tick + 1;
+            emit(world, STYLE_BURST, ship, float2(1.0, 0.0), float2(0.0, 0.0), 128, tick + 3, tick + 1);
+            trigger(SOUND_BURST, ship.x);
+        }
+        else game.until[bonus] = max(game.until[bonus], tick) + uint(float(BONUS_TICKS) * (1.0 + 0.5 * game.rank));
+    }
+
+    // A scripted run's second game is given one of each, in front of the
+    // ship, and then something to see them work on: a drone for the nova, and
+    // a rammer for the shield.
+    if ((root.flags & ROOT_SCRIPTED) != 0 && game.runs == 1 && !frozen)
+    {
+        static const uint gifts[BONUSES] = { BONUS_SHIELD, BONUS_RAPID, BONUS_SPREAD, BONUS_DOUBLE, BONUS_NOVA };
+        static const uint due[BONUSES] = { 48, 148, 248, 348, 480 };
+        uint since = tick - game.began;
+        for (uint gift = 0; gift < BONUSES; ++gift)
+            if (since == due[gift]) spawn_hostile(world, KIND_BONUS_RAPID + gifts[gift], ship + float2(150.0, 0.0), 3.14159265, 0);
+        if (since == 440) spawn_hostile(world, KIND_DRONE, float2(1500.0, 760.0), 3.14159265, 0);
+        if (since == 700) spawn_hostile(world, KIND_RAMMER, float2(PLAYFIELD_WIDTH + 120.0, ship.y), 3.14159265, 0);
+    }
 
     // Rank looks at the shooting once a second: of the shots that have come
     // to anything since it last looked, the share that struck moves it up or
@@ -307,6 +382,12 @@ void direct()
     for (uint each = 0; each < asked; ++each)
     {
         Request request = world.queue[each];
+        // A bonus someone dropped goes among the hostiles, where the ship can touch it.
+        if ((world.tables.kinds[request.kind].flags & KIND_PICKUP) != 0)
+        {
+            spawn_hostile(world, request.kind, request.at, 3.14159265, request.seed);
+            continue;
+        }
         place(world, SHOTS + game.pellet_cursor % PELLETS, new_body(world.tables, request.kind, request.at, request.angle, request.seed, game.tick));
         game.pellet_cursor += 1;
         trigger(SOUND_SHOT, request.at.x);
@@ -319,10 +400,15 @@ void direct()
     playing = playing && !frozen;
     if (playing && (root.held & BUTTON_FIRE) != 0 && game.cooldown == 0)
     {
-        place(world, game.shot_cursor % SHOTS, new_body(world.tables, KIND_SHOT, ship + float2(60.0, 0.0), 0.0, 0, game.tick));
-        game.shot_cursor += 1;
-        game.cooldown = SHOT_TICKS;
-        game.fired += 1;
+        // RAPID halves the wait; SPREAD makes each shot three.
+        uint volley = game.until[BONUS_SPREAD] > tick ? 3 : 1;
+        for (uint each = 0; each < volley; ++each)
+        {
+            place(world, game.shot_cursor % SHOTS, new_body(world.tables, KIND_SHOT, ship + float2(60.0, 0.0), (float(each) - float(volley / 2)) * 0.16, 0, game.tick));
+            game.shot_cursor += 1;
+        }
+        game.cooldown = game.until[BONUS_RAPID] > tick ? SHOT_TICKS / 2 : SHOT_TICKS;
+        game.fired += volley;
         trigger(SOUND_SHOT, ship.x);
     }
     if (playing && first && (root.pressed & BUTTON_SECOND) != 0)
@@ -477,6 +563,19 @@ void resolve(uint3 id : SV_DispatchThreadID)
     Body body = world.bodies[at];
     if (body.kind == 0) return;
     Kind kind = world.tables.kinds[body.kind];
+    if ((kind.flags & KIND_PICKUP) != 0)
+    {
+        // A bonus is taken by coming near it: nobody should miss one by a texel.
+        float2 apart = body.position - game.ship;
+        if (game.state == STATE_PLAY && dot(apart, apart) < 72.0 * 72.0)
+        {
+            InterlockedAdd(world.game.collected[body.kind - KIND_BONUS_RAPID], 1);
+            trigger(SOUND_BONUS, body.position.x);
+            emit(world, STYLE_SPARK, body.position, float2(1.0, 0.0), float2(0.0, 0.0), 24, slot, game.tick);
+            world.bodies[at].kind = 0;
+        }
+        return;
+    }
     if (taken != 0)
     {
         body.health -= float(taken);
@@ -484,9 +583,27 @@ void resolve(uint3 id : SV_DispatchThreadID)
         if (body.health <= 0.0)
         {
             emit(world, STYLE_BURST, body.position, float2(1.0, 0.0), heading(body.angle) * (body.speed * 0.3), DEBRIS, slot, game.tick);
-            InterlockedAdd(world.game.score, uint(float(kind.worth) * (1.0 + game.rank) + 0.5));
+            uint worth = uint(float(kind.worth) * (1.0 + game.rank) + 0.5);
+            InterlockedAdd(world.game.score, game.until[BONUS_DOUBLE] > game.tick ? 2 * worth : worth);
             InterlockedAdd(world.game.kills, 1);
             trigger(SOUND_BURST, body.position.x);
+            // Bonuses galore, and more the harder it is: a kill leaves one
+            // more often the higher rank is. The director makes it.
+            uint roll = hash(slot * 977 + game.tick);
+            if (kind.worth != 0 && unit(roll) < 0.22 + 0.4 * game.rank)
+            {
+                uint place_in;
+                InterlockedAdd(world.game.requests, 1, place_in);
+                if (place_in < REQUESTS)
+                {
+                    Request request;
+                    request.kind = KIND_BONUS_RAPID + (roll >> 8) % BONUSES;
+                    request.at = body.position;
+                    request.angle = 3.14159265;
+                    request.seed = slot;
+                    world.queue[place_in] = request;
+                }
+            }
             body.kind = 0;
         }
         world.bodies[at] = body;
@@ -573,6 +690,11 @@ void report()
     events.debug[3] = world.pool.live;
     events.report[0] = game.shown;
     events.report[1] = game.stopped;
+    for (uint bonus = 0; bonus < BONUSES; ++bonus) events.report[2 + bonus] = game.taken[bonus];
+    events.report[7] = game.shield;
+    events.report[8] = game.blocked;
+    events.multiplier = game.until[BONUS_DOUBLE] > game.tick ? 2 : 1;
+    events.shield = float(game.shield);
 }
 
 // How far a hurt throws the picture about: a little under half a second of
@@ -617,7 +739,7 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
         uint since = game.tick - body.struck;
         sprite.flags = body.struck != 0 && since < FLASH_TICKS ? (255 - since * 255 / FLASH_TICKS) << SPRITE_FLASH : 0;
     }
-    else if ((index -= BODIES) < 4)
+    else if ((index -= BODIES) < SHIP_PARTS)
     {
         float2 ship = lerp(game.ship_before, game.ship, root.blend) + shake;
         bool there = game.state == STATE_PLAY;
@@ -640,6 +762,13 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
             sprite = ship_pose(ship);
             if (!there) sprite.axis = float2(0.0, 0.0);
         }
+        else if (index == 3)
+        {
+            // The shield, turning round the ship while there is any of it.
+            sprite.position = ship;
+            sprite.axis = heading(float(game.tick) * 0.02) * (there && game.shield != 0 ? 1.3 + 0.1 * float(game.shield) : 0.0);
+            sprite.frame = FRAME_SHIELD;
+        }
         else
         {
             sprite.position = root.aim;
@@ -647,7 +776,7 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
             sprite.frame = FRAME_CROSSHAIR;
         }
     }
-    else if ((index -= 4) < 8)
+    else if ((index -= SHIP_PARTS) < 8)
     {
         // The score, eight digits, the greatest first. Those before its first
         // are dim; all of them jump when it grows.
@@ -662,21 +791,50 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
     else if ((index -= 8) < 3)
     {
         // The lives, as ships. One just lost shrinks away, red.
-        uint since = game.tick + 1 - game.hurt_tick;
-        bool lost = index == game.lives && game.hurt_tick != 0 && since < 60;
+        uint since = game.tick + 1 - game.life_tick;
+        bool lost = index == game.lives && game.life_tick != 0 && since < 60;
         sprite.position = float2(PLAYFIELD_WIDTH - 80.0 - 78.0 * index, 56.0);
         sprite.axis = float2(index < game.lives ? 0.6 : lost ? 0.6 * (1.0 - float(since) / 60.0) : 0.0, 0.0);
         sprite.frame = FRAME_SHIP;
         sprite.flags = (lost ? 4 : 1) << SPRITE_INK;
     }
-    else
+    else if ((index -= 3) < 10)
     {
         // Rank, as ten pips: green, then gold, then red.
-        index -= 3;
         bool lit = float(index) < game.rank * 10.0;
         sprite.position = float2(PLAYFIELD_WIDTH * 0.5 - 162.0 + 36.0 * index, 50.0);
         sprite.axis = float2(lit ? 0.55 : 0.18, 0.0);
         sprite.flags = (lit ? (index < 4 ? 3 : index < 7 ? 2 : 4) : 5) << SPRITE_INK;
+    }
+    else
+    {
+        // The bonuses: a slot each along the bottom. One just taken jumps, each
+        // in its own way; one in force is bright, with a pip for every eighth
+        // of its time still to run, and blinks when that is nearly gone.
+        index -= 10;
+        uint bonus = index / 9, part = index % 9;
+        static const uint jumps[BONUSES] = { EASE_OUT_BACK, EASE_OUT_ELASTIC, EASE_OUT_BOUNCE, EASE_OUT_EXPO, EASE_INOUT_BACK };
+        uint since = game.tick + 1 - game.got[bonus];
+        bool fresh = game.got[bonus] != 0 && since < 48;
+        uint left = game.until[bonus] > game.tick ? game.until[bonus] - game.tick : 0;
+        bool held = bonus == BONUS_SHIELD ? game.shield != 0 : bonus == BONUS_NOVA ? fresh : left != 0;
+        float2 at = float2(80.0 + 104.0 * bonus, PLAYFIELD_HEIGHT - 64.0);
+        if (part == 0)
+        {
+            float jump = fresh ? 1.0 - ease(jumps[bonus], float(since) / 48.0) : 0.0;
+            bool blink = left != 0 && left < 240 && (game.tick / 10) % 2 == 0;
+            sprite.position = at;
+            sprite.axis = float2((held ? 1.0 : 0.55) * (1.0 + 1.2 * jump), 0.0);
+            sprite.frame = FRAME_BONUS_RAPID + bonus;
+            sprite.flags = (held && !blink ? 1 : 5) << SPRITE_INK;
+        }
+        else
+        {
+            uint lit = bonus == BONUS_SHIELD ? game.shield : min((left * 8 + BONUS_TICKS - 1) / BONUS_TICKS, 8u);
+            sprite.position = at + float2(-31.5 + 9.0 * float(part - 1), -44.0);
+            sprite.axis = float2(part - 1 < lit ? 0.24 : 0.0, 0.0);
+            sprite.flags = 2 << SPRITE_INK;
+        }
     }
     return sprite_corner(sprite, world.pictures.frames[sprite.frame], vertex);
 }
@@ -717,6 +875,7 @@ struct VeilVertex
     float2 at : TEXCOORD0;                  // -1..1 across the playfield
     nointerpolation float hurt : COLOR0;
     nointerpolation float over : COLOR1;
+    nointerpolation float nova : COLOR2;
 };
 
 // The last thing drawn, over everything: being hurt reddens the edges of
@@ -731,8 +890,9 @@ VeilVertex veil_vertex(uint vertex : SV_VulkanVertexID)
     result.at = float2(corners[vertex] & 1, corners[vertex] >> 1) * 2.0 - 1.0;
     result.hurt = game.hurt_tick == 0 ? 0.0 : saturate(1.0 - float(since) / 80.0);
     result.over = game.state == STATE_OVER ? saturate(float(game.tick - game.over_tick) / 120.0) : 0.0;
+    result.nova = game.nova_tick == 0 ? 0.0 : saturate(1.0 - float(game.tick + 1 - game.nova_tick) / 24.0);
     // With nothing to show it covers nothing.
-    result.position = float4(result.hurt + result.over > 0.0 ? result.at : float2(0.0, 0.0), 0.0, 1.0);
+    result.position = float4(result.hurt + result.over + result.nova > 0.0 ? result.at : float2(0.0, 0.0), 0.0, 1.0);
     return result;
 }
 
@@ -742,5 +902,7 @@ float4 veil_fragment(VeilVertex input) : SV_Target0
     float edge = smoothstep(0.3, 1.25, length(input.at));
     float red = input.hurt * input.hurt * edge * 0.8;
     float dim = input.over * 0.45;
-    return float4(red * 0.9, red * 0.05, red * 0.02, saturate(red * 0.5 + dim));
+    // A nova is a flash of white light over everything: it adds.
+    float white = input.nova * input.nova * 0.6;
+    return float4(red * 0.9 + white, red * 0.05 + white, red * 0.02 + white, saturate(red * 0.5 + dim));
 }

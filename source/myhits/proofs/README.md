@@ -19,9 +19,11 @@ build.cmd myhits-survey
 
 So do pictures. A scripted run draws to a window nobody sees, so proofs 04
 to 07 each leave `frame_NNN.png` there: the whole playfield at 1920×1080, at
-the frames of the script worth looking at. The game's seven are its swoopers,
+the frames of the script worth looking at. The game's ten are its swoopers,
 its weavers, the worm coming and then turned back on itself, the turrets
-firing with the level stopped, the run over, and the worm's head under fire.
+firing with the level stopped, the run over; and of the second game three
+volleys with RAPID and SPREAD in force, the nova going off, the shield about
+to take a rammer, and the worm's head under fire.
 
 | # | Proof | Claim | State |
 | --- | --- | --- | --- |
@@ -521,6 +523,14 @@ grows; a life lost shrinks away red; rank is ten pips, green to red. A hurt
 is felt: the world stops for four ticks, the picture is thrown about for
 half a second, its edges redden, and a pad shakes.
 
+A kill may leave a bonus, more often the higher rank is, and it drifts back
+toward you; come near it and it is yours. RAPID halves the wait between
+shots; SPREAD makes each three; SHIELD takes the next hurt, and turns round
+the ship while it lasts; NOVA strikes everything on the playfield at once, in
+a flash; DOUBLE doubles what a kill is worth. Each has a slot along the
+bottom of the screen that jumps when it is taken, each in its own way, shows
+its time running out in pips, and blinks before it goes.
+
 **How it is made.** A tick is the five passes of proof 05. The director
 alone reads the wave table, eases the level's pace, looks at the shooting
 once a second to move rank, and makes every body, the ones other bodies
@@ -548,17 +558,24 @@ badly to its end, and the start of a second.
 | 12 | The traffic is Root down and Events up; a frame of eight ticks is 41 passes and three draws | Counters |
 | 13 | The score on the screen chases the real one | It is never more than the real one, and by the end of the run it is the same |
 | 14 | A hurt is felt | Each stopped the world for exactly four ticks; and what the pad is told is what the events say: all of the heavy motor is 65535, half of the light one 32768 |
+| 15 | A bonus is taken by coming near it, once | The second game is given one of each in front of the ship; each is in hand, and only one of it, a few frames after it was set down |
+| 16 | The shield takes the next hurt | It is held from frame 418; a rammer comes along the ship's row; by frame 505 the shield is spent on it and all three lives remain |
+| 17 | RAPID halves the wait and SPREAD makes each shot three | Three frames of fire are four shots plain; they are eight with RAPID, and twenty-four with both |
+| 18 | A nova strikes everything, and DOUBLE doubles exactly | In the frame the nova is taken or the next, the drone set down for it dies with whatever swoopers were left; nothing that can be hit is alive after; and the score has grown by exactly twice their worth at the rank of the moment |
 
-Last result here, GTX 1080 Ti, default and validation alike: all fourteen
+Last result here, GTX 1080 Ti, default and validation alike: all eighteen
 hold. The run is 4,640 ticks, 23,780 passes and 1,740 draws, and takes four
-seconds. The world is 753 KB on the device. The head died in frame 562; 77
-sounds went to voices.
+seconds. The world is 753 KB on the device. The nova went off in frame 468
+and the head died in frame 557; 95 sounds went to voices.
 
 **The checks bite.** Each of these was made and seen to fail the check it
 should: segments a tenth too far apart (5, at frame 150); the director
 ignoring requests (6, at 259); a grace of half a second (7, at 312); rank
 moved by a twentieth (4, at 29); the level ignoring a squad's pace (8, at
-290); segments that outlive their head (9, at 567).
+290); segments that outlive their head (9, at 567); a bonus that cannot be
+reached (15, at 418); a shield that takes nothing (16, at 505); a RAPID
+that changes nothing (17, at 432); a DOUBLE that changes nothing (18, at
+469).
 
 **Finding: a run that is over is still a world.** The first script meant to
 stop the squads when the last life went. But then the level, stopped for the

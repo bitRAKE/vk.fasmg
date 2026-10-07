@@ -129,3 +129,29 @@ drawn	digit_9		28 44
 	line 8 22 20 22 2.2 ffffffff
 	line 22 24 22 37 2.2 ffffffff
 	line 8 39 20 39 2.2 ffffffff
+
+; The bonuses, as they float in the world and as the HUD shows them: a ring,
+; and inside it what the bonus does. In this order: the game counts on it.
+drawn	bonus_rapid	44 44
+	ring	22 22 18 3 ff40e0ff
+	line	12 15 30 15 1.8 ff40e0ff
+	line	14 22 32 22 1.8 ff40e0ff
+	line	12 29 30 29 1.8 ff40e0ff
+drawn	bonus_spread	44 44
+	ring	22 22 18 3 ff60ff80
+	line	12 22 31 13 1.8 ff60ff80
+	line	12 22 33 22 1.8 ff60ff80
+	line	12 22 31 31 1.8 ff60ff80
+drawn	bonus_shield	44 44
+	ring	22 22 18 3 ffffd060
+	ring	22 22 9 3 ffffd060
+drawn	bonus_nova	44 44
+	ring	22 22 18 3 ffff60ff
+	line	22 11 22 33 1.6 ffff60ff
+	line	11 22 33 22 1.6 ffff60ff
+	line	14 14 30 30 1.6 ffff60ff
+	line	30 14 14 30 1.6 ffff60ff
+drawn	bonus_double	44 44
+	ring	22 22 18 3 ff30b0ff
+	disc	16 22 5 ff30b0ff
+	disc	28 22 5 ff30b0ff

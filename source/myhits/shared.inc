@@ -254,6 +254,7 @@ end boundary
 shared KIND_FACES_LEFT,1		; its picture looks left; its heading is where it looks
 shared KIND_RIDES,2			; it belongs to the level, and is carried at its pace
 shared KIND_FOLLOWS,4			; a segment: it goes where its head went (chains.slang)
+shared KIND_PICKUP,8			; a bonus: nothing hits it, and the ship takes it by touch
 boundary Kind
 	u32 first			; its first move
 	u32 picture			; FRAME_

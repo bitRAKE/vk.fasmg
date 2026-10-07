@@ -207,7 +207,9 @@ try {
             8='the level did not stop for what was anchored to it, or did not move on'; 9='the chain did not die with its head'
             10='a rise or fall of rank, or the death of the head, was never seen'; 11='the sounds asked for did not each go to a voice, or a hurt was not heard'
             12='the traffic or the passes of a frame are not what the plan allows'; 13='the score the HUD shows passed the real one, or never caught it'
-            14='a hurt did not stop the world for four ticks, or the pad was told wrongly' } 'myhits.exe'
+            14='a hurt did not stop the world for four ticks, or the pad was told wrongly'; 15='a bonus set down before the ship was not taken, or was taken twice'
+            16='the shield did not take the next hurt, or a life went with it'; 17='RAPID did not double the shots, or SPREAD did not treble them'
+            18='the nova did not strike everything, or DOUBLE did not double exactly' } 'myhits.exe'
         $frames = [int]$state.frames
         Assert-True ($frames -eq 580 -and [int]$state.events -eq $frames) 'The game did not run its script'
         $voices = if ([int]$state.device) { "$($state.plays) sounds to voices" } else { 'no audio device here' }

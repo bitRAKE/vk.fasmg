@@ -418,8 +418,10 @@ they change a rule, into this plan.
    squads, and a boss, are table work for milestone 7.
 6. **Reward.** In hand. Done: the HUD, drawn by the device from the game
    block (a rolling score in seven-stroke digits, lives, rank), and damage
-   that is felt (a stop of four ticks, shake, a red veil, pad rumble). To
-   come: bonuses and their slots, then the companion's three stages.
+   that is felt (a stop of four ticks, shake, a red veil, pad rumble); five
+   bonuses, dropped more often the higher rank is and lasting longer for it,
+   each with a slot that jumps in its own way. To come: the companion's three
+   stages.
 7. **Atmosphere.** Backgrounds, music and beat, tuning.
 
 ## Milestone 5 in detail
