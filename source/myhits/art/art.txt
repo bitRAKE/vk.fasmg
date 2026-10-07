@@ -155,3 +155,11 @@ drawn	bonus_double	44 44
 	ring	22 22 18 3 ff30b0ff
 	disc	16 22 5 ff30b0ff
 	disc	28 22 5 ff30b0ff
+
+; The companion's shield: an arc, a little under a third of a circle, facing
+; along the picture's own x. It is turned to face what is coming.
+drawn	guard		96 96				glow
+	line	73.7 17.4 84.3 31.1 3 ffffe0a0
+	line	84.3 31.1 88 48 3 ffffe0a0
+	line	88 48 84.3 64.9 3 ffffe0a0
+	line	84.3 64.9 73.7 78.6 3 ffffe0a0

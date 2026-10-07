@@ -25,14 +25,14 @@ HOSTILES := 384
 PARTICLES := 16384
 TRAILS := 32
 REQUESTS := 256
-INSTANCES := 160 + BODIES + 5 + 21 + 5 * 9
-GAME_BYTES := 384
+INSTANCES := 160 + BODIES + 16 + 21 + 5 * 9
+GAME_BYTES := 512
 POOL_BYTES := 8 + STYLE_LIMIT * 4
-WORLD_BYTES := GAME_BYTES + POOL_BYTES + 2 * BODIES * BODY_BYTES + BODIES * 4 + TRAILS * TRAIL_POINTS * 8 + REQUESTS * REQUEST_BYTES + PARTICLES * PARTICLE_BYTES
+WORLD_BYTES := GAME_BYTES + POOL_BYTES + 2 * BODIES * BODY_BYTES + BODIES * 4 + (TRAILS + 1) * TRAIL_POINTS * 8 + REQUESTS * REQUEST_BYTES + PARTICLES * PARTICLE_BYTES
 TICK_DISPATCHES := 5			; the director, the bodies, the shots, the struck, the particles
 STARTUP_DISPATCHES := PICTURES_PASSES + 2
 GAME_TICKS := 8				; a scripted frame of the game runs this many: it has far to go
-SCRIPT_FRAMES := 580
+SCRIPT_FRAMES := 640
 RESTART_FRAME := 400			; the script presses Enter here; the first game is over by then
 assert RESTART_FRAME = 400		; the script's later frames are written out from it
 public mainCRTStartup
@@ -49,6 +49,7 @@ boundary GameWorld
 	ptr trails,float2
 	ptr queue,Request
 	ptr bank,float
+	ptr ship_trail,float2
 	u32 capacity
 	u32 particle_capacity
 end boundary
@@ -109,7 +110,7 @@ proc create_world uses rsi rdi
 	mov dword [rdi+GameWorld.tables+Tables.wave_count],TABLE_WAVES
 	mov dword [rdi+GameWorld.tables+Tables.pad],0
 	mov rax,[world_buffer.address]
-	iterate <pool,bytes>, game,GAME_BYTES, pool,POOL_BYTES, bodies,2*BODIES*BODY_BYTES, damage,BODIES*4, trails,TRAILS*TRAIL_POINTS*8, queue,REQUESTS*REQUEST_BYTES, particles,PARTICLES*PARTICLE_BYTES
+	iterate <pool,bytes>, game,GAME_BYTES, pool,POOL_BYTES, bodies,2*BODIES*BODY_BYTES, damage,BODIES*4, trails,TRAILS*TRAIL_POINTS*8, ship_trail,TRAIL_POINTS*8, queue,REQUESTS*REQUEST_BYTES, particles,PARTICLES*PARTICLE_BYTES
 		mov [rdi+GameWorld.pool],rax
 		add rax,bytes
 	end iterate
@@ -175,7 +176,11 @@ proc play_frame uses rbx
 	; eight shots at nothing, a long wait, down to a turret's row, seven shots
 	; at it; and then nothing, until it is over. The second: up to the worm's
 	; row; three frames of fire with RAPID in force, and three with SPREAD
-	; too; and fire at the worm's head as it comes.
+	; too; fire at the worm's head as it comes, which brings the companion;
+	; then four frames to the right, for it to follow. The crosshair stays
+	; where the companion's gun will be asked to point.
+	mov dword [root+Root.aim],1500.0
+	mov dword [root+Root.aim+4],300.0
 	mov dword [root+Root.move],0
 	mov dword [root+Root.move+4],0
 	mov dword [root+Root.held],0
@@ -189,6 +194,12 @@ proc play_frame uses rbx
 		mov dword [root+Root.move+4],way
 	.still_#from:
 	end iterate
+	cmp eax,570
+	jb .along
+	cmp eax,573
+	ja .along
+	mov dword [root+Root.move],1.0
+.along:
 	iterate <from,to>, 11,16, 290,294, 430,432, 442,444, 543,566
 		cmp eax,from
 		jb .quiet_#from
@@ -230,7 +241,7 @@ proc play_frame uses rbx
 	; over; and of the second game three volleys with RAPID and SPREAD, the
 	; nova going off, the shield about to take a rammer, and the worm's head
 	; under fire.
-	iterate when, 37,110,165,235,300,395,444,468,500,555
+	iterate when, 37,110,165,235,300,395,444,468,500,555,568,596,625
 		cmp dword [root+Root.frame],when
 		jne .no_#when
 		fastcall snapshot_take,when
@@ -592,6 +603,69 @@ proc consume_events uses rbx rsi rdi,events
 .nova_wrong:
 	fail 18
 .nova:
+	; 19: the companion is a surprise: there is none until the worm's head is
+	; killed, and two frames after that there is.
+	at_frame 500,Events.report+36,0,.mate_wrong
+	mov eax,[head_died]
+	test eax,eax
+	jz .mate_place
+	add eax,2
+	cmp esi,eax
+	jne .mate_place
+	cmp dword [rbx+Events.report+36],1
+	jne .mate_wrong
+.mate_place:
+	; 20: it is where you were. The ship has stood still since it came up 120
+	; from where the run began, so 150 back along its path is the first point
+	; it laid, 8 on from there; and the companion fired when the ship did.
+	; Then the ship goes 160 to the right, and 150 back along its path is 10
+	; to the right of where it turned.
+	cmp esi,568
+	jne .mate_followed
+	unless_near dword [rbx+Events.report+40],mate_x_first,mate_slack,.mate_wrong
+	unless_near dword [rbx+Events.report+44],mate_y_first,mate_slack,.mate_wrong
+	cmp dword [rbx+Events.report+56],0
+	je .mate_wrong
+.mate_followed:
+	cmp esi,579
+	jne .mate_own
+	unless_near dword [rbx+Events.report+40],mate_x_after,mate_slack,.mate_wrong
+	unless_near dword [rbx+Events.report+44],mate_y_after,mate_slack,.mate_wrong
+	mov eax,[rbx+Events.reserved+12]
+	mov [struck_mark],eax
+.mate_own:
+	; 21: then it acts for itself. Its guard turns to a shot coming at it and
+	; stops it; its gun turns to what is nearest and its shots strike, while
+	; the player fires nothing.
+	at_frame 582,Events.report+36,2,.mate_wrong
+	at_frame 600,Events.report+64,1,.mate_wrong
+	cmp esi,610
+	jne .mate_aimed
+	cmp dword [rbx+Events.report+60],0
+	je .mate_wrong
+	mov eax,[rbx+Events.reserved+12]
+	cmp eax,[struck_mark]
+	jne .mate_wrong
+.mate_aimed:
+	; 22: and then its gun takes your aim: it points from where it is to the crosshair.
+	at_frame 614,Events.report+36,3,.mate_wrong
+	cmp esi,630
+	jne .mate
+	movss xmm0,[aim_y]
+	subss xmm0,dword [rbx+Events.report+44]
+	movss [scratch],xmm0
+	movss xmm0,[aim_x]
+	subss xmm0,dword [rbx+Events.report+40]
+	movss [scratch+4],xmm0
+	fld dword [scratch]
+	fld dword [scratch+4]
+	fpatan
+	fstp dword [scratch]
+	unless_near dword [rbx+Events.report+48],scratch,centi,.mate_wrong
+	jmp .mate
+.mate_wrong:
+	fail 19
+.mate:
 	mov eax,[rbx+Events.score]
 	mov [score_before],eax
 	mov eax,[rbx+Events.reserved+20]
@@ -814,6 +888,15 @@ rank_unit dd 1.0
 rank_round dd 0.5
 worth_swooper dd 200.0
 worth_drone dd 150.0
+mate_x_first dd 300.0
+mate_y_first dd 532.0
+mate_x_after dd 310.0
+mate_y_after dd 420.0
+mate_slack dd 1.5
+aim_x dd 1500.0
+aim_y dd 300.0
+centi dd 0.01
+scratch dd 0,0
 felt_all dd 1.0
 felt_half dd 0.5
 full_pace dd 240.0
@@ -829,7 +912,7 @@ end iterate
 iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,last_latency,worst_latency,title_rank,sounds_asked,heard_hurts, \
 	last_score,last_lives,last_wave,last_state,last_rank,last_fired,last_struck,last_kills,last_hurts,last_alive, \
 	hurts_before,rank_before,scroll_before,hurt_frame,hurts_total,rise_checked,falls_checked,chain_seen,head_died,alive_before,last_shown,last_stopped, \
-	fired_mark,nova_frame,nova_score,nova_kills,score_before,kills_before
+	fired_mark,nova_frame,nova_score,nova_kills,score_before,kills_before,struck_mark
 	name dd 0
 end iterate
 

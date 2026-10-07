@@ -20,7 +20,12 @@ static const uint BONUS_NOVA = 3;               // everything on the playfield i
 static const uint BONUS_DOUBLE = 4;             // kills are worth twice
 static const uint BONUS_TICKS = 960;            // how long one lasts, before rank adds to it
 static const uint HUD = 21 + BONUSES * 9;       // eight digits, three lives, ten pips of rank; an icon and eight pips a bonus
-static const uint SHIP_PARTS = 5;               // flare, muzzle, ship, shield, crosshair
+static const uint TETHER = 8;                   // points of light between the ship and its companion
+static const uint SHIP_PARTS = 8 + TETHER;      // flare, muzzle, ship, shield, crosshair; the companion, its gun, its guard; the tether
+static const float MATE_BACK = 150.0;           // how far behind the ship, along the ship's own path, the companion keeps
+static const float MATE_REACH = 64.0;           // how near its guard stops a shot
+static const uint MATE_TICKS = 10;              // between its shots when it fires for itself
+static const uint MATE_SHOT = 2;                // the seed of a shot that is its and not the player's
 static const uint INSTANCES = STARS + BODIES + SHIP_PARTS + HUD;
 static const uint STOP_TICKS = 4;               // a hurt stops the world this long: it is felt
 static const uint SPRITE_INK = 16;              // a sprite's flags from here are which ink it is drawn in
@@ -96,13 +101,26 @@ struct Game
     uint shield;            // hurts it will still take
     uint blocked;           // hurts it has taken
     uint nova_tick;         // when the last nova went off, plus one
+    uint companion;         // 0: none. 1: it is where you were. 2: it acts for itself. 3: it takes your aim
+    uint promoted;          // heads killed since the director last looked: each makes it more
+    float2 promoted_at;     // where the last died: it comes from there
+    float2 mate;            // where it is,
+    float2 mate_before;
+    float mate_gun;         // which way it fires,
+    float mate_guard;       // and which way it shields
+    uint mate_cooldown;
+    uint mate_fired;
+    uint mate_struck;       // its shots that struck
+    uint guarded;           // shots its guard stopped
+    uint ship_laid;         // the ship's own trail, as a head's
+    float ship_carried;
 };
 struct Request { uint kind; float2 at; float angle; uint seed; };
 // The header the CPU writes once: GameWorld in myhits.asm.
 struct World
 {
     Pictures pictures; Tables tables; Body* bodies; Game* game; uint* damage; Particle* particles; ParticlePool* pool;
-    float2* trails; Request* queue; float* bank; uint capacity; uint particle_capacity;
+    float2* trails; Request* queue; float* bank; float2* ship_trail; uint capacity; uint particle_capacity;
 };
 
 #include "hits.slang"
@@ -139,6 +157,9 @@ void new_game(Game* game)
     fresh.began = game.tick; fresh.runs = game.runs; fresh.life_tick = 0;
     for (uint bonus = 0; bonus < BONUSES; ++bonus) { fresh.until[bonus] = 0; fresh.got[bonus] = 0; fresh.collected[bonus] = 0; fresh.taken[bonus] = 0; }
     fresh.shield = 0; fresh.blocked = 0; fresh.nova_tick = 0;
+    fresh.companion = 0; fresh.promoted = 0; fresh.promoted_at = fresh.ship; fresh.mate = fresh.ship; fresh.mate_before = fresh.ship;
+    fresh.mate_gun = 0.0; fresh.mate_guard = 3.14159265; fresh.mate_cooldown = 0; fresh.mate_fired = 0; fresh.mate_struck = 0; fresh.guarded = 0;
+    fresh.ship_laid = 0; fresh.ship_carried = 0.0;
     *game = fresh;
 }
 
@@ -250,6 +271,16 @@ void direct()
     if (playing && !frozen) ship = clamp(ship + root.move * (SHIP_SPEED * TICK_SECONDS), float2(80.0, 60.0), float2(PLAYFIELD_WIDTH - 60.0, PLAYFIELD_HEIGHT - 60.0));
     game.ship = ship;
 
+    // The ship lays a trail as a chain's head does: at first the companion
+    // is simply where the ship was.
+    Body lead = new_body(world.tables, 0, ship, 0.0, 0, tick);
+    lead.link = 1;
+    lead.laid = game.ship_laid;
+    lead.carried = game.ship_carried;
+    lay_trail(lead, game.ship_before, world.ship_trail);
+    game.ship_laid = lead.laid;
+    game.ship_carried = lead.carried;
+
     // What last tick did to the ship. A hurt costs a life and some rank, and
     // buys a while in which nothing more can hurt.
     bool hit = playing && game.ship_hits != 0 && (game.hurt_tick == 0 || tick + 1 - game.hurt_tick >= GRACE_TICKS);
@@ -322,6 +353,89 @@ void direct()
             if (since == due[gift]) spawn_hostile(world, KIND_BONUS_RAPID + gifts[gift], ship + float2(150.0, 0.0), 3.14159265, 0);
         if (since == 440) spawn_hostile(world, KIND_DRONE, float2(1500.0, 760.0), 3.14159265, 0);
         if (since == 700) spawn_hostile(world, KIND_RAMMER, float2(PLAYFIELD_WIDTH + 120.0, ship.y), 3.14159265, 0);
+        // And, once the worm's head has brought the companion, its two
+        // promotions, with a drone for its gun and a pellet for its guard.
+        if (since == 1440 || since == 1700) game.promoted += 1;
+        if (since == 1440) spawn_hostile(world, KIND_DRONE, float2(1300.0, 200.0), 3.14159265, 0);
+        if (since == 1460)
+        {
+            place(world, SHOTS + game.pellet_cursor % PELLETS, new_body(world.tables, KIND_PELLET, float2(-100.0, 420.0), 0.0, 0, game.tick));
+            game.pellet_cursor += 1;
+        }
+    }
+
+    // The companion. It arrives when a chain's head is killed, from where
+    // that happened, and each head after makes it more: first it is where
+    // you were; then it acts for itself, firing at what is nearest and
+    // turning its guard to what is coming; then its gun takes your aim.
+    if (game.promoted != 0)
+    {
+        if (game.companion == 0)
+        {
+            game.mate = game.promoted_at;
+            game.mate_before = game.mate;
+        }
+        game.companion = min(game.companion + game.promoted, 3u);
+        game.promoted = 0;
+        trigger(SOUND_BONUS, game.mate.x);
+        emit(world, STYLE_SPARK, game.mate, float2(1.0, 0.0), float2(0.0, 0.0), 48, tick + 11, tick + 1);
+    }
+    bool mate_fires = false;
+    if (game.companion != 0 && playing && !frozen)
+    {
+        float2 place_at, toward;
+        trail_at(lead, world.ship_trail, MATE_BACK, place_at, toward);
+        game.mate_before = game.mate;
+        game.mate += (place_at - game.mate) * 0.2;
+        uint latest = (tick & 1) * BODIES;
+        float gun = 0.0;
+        if (game.companion == 2)
+        {
+            // What is nearest, of what can be hit and is on the playfield.
+            float nearest = 1e12;
+            for (uint slot = HOSTILE_FIRST; slot < HOSTILE_FIRST + HOSTILES; ++slot)
+            {
+                uint kind = world.bodies[latest + slot].kind;
+                if (kind == 0 || world.tables.kinds[kind].health <= 0.0) continue;
+                float2 at = world.bodies[latest + slot].position;
+                if (at.x < 0.0 || at.x > PLAYFIELD_WIDTH || at.y < 0.0 || at.y > PLAYFIELD_HEIGHT) continue;
+                float2 apart = at - game.mate;
+                if (dot(apart, apart) < nearest)
+                {
+                    nearest = dot(apart, apart);
+                    gun = atan2(apart.y, apart.x);
+                    mate_fires = true;
+                }
+            }
+        }
+        if (game.companion == 3)
+        {
+            float2 apart = root.aim - game.mate;
+            gun = atan2(apart.y, apart.x);
+            mate_fires = (root.held & BUTTON_FIRE) != 0;
+        }
+        game.mate_gun = turn_to(game.mate_gun + turn_to(gun - game.mate_gun) * 0.25);
+        // Its guard faces the nearest hostile shot, or behind its gun.
+        float guard = game.mate_gun + 3.14159265, closest = 600.0 * 600.0;
+        for (uint slot = SHOTS; slot < SHOTS + PELLETS; ++slot)
+        {
+            if (world.bodies[latest + slot].kind == 0) continue;
+            float2 apart = world.bodies[latest + slot].position - game.mate;
+            if (dot(apart, apart) < closest)
+            {
+                closest = dot(apart, apart);
+                guard = atan2(apart.y, apart.x);
+            }
+        }
+        game.mate_guard = turn_to(game.mate_guard + turn_to(guard - game.mate_guard) * 0.3);
+        if (game.mate_cooldown > 0) game.mate_cooldown -= 1;
+        if (mate_fires && game.mate_cooldown == 0)
+        {
+            place(world, game.shot_cursor % SHOTS, new_body(world.tables, KIND_SHOT, game.mate + heading(game.mate_gun) * 30.0, game.mate_gun, MATE_SHOT, game.tick));
+            game.shot_cursor += 1;
+            game.mate_cooldown = MATE_TICKS;
+            game.mate_fired += 1;
+        }
     }
 
     // Rank looks at the shooting once a second: of the shots that have come
@@ -410,6 +524,13 @@ void direct()
         game.cooldown = game.until[BONUS_RAPID] > tick ? SHOT_TICKS / 2 : SHOT_TICKS;
         game.fired += volley;
         trigger(SOUND_SHOT, ship.x);
+        // At first the companion fires when you do, and the way you do.
+        if (game.companion == 1)
+        {
+            place(world, game.shot_cursor % SHOTS, new_body(world.tables, KIND_SHOT, game.mate + float2(30.0, 0.0), 0.0, MATE_SHOT, game.tick));
+            game.shot_cursor += 1;
+            game.mate_fired += 1;
+        }
     }
     if (playing && first && (root.pressed & BUTTON_SECOND) != 0)
     {
@@ -482,7 +603,8 @@ void update(uint3 id : SV_DispatchThreadID)
             if ((kind.flags & KIND_FOLLOWS) == 0)
             {
                 alive = false;
-                if (slot < SHOTS) InterlockedAdd(world.game.escaped, 1);
+                // The companion's misses are its own: the player's accuracy is the player's.
+                if (slot < SHOTS && body.seed != MATE_SHOT) InterlockedAdd(world.game.escaped, 1);
             }
         }
         if (!alive) body.kind = 0;
@@ -509,6 +631,21 @@ void collide(uint3 id : SV_DispatchThreadID)
     if (slot >= SHOTS)
     {
         if (game.state != STATE_PLAY) return;
+        // The companion's guard stops what passes close on the side it faces.
+        if (game.companion >= 2)
+        {
+            float2 step = to - from, back = game.mate - from;
+            float along = dot(step, step) > 0.0 ? saturate(dot(back, step) / dot(step, step)) : 0.0;
+            float2 off = from + step * along - game.mate;
+            if (dot(off, off) < MATE_REACH * MATE_REACH && dot(off, heading(game.mate_guard)) > 0.5 * length(off))
+            {
+                InterlockedAdd(world.game.guarded, 1);
+                trigger(SOUND_BLOCK, game.mate.x);
+                emit(world, STYLE_SPARK, from + step * along, -heading(shot.angle), float2(0.0, 0.0), SPARKS * 2, slot, game.tick);
+                world.bodies[now + slot].kind = 0;
+                return;
+            }
+        }
         Picture frame = pictures.frames[FRAME_SHIP];
         float along = sweep(pictures, frame, into_picture(ship_pose(game.ship_before), frame, from), into_picture(ship_pose(game.ship), frame, to));
         if (along < 0.0) return;
@@ -539,7 +676,8 @@ void collide(uint3 id : SV_DispatchThreadID)
     if (nearest > 1.0) return;
     float2 where = lerp(from, to, nearest);
     InterlockedAdd(world.damage[taker], shot.kind == KIND_MISSILE ? 4 : 1);
-    InterlockedAdd(world.game.struck, 1);
+    if (shot.seed == MATE_SHOT && shot.kind == KIND_SHOT) InterlockedAdd(world.game.mate_struck, 1);
+    else InterlockedAdd(world.game.struck, 1);
     trigger(SOUND_HIT, where.x);
     emit(world, STYLE_SPARK, where, -heading(shot.angle), float2(0.0, 0.0), SPARKS, slot, game.tick);
     world.bodies[now + slot].kind = 0;
@@ -587,6 +725,12 @@ void resolve(uint3 id : SV_DispatchThreadID)
             InterlockedAdd(world.game.score, game.until[BONUS_DOUBLE] > game.tick ? 2 * worth : worth);
             InterlockedAdd(world.game.kills, 1);
             trigger(SOUND_BURST, body.position.x);
+            // The head of a chain, killed, is what brings the companion.
+            if (kind.links != 0)
+            {
+                world.game.promoted_at = body.position;
+                InterlockedAdd(world.game.promoted, 1);
+            }
             // Bonuses galore, and more the harder it is: a kill leaves one
             // more often the higher rank is. The director makes it.
             uint roll = hash(slot * 977 + game.tick);
@@ -639,7 +783,12 @@ void report()
     uint now = (game.tick & 1) * BODIES, before = ((game.tick & 1) ^ 1) * BODIES;
     uint flying = 0, pellets = 0;
     for (uint slot = 0; slot < SHOTS + PELLETS; ++slot)
-        if (world.bodies[now + slot].kind != 0) { if (slot < SHOTS) ++flying; else ++pellets; }
+    {
+        Body shot = world.bodies[now + slot];
+        if (shot.kind == 0) continue;
+        if (slot >= SHOTS) ++pellets;
+        else if (!(shot.seed == MATE_SHOT && shot.kind == KIND_SHOT)) ++flying;
+    }
     events.state = game.state;
     events.score = game.score;
     events.wave = game.wave;
@@ -693,6 +842,14 @@ void report()
     for (uint bonus = 0; bonus < BONUSES; ++bonus) events.report[2 + bonus] = game.taken[bonus];
     events.report[7] = game.shield;
     events.report[8] = game.blocked;
+    events.report[9] = game.companion;
+    events.report[10] = asuint(game.mate.x);
+    events.report[11] = asuint(game.mate.y);
+    events.report[12] = asuint(game.mate_gun);
+    events.report[13] = asuint(game.mate_guard);
+    events.report[14] = game.mate_fired;
+    events.report[15] = game.mate_struck;
+    events.report[16] = game.guarded;
     events.multiplier = game.until[BONUS_DOUBLE] > game.tick ? 2 : 1;
     events.shield = float(game.shield);
 }
@@ -769,11 +926,45 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
             sprite.axis = heading(float(game.tick) * 0.02) * (there && game.shield != 0 ? 1.3 + 0.1 * float(game.shield) : 0.0);
             sprite.frame = FRAME_SHIELD;
         }
-        else
+        else if (index == 4)
         {
             sprite.position = root.aim;
             sprite.axis = float2(1.0, 0.0);
             sprite.frame = FRAME_CROSSHAIR;
+        }
+        else
+        {
+            // The companion: a ball that keeps its light as anything does, its
+            // gun, its guard, and between it and the ship a thread of light
+            // that is the two of them being one.
+            float2 mate = lerp(game.mate_before, game.mate, root.blend) + shake;
+            bool here = there && game.companion != 0;
+            if (index == 5)
+            {
+                sprite.position = mate;
+                sprite.axis = float2(here ? 1.1 : 0.0, 0.0);
+                sprite.frame = FRAME_ORB;
+            }
+            else if (index == 6)
+            {
+                sprite.position = mate + heading(game.mate_gun) * 36.0;
+                sprite.axis = heading(game.mate_gun) * (here ? 0.9 : 0.0);
+                sprite.frame = FRAME_BOLT;
+            }
+            else if (index == 7)
+            {
+                sprite.position = mate;
+                sprite.axis = heading(game.mate_guard) * (here && game.companion >= 2 ? 1.0 : 0.0);
+                sprite.frame = FRAME_GUARD;
+            }
+            else
+            {
+                float along = (float(index - 8) + 0.5) / float(TETHER);
+                float2 across = mate - ship;
+                float wave = sin(along * 3.14159265) * sin(root.time * 9.0 + along * 11.0);
+                sprite.position = ship + across * along + normalize(float2(-across.y, across.x) + float2(1e-4, 0.0)) * (wave * 14.0);
+                sprite.axis = float2(here ? 0.14 + 0.08 * abs(wave) : 0.0, 0.0);
+            }
         }
     }
     else if ((index -= SHIP_PARTS) < 8)

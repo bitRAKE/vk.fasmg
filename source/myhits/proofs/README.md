@@ -19,11 +19,12 @@ build.cmd myhits-survey
 
 So do pictures. A scripted run draws to a window nobody sees, so proofs 04
 to 07 each leave `frame_NNN.png` there: the whole playfield at 1920×1080, at
-the frames of the script worth looking at. The game's ten are its swoopers,
+the frames of the script worth looking at. The game's thirteen are its swoopers,
 its weavers, the worm coming and then turned back on itself, the turrets
 firing with the level stopped, the run over; and of the second game three
 volleys with RAPID and SPREAD in force, the nova going off, the shield about
-to take a rammer, and the worm's head under fire.
+to take a rammer, the worm's head under fire, and the companion: where the
+ship was, acting for itself, and taking the player's aim.
 
 | # | Proof | Claim | State |
 | --- | --- | --- | --- |
@@ -531,6 +532,16 @@ a flash; DOUBLE doubles what a kill is worth. Each has a slot along the
 bottom of the screen that jumps when it is taken, each in its own way, shows
 its time running out in pips, and blinks before it goes.
 
+And you do not stay alone. Kill the worm's head and something comes out of
+where it died: a companion, joined to the ship by a thread of light. At
+first it is only where you were: it keeps 150 behind you along your own
+path, and fires when you fire. The next head makes it act for itself: its
+gun turns to whatever is nearest and fires, and its guard, an arc of light,
+turns to face the nearest shot coming and stops what reaches it there. The
+third gives its gun to you: it points from wherever the companion is to the
+crosshair, and fires while you do. Its shots are its own: they do not count
+for or against your accuracy.
+
 **How it is made.** A tick is the five passes of proof 05. The director
 alone reads the wave table, eases the level's pace, looks at the shooting
 once a second to move rank, and makes every body, the ones other bodies
@@ -539,8 +550,9 @@ atomic count. A chain's head lays its path into a ring of points eight units
 apart; a segment reads its head as the head stood last tick and takes the
 point its own distance back.
 
-**The checks**, on 580 scripted frames of eight ticks: a first game played
-badly to its end, and the start of a second.
+**The checks**, on 640 scripted frames of eight ticks: a first game played
+badly to its end, and a second that is given every bonus and earns the
+companion.
 
 | # | Claim | How it is held |
 | --- | --- | --- |
@@ -562,11 +574,12 @@ badly to its end, and the start of a second.
 | 16 | The shield takes the next hurt | It is held from frame 418; a rammer comes along the ship's row; by frame 505 the shield is spent on it and all three lives remain |
 | 17 | RAPID halves the wait and SPREAD makes each shot three | Three frames of fire are four shots plain; they are eight with RAPID, and twenty-four with both |
 | 18 | A nova strikes everything, and DOUBLE doubles exactly | In the frame the nova is taken or the next, the drone set down for it dies with whatever swoopers were left; nothing that can be hit is alive after; and the score has grown by exactly twice their worth at the rank of the moment |
+| 19 | The companion comes as a surprise, and grows | None until the worm's head is killed, and one two frames after. It is where the ship was: the first point of the ship's trail while the ship has not gone 150, then 10 past the corner once the ship has gone 160 on; and it has fired with the ship. Made more, its guard stops a pellet sent at it and its gun's shots strike while the player fires nothing. Made more again, its gun points from where it is to the crosshair, to a hundredth of a radian |
 
-Last result here, GTX 1080 Ti, default and validation alike: all eighteen
-hold. The run is 4,640 ticks, 23,780 passes and 1,740 draws, and takes four
-seconds. The world is 753 KB on the device. The nova went off in frame 468
-and the head died in frame 557; 95 sounds went to voices.
+Last result here, GTX 1080 Ti, default and validation alike: all nineteen
+hold. The run is 5,120 ticks, 26,240 passes and 1,920 draws, and takes five
+seconds. The world is 755 KB on the device. The nova went off in frame 468
+and the head died in frame 557; 109 sounds went to voices.
 
 **The checks bite.** Each of these was made and seen to fail the check it
 should: segments a tenth too far apart (5, at frame 150); the director
@@ -575,7 +588,8 @@ moved by a twentieth (4, at 29); the level ignoring a squad's pace (8, at
 290); segments that outlive their head (9, at 567); a bonus that cannot be
 reached (15, at 418); a shield that takes nothing (16, at 505); a RAPID
 that changes nothing (17, at 432); a DOUBLE that changes nothing (18, at
-469).
+469); a companion 100 behind and not 150 (19, at 568); a guard that stops
+nothing (19, at 600); a gun that ignores the aim (19, at 630).
 
 **Finding: a run that is over is still a world.** The first script meant to
 stop the squads when the last life went. But then the level, stopped for the
@@ -589,6 +603,13 @@ hurt was expected: a weaver clips the ship there, and had done since the
 game first ran. The check compares the head "a tick ago" with a segment now,
 and in a tick the world stands still the head a tick ago is where it is. The
 check skips frames that held a stop; the chain was never wrong.
+
+**Finding: an angle that only ever turns can end up anywhere.** The
+companion's gun was turned a quarter of the way to its target each tick, by
+the shortest way, and never brought back within a turn. After a while of
+following targets it pointed the right way at an angle a whole turn off, and
+the check, which compared numbers, said it was wrong. It was the code that
+was: an angle kept is an angle kept within a turn.
 
 **Finding: the ship cannot be kept safe by standing still.** Every row of
 the playfield is crossed by something. The script's checks of lives are

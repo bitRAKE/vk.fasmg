@@ -282,13 +282,18 @@ through it. That is how an anchored enemy or a boss holds the screen, and how
 a hard enemy can be given room: the director slows the level for it and lets
 it go again afterwards. Backgrounds scroll by the same number.
 **The player and the companion.** One ship, moved by `move`, with a crosshair
-at `aim` for what is aimed. The companion uses machinery that already exists:
-as a trailer it reads the player's own trail ring some samples back, which is
-"where you were" exactly; as an agent the update pass gives it two headings,
-a shield toward the densest incoming fire and a gun toward the best target;
-steered, it takes `aim`. A link between ship and companion is where pair
-effects come in.
-
+at `aim` for what is aimed. The ship lays a trail as a chain's head does, and
+the companion is first of all a follower of it: it keeps 150 behind the ship
+along the ship's own path, which is "where you were" exactly, and fires when
+the ship does. It is not there at the start. The first chain's head killed
+brings it, from where the head died; the next makes it an agent, whose gun
+turns to what is nearest and whose guard turns to the nearest shot coming
+and stops what reaches it on that side; the third gives its gun the player's
+aim. All of it is the director's, since there is one companion: it looks
+through the hostiles and their shots each tick, which a single invocation
+can afford. Between ship and companion runs a thread of light, drawn from
+the two positions; a link drawn as one shaped effect, and sampled against
+masks, is still to come where a pair should hurt what crosses it.
 **Mask collision.** A point is tested against a picture by taking it into the
 picture's own texels, through the inverse of the turn and scale that set the
 picture down, and reading one bit of its mask: exact against any shape at any
@@ -420,8 +425,11 @@ they change a rule, into this plan.
    block (a rolling score in seven-stroke digits, lives, rank), and damage
    that is felt (a stop of four ticks, shake, a red veil, pad rumble); five
    bonuses, dropped more often the higher rank is and lasting longer for it,
-   each with a slot that jumps in its own way. To come: the companion's three
-   stages.
+   each with a slot that jumps in its own way; and the companion, which a
+   chain's head brings when it is killed and each head after makes more:
+   where you were, then acting for itself with a gun and a guard, then
+   taking your aim. Done, then, but for tuning: how fast it should grow, and
+   whether a lost life should cost it a stage.
 7. **Atmosphere.** Backgrounds, music and beat, tuning.
 
 ## Milestone 5 in detail

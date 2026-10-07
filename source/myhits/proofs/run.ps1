@@ -209,9 +209,10 @@ try {
             12='the traffic or the passes of a frame are not what the plan allows'; 13='the score the HUD shows passed the real one, or never caught it'
             14='a hurt did not stop the world for four ticks, or the pad was told wrongly'; 15='a bonus set down before the ship was not taken, or was taken twice'
             16='the shield did not take the next hurt, or a life went with it'; 17='RAPID did not double the shots, or SPREAD did not treble them'
-            18='the nova did not strike everything, or DOUBLE did not double exactly' } 'myhits.exe'
+            18='the nova did not strike everything, or DOUBLE did not double exactly'
+            19='the companion did not come with the worm''s death, or was not where the ship had been, or did not guard, fire or take aim as its stage should' } 'myhits.exe'
         $frames = [int]$state.frames
-        Assert-True ($frames -eq 580 -and [int]$state.events -eq $frames) 'The game did not run its script'
+        Assert-True ($frames -eq 640 -and [int]$state.events -eq $frames) 'The game did not run its script'
         $voices = if ([int]$state.device) { "$($state.plays) sounds to voices" } else { 'no audio device here' }
         Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through two games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on; {8}; {9} passes and {10} draws a frame" -f `
             $frames, $state.ticks_a_frame, ([int]$state.kinds - 1), $state.moves, $state.squads, [int]([int]$state.world_bytes / 1024), $state.head_died_frame, $state.hurts_heard, $voices,
