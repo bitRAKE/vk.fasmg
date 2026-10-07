@@ -237,7 +237,7 @@ shared MOVE_TURN,5			; turn by a degrees
 shared MOVE_THRUST,6			; bring its speed to a
 shared MOVE_AGAIN,7			; go back `target` moves
 shared MOVE_DIE,8
-shared MOVE_FIRE,9			; ask the director for a body of kind `target`, sent at the player
+shared MOVE_FIRE,9			; ask the director for a body of kind `target`, sent at the player, within `a` degrees
 ; What a move aims at.
 shared TARGET_HEADING,0			; straight ahead
 shared TARGET_PLAYER,1
@@ -255,6 +255,7 @@ shared KIND_FACES_LEFT,1		; its picture looks left; its heading is where it look
 shared KIND_RIDES,2			; it belongs to the level, and is carried at its pace
 shared KIND_FOLLOWS,4			; a segment: it goes where its head went (chains.slang)
 shared KIND_PICKUP,8			; a bonus: nothing hits it, and the ship takes it by touch
+shared KIND_KEEPS_UP,16			; going the other way it is mirrored, not turned on its head
 boundary Kind
 	u32 first			; its first move
 	u32 picture			; FRAME_
@@ -280,6 +281,7 @@ boundary Wave
 	f32 spread
 	f32 pace
 	u32 pace_after
+	u32 holds			; nothing more comes until none of these is left: a boss
 end boundary
 
 ; A head lays a point of its path every so many units, into a ring of this many.
@@ -306,7 +308,7 @@ end boundary
 shared STYLE_LIMIT,16
 ; What the device keeps of these two is the shaders' business; the assembly
 ; only needs their sizes: Body in motion.slang, Particle in particles.slang.
-shared BODY_BYTES,84
+shared BODY_BYTES,88
 shared PARTICLE_BYTES,32
 shared REQUEST_BYTES,20			; Request in myhits.slang: what a FIRE asks the director for
 

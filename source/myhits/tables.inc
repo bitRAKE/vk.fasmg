@@ -7,7 +7,7 @@
 ;		chain count, KIND, KIND, spacing	it is a head: so many of the first kind follow
 ;						it and one of the second, so far apart
 ;		move seconds, CURVE, ACTION, a, b, TARGET
-;		fire KIND			ask for one of these, sent at the player
+;		fire KIND, degrees		ask for one of these, sent at the player, or within so many degrees of that
 ;		again count			go back that many moves
 ;	end mover				and coast from there on
 ;
@@ -21,7 +21,7 @@
 ;
 ;	tone NAME, seconds, WAVE, hertz from, to, CURVE, attack, FALL, noise, gain
 ;						a sound (SOUND_NAME); see Recipe
-;	squad after, KIND, count, apart, y, spread, pace, pace after
+;	squad after, KIND, count, apart, y, spread, pace, pace after, holds
 ;						what comes, and when; see Wave. Times in seconds
 ;
 ; A program includes this and, in a data section, lays the tables down:
@@ -92,8 +92,8 @@ macro chain many*,body_kind*,last_kind*,apart*
 		assert (many)*(apart) <= (TRAIL_POINTS-32)*TRAIL_STEP
 	end repeat
 end macro
-macro fire what*
-	table_data MOVE_FIRE,EASE_LINEAR,0,KIND_#what,0.0,0.0
+macro fire what*,fan:0
+	table_data MOVE_FIRE,EASE_LINEAR,0,KIND_#what,1.0*(fan),0.0
 	table.moves = table.moves + 1
 end macro
 macro again back*
@@ -141,8 +141,8 @@ macro tone name*,seconds*,shape*,pitch_from*,pitch_to*,curve*,rise*,fall*,hiss*,
 end macro
 
 table.waves = 0
-macro squad gap*,what*,many*,apart*,high*,down*,share:-1.0,share_gap:0
-	table_data trunc ((gap)*TICK_RATE+0.5),KIND_#what,many,trunc ((apart)*TICK_RATE+0.5),1.0*(high),1.0*(down),1.0*(share),trunc ((share_gap)*TICK_RATE+0.5)
+macro squad gap*,what*,many*,apart*,high*,down*,share:-1.0,share_gap:0,waits:0
+	table_data trunc ((gap)*TICK_RATE+0.5),KIND_#what,many,trunc ((apart)*TICK_RATE+0.5),1.0*(high),1.0*(down),1.0*(share),trunc ((share_gap)*TICK_RATE+0.5),waits
 	table.waves = table.waves + 1
 end macro
 
@@ -240,6 +240,25 @@ macro game_tables
 		move 0,LINEAR,THRUST,520
 	end mover
 
+	; The dragon: a boss. It comes in, and then goes round and round on the
+	; right, a head chasing its own tail, loosing three shots at the player
+	; each half of the way round. The level waits for it. Kill the head.
+	mover DRAGON,FRAME_BEAST_HEAD,2.4,KIND_FACES_LEFT or KIND_KEEPS_UP,45,5000
+		chain 12,DRAGON_BODY,DRAGON_TAIL,104
+		move 0,LINEAR,THRUST,260
+		move 2.4,LINEAR,HOLD
+		move 2.0,INOUT_SINE,TURN,180
+		fire PELLET,34
+		fire PELLET,34
+		fire PELLET,34
+		move 0.6,LINEAR,HOLD
+		again 5
+	end mover
+	mover DRAGON_BODY,FRAME_LARVA_BODY,1.7,KIND_FACES_LEFT or KIND_FOLLOWS,10,150
+	end mover
+	mover DRAGON_TAIL,FRAME_WORM_TAIL,1.7,KIND_FACES_LEFT or KIND_FOLLOWS,10,150
+	end mover
+
 	; The bonuses, in the order the game and the HUD know them by. Each comes
 	; drifting back toward the player, bobbing, until it is taken or gone.
 	; (Spelled out: a name joined by an iterate would reach `mover` unjoined.)
@@ -262,13 +281,16 @@ end macro
 
 ; What comes, in order, and then again from the top.
 macro game_waves
-	squad 1.0,SWOOPER,3,0.35,260,180
+	squad 1.0,SWOOPER,3,0.35,260,180,1.0
 	squad 4.0,WEAVER,4,0.5,200,210
 	squad 4.5,WORM,1,0,420,0
 	; Two turrets ride in; two seconds on, the level stops for them.
 	squad 7.0,TURRET,2,0.6,330,400,0.0,2.0
 	; And moves on when the divers come.
 	squad 6.0,DIVER,3,0.6,240,260,1.0
+	; Then the dragon. Three seconds after it shows, the level stops, and
+	; nothing more comes until it is dead; the table begins again from there.
+	squad 6.0,DRAGON,1,0,540,0,0.0,3.0,1
 	TABLE_WAVES := table.waves
 	repeat 1, waves:table.waves
 		table_line 'static const uint TABLE_WAVES = ',`waves,';'

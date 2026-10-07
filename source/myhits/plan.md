@@ -424,8 +424,8 @@ they change a rule, into this plan.
 5. **Opposition.** Done: the game as one program; squads by a table; chains;
    hostile fire through the director; rank from the shooting; lives. Rank so
    far adds to a squad's numbers and to what a kill is worth; how often
-   hostiles fire and how fast they come are still to read it. More kinds and
-   squads, and a boss, are table work for milestone 7.
+   hostiles fire and how fast they come read it since milestone 7, which
+   also brought the boss.
 6. **Reward.** In hand. Done: the HUD, drawn by the device from the game
    block (a rolling score in seven-stroke digits, lives, rank), and damage
    that is felt (a stop of four ticks, shake, a red veil, pad rumble); five
@@ -436,8 +436,9 @@ they change a rule, into this plan.
    taking your aim. Done, then, but for tuning: how fast it should grow, and
    whether a lost life should cost it a stage.
 7. **Atmosphere.** In hand. Done: the backdrop, four layers of pattern that
-   pass at their own rates with the level. To come: music and the beat; rank
-   reaching how often hostiles fire and how fast they come; a boss; tuning.
+   pass at their own rates with the level; rank hurrying everything hostile,
+   by a tempo each move takes when it begins; a boss the level waits for, the
+   dragon, as a squad that holds. To come: music and the beat; tuning.
 
 ## Milestone 5 in detail
 

@@ -29,6 +29,7 @@ struct Body
     uint link;          // a head: its ring of trail, plus one. A segment: its head, and its place (chains.slang)
     uint laid;          // a head: points of trail laid so far
     float carried;      // and how far it has come since the last
+    uint span;          // how many ticks the move in hand lasts, settled when it began
 };
 
 // What a moving body may look at.
@@ -37,6 +38,7 @@ struct Scene
     float2 player;
     float2 crosshair;
     float drift;        // how far the level carried its riders this tick
+    float tempo;        // how much quicker than its table this body's moves go: 1, or more with rank
 };
 
 float2 heading(float angle) { return float2(cos(angle), sin(angle)); }
@@ -67,6 +69,7 @@ Body new_body(Tables tables, uint kind, float2 at, float angle, uint seed, uint 
     body.link = 0;
     body.laid = 0;
     body.carried = 0.0;
+    body.span = 0;
     return body;
 }
 
@@ -76,11 +79,14 @@ Body new_body(Tables tables, uint kind, float2 at, float angle, uint seed, uint 
 // it began: nothing accumulates, so a move ends exactly where it says. Moves
 // of no ticks happen at once, a few to a tick. Then the body coasts along its
 // heading at its speed, and the level carries what rides it.
-// `fires` comes back as the kind a FIRE move asked for, or nothing: a body
-// cannot make another, so its pass hands the request on to the director.
-bool advance_body(inout Body body, Tables tables, Scene scene, out uint fires)
+// `fires` comes back as the kind FIRE moves asked for, with how many above
+// FIRE_COUNT, and `fan` as how wide they are to be thrown: a body cannot
+// make another, so its pass hands the requests on to the director.
+static const uint FIRE_COUNT = 16;
+bool advance_body(inout Body body, Tables tables, Scene scene, out uint fires, out float fan)
 {
     fires = 0;
+    fan = 0.0;
     float side = (body.seed & 1) != 0 ? -1.0 : 1.0;
     float2 slid = float2(0.0, 0.0);
     for (uint chained = 0; chained < 4; ++chained)
@@ -97,8 +103,11 @@ bool advance_body(inout Body body, Tables tables, Scene scene, out uint fires)
             body.from_speed = body.speed;
             continue;
         }
+        // How long a move lasts is settled as it begins: a body does not
+        // change its mind half way because rank moved.
+        if (!at_once && body.elapsed == 0) body.span = max(uint(float(move.ticks) / max(scene.tempo, 0.25) + 0.5), 1u);
         if (!at_once) ++body.elapsed;
-        float eased = at_once ? 1.0 : ease(move.curve, float(body.elapsed) / float(move.ticks));
+        float eased = at_once ? 1.0 : ease(move.curve, float(body.elapsed) / float(body.span));
         float2 ahead = heading(body.from);
         float2 target = move.target == TARGET_PLAYER ? scene.player : move.target == TARGET_CROSSHAIR ? scene.crosshair : body.origin + ahead * 1000.0;
         float2 reach = float2(move.a, move.b * side);
@@ -115,10 +124,13 @@ bool advance_body(inout Body body, Tables tables, Scene scene, out uint fires)
         }
         case MOVE_TURN: body.angle = body.from + radians(move.a) * side * eased; break;
         case MOVE_THRUST: body.speed = lerp(body.from_speed, move.a, eased); break;
-        case MOVE_FIRE: fires = move.target; break;
+        case MOVE_FIRE:
+            fires = (fires & ~((1u << FIRE_COUNT) - 1)) + (1u << FIRE_COUNT) + move.target;
+            fan = radians(move.a);
+            break;
         default: break;
         }
-        if (!at_once && body.elapsed < move.ticks) break;
+        if (!at_once && body.elapsed < body.span) break;
         // The move is over: what it slid becomes where the body is.
         body.origin += slid;
         slid = float2(0.0, 0.0);
@@ -137,12 +149,22 @@ bool advance_body(inout Body body, Tables tables, Scene scene, out uint fires)
 bool advance_body(inout Body body, Tables tables, Scene scene)
 {
     uint fires;
-    return advance_body(body, tables, scene, fires);
+    float fan;
+    return advance_body(body, tables, scene, fires, fan);
 }
 
 // A body as the picture shows it: between its last two ticks. One that has
 // just died, or is not there, has no size.
-struct Shown { float2 position; float2 axis; uint picture; };
+struct Shown { float2 position; float2 axis; uint picture; uint flags; };
+
+// A kind that keeps the right way up is mirrored when it goes the way its
+// picture does not look, rather than turned on its head. The draw and the
+// hit both ask here, so they agree.
+uint mirrored(Body body, float2 ahead)
+{
+    if ((body.flags & KIND_KEEPS_UP) == 0) return 0;
+    return ((body.flags & KIND_FACES_LEFT) != 0 ? ahead.x > 0.0 : ahead.x < 0.0) ? SPRITE_FLIP : 0;
+}
 Shown show_body(Body before, Body now, float blend)
 {
     Shown shown;
@@ -154,5 +176,6 @@ Shown show_body(Body before, Body now, float blend)
     // A picture that looks left points its own x behind it.
     shown.axis = ((now.flags & KIND_FACES_LEFT) != 0 ? -ahead : ahead) * (there ? now.scale : 0.0);
     shown.picture = now.picture;
+    shown.flags = mirrored(now, ahead);
     return shown;
 }

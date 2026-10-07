@@ -19,12 +19,13 @@ build.cmd myhits-survey
 
 So do pictures. A scripted run draws to a window nobody sees, so proofs 04
 to 07 each leave `frame_NNN.png` there: the whole playfield at 1920×1080, at
-the frames of the script worth looking at. The game's fourteen are its swoopers,
+the frames of the script worth looking at. The game's fifteen are its swoopers,
 its weavers, the worm coming and then turned back on itself, the turrets
 firing with the level stopped, the run over; and of the second game three
 volleys with RAPID and SPREAD in force, the nova going off, the shield about
 to take a rammer, the worm's head under fire, and the companion: where the
-ship was, acting for itself, and taking the player's aim.
+ship was, acting for itself, and taking the player's aim; and the dragon,
+in the second place's inks.
 
 | # | Proof | Claim | State |
 | --- | --- | --- | --- |
@@ -309,6 +310,7 @@ holds fire from frame 60 to 99.
 | 10 | The traffic is Root down and Events up; a frame of two ticks is five passes and two draws | Counters, and the draw pulls the 610 sprites the shaders lay out |
 | 11 | A press comes from its message | A key down between frames is pressed and held for one frame and not the next; the keyboard repeating a key is not a press; a pad's press is the edge of what it holds |
 | 12 | A stall is not chased | With the clock set a second back, a frame earns eight ticks and owes nothing after; the next earns none |
+| 13 | A body can be hurried, and still ends each move where it says | The first missile's twin is told to go twice as quick, which is how rank hurries what is hostile. Its offset takes 21 ticks and not 42: it is still in it at frame 29 and done at frame 30, exactly at its own, mirrored, offset |
 
 Then the script reads `build\myhits_motion.curves.bin`, the 31 curves by 65
 samples the device wrote where the CPU could read them, and holds each to
@@ -316,8 +318,8 @@ samples the device wrote where the CPU could read them, and holds each to
 formula each as easings.net gives them, in double precision. The two share
 no code and no structure.
 
-Last result here, GTX 1080 Ti, default and validation alike: all twelve hold,
-and the device's curves are within 4.9 × 10⁻⁷ of the second implementation
+Last result here, GTX 1080 Ti, default and validation alike: all thirteen
+hold, and the device's curves are within 4.9 × 10⁻⁷ of the second implementation
 (the worst is OUT_ELASTIC). The tables it runs are under a kilobyte.
 
 **The checks bite.** An offset of 41 for the missile's 40 fails check 5 at
@@ -386,7 +388,7 @@ They are drawn with no texel at all: a particle is its own falloff, and adds.
 | # | Claim | How it is held |
 | --- | --- | --- |
 | 1 | Events arrive in order, one frame late | As in the spine |
-| 2 | What is drawn is what is hit | At start, every texel of every frame is set down on the playfield as the draw sets it and brought back as a hit is, through four poses (plain; turned 37° at 1.5; turned 143° at 0.75; on its side at 2). It comes back solid exactly where its mask is, and through each pose the cut frames' solid texels number what the packer counted in the PNGs |
+| 2 | What is drawn is what is hit | At start, every texel of every frame is set down on the playfield as the draw sets it and brought back as a hit is, through four poses (plain; turned 37° at 1.5; turned 143° at 0.75 and mirrored; on its side at 2). It comes back solid exactly where its mask is, and through each pose the cut frames' solid texels number what the packer counted in the PNGs |
 | 3 | Every shot is accounted for | In every frame, fired = struck + escaped + flying |
 | 4 | A shot strikes where the picture begins | Four shots along the ring's middle row are logged between 1332.4 and 1334.1: the ring's first solid texel there is at 1332.5, and the walk meets it within a texel |
 | 5 | Nothing is too fast | A lance covers 50 units a tick and the ring's wall is 12 thick: it is never inside the wall at a tick, on either side of the ring. It strikes, at the same place |
@@ -515,7 +517,12 @@ head and nine segments that uncoil from where it came in and follow it
 through every turn. Shoot the head ten times and the worm goes segment after
 segment, from the head back. Then two turrets ride in on the level, the level
 stops for them, and they fire at where you are; when the divers come it
-moves on, and the table begins again. A hit on the ship costs one of three
+moves on. Then the dragon: a head and twelve segments that come in and go
+round and round on the right, the head chasing its tail and loosing three
+shots your way each half turn. The level stops for it and nothing else comes
+until its head is dead; then the table begins again, in a new place, a
+little quicker for every pip of rank: everything hostile goes about its
+moves faster the higher rank is. A hit on the ship costs one of three
 lives and two seconds of blinking in which nothing more can hurt. With none
 left the run is over, and the world goes on without you until Enter. The
 score, the lives and rank are on the screen, drawn by the device from its
@@ -557,9 +564,9 @@ atomic count. A chain's head lays its path into a ring of points eight units
 apart; a segment reads its head as the head stood last tick and takes the
 point its own distance back.
 
-**The checks**, on 640 scripted frames of eight ticks: a first game played
-badly to its end, and a second that is given every bonus and earns the
-companion.
+**The checks**, on 1,000 scripted frames of eight ticks: a first game played
+badly to its end, and a second that is given every bonus, earns the
+companion, and is left to run until the dragon has come and gone.
 
 | # | Claim | How it is held |
 | --- | --- | --- |
@@ -582,12 +589,13 @@ companion.
 | 17 | RAPID halves the wait and SPREAD makes each shot three | Three frames of fire are four shots plain; they are eight with RAPID, and twenty-four with both |
 | 18 | A nova strikes everything, and DOUBLE doubles exactly | In the frame the nova is taken or the next, the drone set down for it dies with whatever swoopers were left; nothing that can be hit is alive after; and the score has grown by exactly twice their worth at the rank of the moment |
 | 19 | The companion comes as a surprise, and grows | None until the worm's head is killed, and one two frames after. It is where the ship was: the first point of the ship's trail while the ship has not gone 150, then 10 past the corner once the ship has gone 160 on; and it has fired with the ship. Made more, its guard stops a pellet sent at it and its gun's shots strike while the player fires nothing. Made more again, its gun points from where it is to the crosshair, to a hundredth of a radian |
-| 20 | The backdrop is the level's | Held on the pictures themselves, by the proof runner: along the top rail, frames 300 and 320 are the same to the pixel, the level having stood still between them; frames 235 and 300 are not |
+| 20 | The level waits for a boss | The dragon is the sixth squad of the second game. Long after it has come, it and its twelve segments are all there, no squad has come after it, and the level stands. The script strikes its head dead; ten frames on the chain is gone, and by frame 995 the table has begun again and the level is at full pace |
+| 21 | The backdrop is the level's | Held on the pictures themselves, by the proof runner: along the top rail, frames 300 and 320 are the same to the pixel, the level having stood still between them; frames 235 and 300 are not |
 
-Last result here, GTX 1080 Ti, default and validation alike: all twenty
-hold. The run is 5,120 ticks, 26,240 passes and 2,560 draws, and takes five
-seconds. The world is 756 KB on the device. The nova went off in frame 468
-and the head died in frame 557; 109 sounds went to voices.
+Last result here, GTX 1080 Ti, default and validation alike: all twenty-one
+hold. The run is 8,000 ticks, 41,000 passes and 4,000 draws, and takes seven
+seconds. The world is 764 KB on the device. The nova went off in frame 468
+and the head died in frame 557; 136 sounds went to voices.
 
 **The checks bite.** Each of these was made and seen to fail the check it
 should: segments a tenth too far apart (5, at frame 150); the director
@@ -597,7 +605,8 @@ moved by a twentieth (4, at 29); the level ignoring a squad's pace (8, at
 reached (15, at 418); a shield that takes nothing (16, at 505); a RAPID
 that changes nothing (17, at 432); a DOUBLE that changes nothing (18, at
 469); a companion 100 behind and not 150 (19, at 568); a guard that stops
-nothing (19, at 600); a gun that ignores the aim (19, at 630).
+nothing (19, at 600); a gun that ignores the aim (19, at 630); a squad that
+holds nothing (20, at 900).
 
 **Finding: a run that is over is still a world.** The first script meant to
 stop the squads when the last life went. But then the level, stopped for the
@@ -611,6 +620,13 @@ hurt was expected: a weaver clips the ship there, and had done since the
 game first ran. The check compares the head "a tick ago" with a segment now,
 and in a tick the world stands still the head a tick ago is where it is. The
 check skips frames that held a stop; the chain was never wrong.
+
+**Finding: a picture that turns with its heading ends up on its head.** The
+dragon goes round, and half the way round its head was upside down: a
+picture that looks left, turned to go right, is turned over. Kinds marked to
+keep the right way up are now mirrored instead, and since a hit must be
+taken into the picture the same way it was set down, the mirror is in both;
+proof 05's third pose is mirrored to hold them together.
 
 **Finding: a check that cannot fail is not one.** The backdrop's first check
 ran on the device: each layer, asked for a point with the level farther on,

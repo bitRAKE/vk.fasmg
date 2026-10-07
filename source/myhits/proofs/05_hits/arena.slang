@@ -102,7 +102,8 @@ void survey(uint3 id : SV_DispatchThreadID)
         sprite.position = float2(700.5 + 13.0 * pose, 400.25 - 7.0 * pose);
         sprite.axis = heading(turned[pose]) * grown[pose];
         sprite.frame = id.x;
-        sprite.flags = 0;
+        // And the third of them mirrored, as a kind that keeps the right way up is.
+        sprite.flags = pose == 2 ? SPRITE_FLIP : 0;
         uint found = 0, wrong = 0;
         for (uint y = 0; y < frame.height; ++y)
             for (uint x = 0; x < frame.width; ++x)
@@ -203,6 +204,7 @@ void update(uint3 id : SV_DispatchThreadID)
         scene.player = game.ship;
         scene.crosshair = root.aim;
         scene.drift = 0.0;
+        scene.tempo = 1.0;
         bool alive = advance_body(body, world.tables, scene);
         if (body.position.x < -220.0 || body.position.x > PLAYFIELD_WIDTH + 220.0 || body.position.y < -220.0 || body.position.y > PLAYFIELD_HEIGHT + 220.0)
         {

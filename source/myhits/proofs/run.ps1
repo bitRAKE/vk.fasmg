@@ -159,7 +159,8 @@ try {
             4='the controls did not move the ship in their own frame'; 5='the missile''s offset did not end where it says'; 6='the missile did not come to face the crosshair'
             7='the missile did not reach its speed on the line to the crosshair'; 8='what rides the level did not ride it exactly, or the level did not stand still'
             9='shots fired, missed and flying do not add up, or the level came the wrong distance'; 10='the traffic or the passes of a frame are not what the plan allows'
-            11='a press was lost, repeated or invented'; 12='a stall was chased, or time was paid out wrongly' }
+            11='a press was lost, repeated or invented'; 12='a stall was chased, or time was paid out wrongly'
+            13='a body told to go twice as quick did not do its move in half the ticks, or did not end where the move says' }
         $frames = [int]$state.frames
         Assert-True ($frames -eq 200 -and [int]$state.events -eq $frames -and [int]$state.ticks -eq 2 * $frames) 'The motion proof did not run its script'
 
@@ -210,9 +211,10 @@ try {
             14='a hurt did not stop the world for four ticks, or the pad was told wrongly'; 15='a bonus set down before the ship was not taken, or was taken twice'
             16='the shield did not take the next hurt, or a life went with it'; 17='RAPID did not double the shots, or SPREAD did not treble them'
             18='the nova did not strike everything, or DOUBLE did not double exactly'
-            19='the companion did not come with the worm''s death, or was not where the ship had been, or did not guard, fire or take aim as its stage should' } 'myhits.exe'
+            19='the companion did not come with the worm''s death, or was not where the ship had been, or did not guard, fire or take aim as its stage should'
+            20='the level did not wait for the dragon, or did not move on when it died' } 'myhits.exe'
         $frames = [int]$state.frames
-        Assert-True ($frames -eq 640 -and [int]$state.events -eq $frames) 'The game did not run its script'
+        Assert-True ($frames -eq 1000 -and [int]$state.events -eq $frames) 'The game did not run its script'
         $voices = if ([int]$state.device) { "$($state.plays) sounds to voices" } else { 'no audio device here' }
         # The backdrop is the level's, and this is held on the pictures themselves. Along the top rail,
         # frames 300 and 320 are the same to the pixel: the level stood still between them. Frames 235

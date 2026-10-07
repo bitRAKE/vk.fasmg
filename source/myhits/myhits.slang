@@ -357,6 +357,9 @@ void direct()
             if (since == due[gift]) spawn_hostile(world, KIND_BONUS_RAPID + gifts[gift], ship + float2(150.0, 0.0), 3.14159265, 0);
         if (since == 440) spawn_hostile(world, KIND_DRONE, float2(1500.0, 760.0), 3.14159265, 0);
         if (since == 700) spawn_hostile(world, KIND_RAMMER, float2(PLAYFIELD_WIDTH + 120.0, ship.y), 3.14159265, 0);
+        // And the dragon, when it has held the level long enough, is struck
+        // dead by the script: what is checked is that the level then moves on.
+        if (since == 4400 && game.probe != 0) world.damage[game.probe - 1] += 1000;
         // And, once the worm's head has brought the companion, its two
         // promotions, with a drone for its gun and a pellet for its guard.
         if (since == 1440 || since == 1700) game.promoted += 1;
@@ -473,6 +476,9 @@ void direct()
     if (!frozen)
     {
         Wave next = world.tables.waves[game.wave % world.tables.wave_count];
+        // After a squad that holds the level, nothing comes while anything is
+        // alive; and what comes next counts its time from when the last died.
+        if (game.members == 0 && game.wave != 0 && world.tables.waves[(game.wave - 1) % world.tables.wave_count].holds != 0 && game.alive != 0) game.wave_tick = tick;
         if (game.members == 0 && tick >= game.wave_tick + next.after)
         {
             game.members = next.count + (next.count > 1 ? uint(game.rank * 3.0) : 0);
@@ -590,23 +596,27 @@ void update(uint3 id : SV_DispatchThreadID)
             scene.player = game.ship;
             scene.crosshair = root.aim;
             scene.drift = game.pace * TICK_SECONDS;
+            // The higher rank is, the quicker everything hostile goes about its moves.
+            scene.tempo = kind.health > 0.0 ? 1.0 + 0.5 * game.rank : 1.0;
             float2 was = body.position;
             uint fires;
-            alive = advance_body(body, world.tables, scene, fires);
+            float fan;
+            alive = advance_body(body, world.tables, scene, fires, fan);
             if (body.link != 0) lay_trail(body, was, world.trails);
             if (fires != 0 && game.state == STATE_PLAY)
             {
-                uint place_in;
-                InterlockedAdd(world.game.requests, 1, place_in);
-                if (place_in < REQUESTS)
+                // As many as it asked for, at the player, each a little to one side or the other.
+                uint count = fires >> FIRE_COUNT, place_in;
+                InterlockedAdd(world.game.requests, count, place_in);
+                float2 toward = game.ship - body.position;
+                for (uint each = 0; each < count && place_in + each < REQUESTS; ++each)
                 {
                     Request request;
-                    request.kind = fires;
+                    request.kind = fires & ((1u << FIRE_COUNT) - 1);
                     request.at = body.position;
-                    float2 toward = game.ship - body.position;
-                    request.angle = atan2(toward.y, toward.x);
+                    request.angle = atan2(toward.y, toward.x) + (unit(hash(slot * 31 + game.tick * 7 + each)) - 0.5) * fan;
                     request.seed = slot;
-                    world.queue[place_in] = request;
+                    world.queue[place_in + each] = request;
                 }
             }
         }
@@ -908,7 +918,7 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
         sprite.axis = shown.axis;
         sprite.frame = shown.picture;
         uint since = game.tick - body.struck;
-        sprite.flags = body.struck != 0 && since < FLASH_TICKS ? (255 - since * 255 / FLASH_TICKS) << SPRITE_FLASH : 0;
+        sprite.flags = shown.flags | (body.struck != 0 && since < FLASH_TICKS ? (255 - since * 255 / FLASH_TICKS) << SPRITE_FLASH : 0);
     }
     else if ((index -= BODIES) < SHIP_PARTS)
     {

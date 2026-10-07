@@ -199,6 +199,9 @@ void update(uint3 id : SV_DispatchThreadID)
         scene.player = game.ship;
         scene.crosshair = root.aim;
         scene.drift = game.pace * TICK_SECONDS;
+        // Of a pair of missiles the second goes about its moves twice as
+        // quick: a tempo is how rank will hurry what is hostile.
+        scene.tempo = body.kind == KIND_MISSILE && (body.seed & 1) != 0 ? 2.0 : 1.0;
         bool alive = advance_body(body, world.tables, scene);
         if (body.position.x < -220.0 || body.position.x > PLAYFIELD_WIDTH + 220.0 || body.position.y < -220.0 || body.position.y > PLAYFIELD_HEIGHT + 220.0)
         {
@@ -250,6 +253,11 @@ void report()
         events.reserved[13] = asuint(missile.angle);
         events.reserved[14] = asuint(missile.speed);
         events.reserved[15] = missile.move - world.tables.kinds[KIND_MISSILE].first;
+        // And its twin, in the next slot, which is the hurried one.
+        Body twin = world.bodies[now + game.traced % SHOTS];
+        events.report[0] = twin.kind == KIND_MISSILE ? twin.move - world.tables.kinds[KIND_MISSILE].first : 99;
+        events.report[1] = asuint(twin.position.x);
+        events.report[2] = asuint(twin.position.y);
     }
 }
 

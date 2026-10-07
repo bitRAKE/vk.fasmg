@@ -54,6 +54,15 @@ endp
 macro fail check*
 	fastcall record_failure,check
 end macro
+; At frame `when`, leave to `target` unless the count at `offset` of the events (RBX) is `value`.
+macro at_frame when*,offset*,value*,target*
+	local later
+	cmp esi,when
+	jne later
+	cmp dword [rbx+offset],value
+	jne target
+later:
+end macro
 ; Leave to `target` unless the float at `place` is within `slack` of the one at `value`.
 macro unless_near place*,value*,slack*,target*
 	movss xmm0,place
@@ -302,6 +311,20 @@ proc consume_events uses rbx rsi,events
 .offset_wrong:
 	fail 5
 .offset:
+	; 13: its twin goes twice as quick. Its offset is 21 ticks and not 42: it
+	; is still in it at frame 29, and at frame 30 it is done, exactly at its
+	; own offset, which is the first one's mirrored.
+	at_frame 29,Events.report,0,.tempo_wrong
+	cmp esi,30
+	jne .tempo
+	cmp dword [rbx+Events.report],1
+	jne .tempo_wrong
+	unless_near dword [rbx+Events.report+4],f_930,fine,.tempo_wrong
+	unless_near dword [rbx+Events.report+8],f_600,fine,.tempo_wrong
+	jmp .tempo
+.tempo_wrong:
+	fail 13
+.tempo:
 	; 6: its second, 18 ticks of INOUT_SINE, leaves it facing the crosshair.
 	cmp esi,49
 	jne .faced
@@ -596,6 +619,7 @@ f_300 dd 300.0
 f_480 dd 480.0			; 540 - 60: the missile's offset, up
 f_520 dd 520.0			; the scroll after 400 ticks: 240 a second for 260 of them
 f_540 dd 540.0
+f_600 dd 600.0			; 540 + 60: the twin's offset, down
 f_930 dd 930.0			; 760 + 100 + 30 + 40
 f_1501 dd 1501.0		; 1760 less 129.5 ticks at 240 a second
 f_1760 dd 1760.0

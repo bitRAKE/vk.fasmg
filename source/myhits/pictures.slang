@@ -185,6 +185,7 @@ struct Sprite
     uint flags;
 };
 static const uint SPRITE_MASK = 1;      // show the frame's mask, not its picture
+static const uint SPRITE_FLIP = 2;      // set its picture down mirrored, top for bottom
 
 struct SpriteVertex
 {
@@ -202,6 +203,7 @@ struct SpriteVertex
 float2 laid(Sprite sprite, Picture frame, float2 texel)
 {
     float2 local = texel - float2(frame.width, frame.height) * 0.5;
+    if ((sprite.flags & SPRITE_FLIP) != 0) local.y = -local.y;
     return local.x * sprite.axis + local.y * float2(-sprite.axis.y, sprite.axis.x);
 }
 float2 set_down(Sprite sprite, Picture frame, float2 texel) { return sprite.position + laid(sprite, frame, texel); }
@@ -289,7 +291,9 @@ float4 sprite_color(Pictures pictures, Picture frame, SpriteVertex input, out fl
     toward = LIGHT.z;
     if ((frame.flags & FRAME_LIGHT) != 0)
     {
-        toward = facing(pull_normal(pictures, frame, tap), input.turn);
+        float3 normal = pull_normal(pictures, frame, tap);
+        if ((input.flags & SPRITE_FLIP) != 0) normal.y = -normal.y;
+        toward = facing(normal, input.turn);
         color.rgb = lit(color.rgb, color.a, toward);
     }
     if ((frame.flags & FRAME_GLOW) != 0) color.a *= color.a;

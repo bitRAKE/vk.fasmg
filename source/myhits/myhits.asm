@@ -32,7 +32,7 @@ WORLD_BYTES := GAME_BYTES + POOL_BYTES + 2 * BODIES * BODY_BYTES + BODIES * 4 + 
 TICK_DISPATCHES := 5			; the director, the bodies, the shots, the struck, the particles
 STARTUP_DISPATCHES := PICTURES_PASSES + 2
 GAME_TICKS := 8				; a scripted frame of the game runs this many: it has far to go
-SCRIPT_FRAMES := 640
+SCRIPT_FRAMES := 1000
 RESTART_FRAME := 400			; the script presses Enter here; the first game is over by then
 assert RESTART_FRAME = 400		; the script's later frames are written out from it
 public mainCRTStartup
@@ -242,7 +242,7 @@ proc play_frame uses rbx
 	; over; and of the second game three volleys with RAPID and SPREAD, the
 	; nova going off, the shield about to take a rammer, and the worm's head
 	; under fire.
-	iterate when, 37,110,165,235,300,320,395,444,468,500,555,568,596,625
+	iterate when, 37,110,165,235,300,320,395,444,468,500,555,568,596,625,900
 		cmp dword [root+Root.frame],when
 		jne .no_#when
 		fastcall snapshot_take,when
@@ -391,7 +391,7 @@ proc consume_events uses rbx rsi rdi,events
 	jne .chain
 	cmp esi,150
 	jb .chain
-	cmp esi,165
+	cmp esi,163
 	ja .curled
 	movss xmm0,dword [rbx+Events.reserved+56]
 	subss xmm0,dword [rbx+Events.reserved+48]
@@ -668,6 +668,25 @@ proc consume_events uses rbx rsi rdi,events
 .mate_wrong:
 	fail 19
 .mate:
+	; 20: the level waits for a boss. The dragon is the sixth squad of the
+	; second game. Long after it has come, it and its twelve segments are all
+	; there, nothing more has come, and the level stands; the script strikes
+	; its head dead, and then the chain goes, the table begins again, and the
+	; level moves.
+	at_frame 900,Events.wave,6,.boss_wrong
+	at_frame 940,Events.wave,6,.boss_wrong
+	at_frame 940,Events.reserved+36,0,.boss_wrong
+	at_frame 940,Events.debug,12,.boss_wrong
+	at_frame 960,Events.debug,0,.boss_wrong
+	cmp esi,995
+	jne .boss
+	cmp dword [rbx+Events.wave],7
+	jb .boss_wrong
+	unless_near dword [rbx+Events.reserved+36],full_pace,tolerance,.boss_wrong
+	jmp .boss
+.boss_wrong:
+	fail 20
+.boss:
 	mov eax,[rbx+Events.score]
 	mov [score_before],eax
 	mov eax,[rbx+Events.reserved+20]

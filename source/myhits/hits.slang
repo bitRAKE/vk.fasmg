@@ -13,7 +13,7 @@ Sprite pose_of(Body body)
     float2 ahead = heading(body.angle);
     pose.axis = ((body.flags & KIND_FACES_LEFT) != 0 ? -ahead : ahead) * body.scale;
     pose.frame = body.picture;
-    pose.flags = 0;
+    pose.flags = mirrored(body, ahead);
     return pose;
 }
 
@@ -22,7 +22,9 @@ Sprite pose_of(Body body)
 float2 into_picture(Sprite pose, Picture frame, float2 point)
 {
     float2 offset = point - pose.position;
-    return float2(dot(offset, pose.axis), dot(offset, float2(-pose.axis.y, pose.axis.x))) / dot(pose.axis, pose.axis) + float2(frame.width, frame.height) * 0.5;
+    float2 local = float2(dot(offset, pose.axis), dot(offset, float2(-pose.axis.y, pose.axis.x))) / dot(pose.axis, pose.axis);
+    if ((pose.flags & SPRITE_FLIP) != 0) local.y = -local.y;
+    return local + float2(frame.width, frame.height) * 0.5;
 }
 
 bool solid_at(Pictures pictures, Picture frame, float2 texel)
