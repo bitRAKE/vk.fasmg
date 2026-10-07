@@ -79,7 +79,8 @@ GAME_SOURCES = $(GAME_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(MYHITS)\hits.
 GAME_SHADERS = $(BUILD)\myhits_game_develop.spv $(BUILD)\myhits_game_chart.spv $(BUILD)\myhits_game_census.spv $(BUILD)\myhits_game_begin.spv \
 	$(BUILD)\myhits_game_direct.spv $(BUILD)\myhits_game_update.spv $(BUILD)\myhits_game_collide.spv $(BUILD)\myhits_game_resolve.spv \
 	$(BUILD)\myhits_game_drift.spv $(BUILD)\myhits_game_report.spv $(BUILD)\myhits_game_render.spv $(BUILD)\myhits_game_scene_vertex.spv \
-	$(BUILD)\myhits_game_scene_fragment.spv $(BUILD)\myhits_game_particle_vertex.spv $(BUILD)\myhits_game_particle_fragment.spv
+	$(BUILD)\myhits_game_scene_fragment.spv $(BUILD)\myhits_game_particle_vertex.spv $(BUILD)\myhits_game_particle_fragment.spv \
+	$(BUILD)\myhits_game_veil_vertex.spv $(BUILD)\myhits_game_veil_fragment.spv
 MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe $(BUILD)\myhits_motion.exe $(BUILD)\myhits_hits.exe $(BUILD)\myhits_sound.exe $(BUILD)\myhits.exe
 
 VULKAN_DELAY_DEF = vk\vulkan-1.def
@@ -564,6 +565,14 @@ $(BUILD)\myhits_game_particle_vertex.spv: $(GAME_SOURCES)
 
 $(BUILD)\myhits_game_particle_fragment.spv: $(GAME_SOURCES)
 	$(MYHITS_SLANG) -entry particle_fragment -stage fragment -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_veil_vertex.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry veil_vertex -stage vertex -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_veil_fragment.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry veil_fragment -stage fragment -o $@ $(GAME_SLANG)
 	$(MYHITS_VALIDATE) $@
 
 $(BUILD)\myhits.obj: $(MYHITS)\myhits.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(MYHITS)\audio.inc $(GAME_SHADERS)

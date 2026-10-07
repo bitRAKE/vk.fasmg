@@ -25,8 +25,8 @@ HOSTILES := 384
 PARTICLES := 16384
 TRAILS := 32
 REQUESTS := 256
-INSTANCES := 160 + BODIES + 4
-GAME_BYTES := 192
+INSTANCES := 160 + BODIES + 4 + 21
+GAME_BYTES := 256
 POOL_BYTES := 8 + STYLE_LIMIT * 4
 WORLD_BYTES := GAME_BYTES + POOL_BYTES + 2 * BODIES * BODY_BYTES + BODIES * 4 + TRAILS * TRAIL_POINTS * 8 + REQUESTS * REQUEST_BYTES + PARTICLES * PARTICLE_BYTES
 TICK_DISPATCHES := 5			; the director, the bodies, the shots, the struck, the particles
@@ -129,6 +129,7 @@ proc create_world uses rsi rdi
 	end iterate
 	require_ok fastcall machine_graphics,addr scene_vertex_code,scene_vertex_code.size,addr scene_fragment_code,scene_fragment_code.size,BLEND_PREMULTIPLIED,addr scene_pipeline
 	require_ok fastcall machine_graphics,addr particle_vertex_code,particle_vertex_code.size,addr particle_fragment_code,particle_fragment_code.size,BLEND_PREMULTIPLIED,addr particle_pipeline
+	require_ok fastcall machine_graphics,addr veil_vertex_code,veil_vertex_code.size,addr veil_fragment_code,veil_fragment_code.size,BLEND_PREMULTIPLIED,addr veil_pipeline
 	require_ok fastcall pictures_develop
 	require_ok fastcall machine_serial_open
 	fastcall machine_dispatch,[begin_pipeline],1
@@ -149,7 +150,7 @@ endp
 
 proc release_world
 	fastcall audio_stop
-	iterate name, begin,direct,update,collide,resolve,drift,report,render,scene,particle
+	iterate name, begin,direct,update,collide,resolve,drift,report,render,scene,particle,veil
 		cmp [name#_pipeline],0
 		je .skip_#name
 		vkDestroyPipeline [device],[name#_pipeline],0
@@ -241,10 +242,12 @@ proc play_frame uses rbx
 	ret
 endp
 
-; Everything a frame draws: the sprites, then the light.
+; Everything a frame draws: the sprites and the HUD among them, then the
+; light, then the veil a hurt or the end of a run draws over it all.
 proc draw_world
 	fastcall machine_draw,[scene_pipeline],6,INSTANCES
 	fastcall machine_draw,[particle_pipeline],6,PARTICLES
+	fastcall machine_draw,[veil_pipeline],6,1
 	ret
 endp
 
@@ -254,6 +257,10 @@ proc consume_events uses rbx rsi rdi,events
 	mov rbx,rcx
 	mov esi,[rbx+Events.frame]
 	fastcall audio_events,rbx,addr table_sounds,[bank_buffer.mapped]
+	; And what should be felt, to the pad.
+	movss xmm0,dword [rbx+Events.rumble_low]
+	movss xmm1,dword [rbx+Events.rumble_high]
+	fastcall pad_rumble
 	xor edi,edi
 	repeat TABLE_SOUNDS
 		cmp dword [rbx+Events.sound+(%-1)*sizeof.Trigger+Trigger.count],0
@@ -361,7 +368,11 @@ proc consume_events uses rbx rsi rdi,events
 	; its first segment is one spacing behind where the head stood a tick ago,
 	; on the head's own line. Once all of it is out and turning, no two
 	; neighbors are farther apart than the spacing, nor nearer than a turn that
-	; tight can bring them.
+	; tight can bring them. (Not in a frame the world stood still in: the
+	; head "a tick ago" is then where it is.)
+	mov eax,[rbx+Events.report+4]
+	cmp eax,[last_stopped]
+	jne .chain
 	cmp esi,150
 	jb .chain
 	cmp esi,165
@@ -484,6 +495,15 @@ proc consume_events uses rbx rsi rdi,events
 	jle .ripple
 	fail 9
 .ripple:
+	; 13: the score the HUD shows chases the real one and never passes it.
+	mov eax,[rbx+Events.report]
+	cmp eax,[rbx+Events.score]
+	jbe .shown
+	fail 13
+.shown:
+	mov [last_shown],eax
+	mov eax,[rbx+Events.report+4]
+	mov [last_stopped],eax
 	iterate <name,offset>, hurts_before,Events.reserved+24, rank_before,Events.rank, scroll_before,Events.reserved+40
 		mov eax,[rbx+offset]
 		mov [name],eax
@@ -518,6 +538,33 @@ proc scripted_run uses rbx rsi
 .unseen:
 	fail 10
 .seen:
+	; 13, in part: by the end the HUD has caught up, and there is a score to show.
+	mov eax,[last_score]
+	test eax,eax
+	jz .hud_wrong
+	cmp eax,[last_shown]
+	je .hud
+.hud_wrong:
+	fail 13
+.hud:
+	; 14: a hurt is felt. Each stopped the world for four ticks, no more and
+	; no fewer; and what the pad is told is what the events say: all of the
+	; heavy motor is 65535, half of the light one 32768.
+	mov eax,[hurts_total]
+	shl eax,2
+	cmp eax,[last_stopped]
+	jne .felt_wrong
+	movss xmm0,[felt_all]
+	movss xmm1,[felt_half]
+	fastcall pad_rumble
+	cmp dword [pad_vibration],80000000h+0FFFFh
+	je .felt
+.felt_wrong:
+	fail 14
+.felt:
+	xorps xmm0,xmm0
+	xorps xmm1,xmm1
+	fastcall pad_rumble
 	; 11: the sounds are the events: each sound a frame asked for went to a
 	; voice once, none was refused, and every hurt was heard.
 	mov eax,[sounds_asked]
@@ -545,7 +592,7 @@ proc scripted_run uses rbx rsi
 	jne .commands
 	cmp [dispatch_count],SCRIPT_FRAMES*(GAME_TICKS*TICK_DISPATCHES+1)
 	jne .commands
-	cmp [draw_count],SCRIPT_FRAMES*2
+	cmp [draw_count],SCRIPT_FRAMES*3
 	je .report
 .commands:
 	fail 12
@@ -659,6 +706,8 @@ rank_fall dd 0.15
 spacing dd 112.0
 spacing_least dd 104.0			; what the worm's tightest turn can bring two neighbors to
 spacing_most dd 112.6
+felt_all dd 1.0
+felt_half dd 0.5
 full_pace dd 240.0
 title_play GLOBWSTR 'myhits | score %u | lives %u | rank %u%% | squad %u | %u fired, %u struck, %u killed | arrows or WASD move, Space fires, Shift launches, Esc quits',0
 title_over GLOBWSTR 'myhits | score %u | lives %u | rank %u%% | squad %u | %u fired, %u struck, %u killed | this run is over: Enter begins another',0
@@ -666,12 +715,12 @@ title_format dq 0
 world_buffer GpuBuffer
 header_buffer GpuBuffer
 bank_buffer GpuBuffer
-iterate name, begin,direct,update,collide,resolve,drift,report,render,scene,particle
+iterate name, begin,direct,update,collide,resolve,drift,report,render,scene,particle,veil
 	name#_pipeline dq 0
 end iterate
 iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,last_latency,worst_latency,title_rank,sounds_asked,heard_hurts, \
 	last_score,last_lives,last_wave,last_state,last_rank,last_fired,last_struck,last_kills,last_hurts,last_alive, \
-	hurts_before,rank_before,scroll_before,hurt_frame,hurts_total,rise_checked,falls_checked,chain_seen,head_died,alive_before
+	hurts_before,rank_before,scroll_before,hurt_frame,hurts_total,rise_checked,falls_checked,chain_seen,head_died,alive_before,last_shown,last_stopped
 	name dd 0
 end iterate
 
@@ -693,7 +742,7 @@ assert TABLE_BYTES = TABLE_MOVES * sizeof.Move + TABLE_KINDS * sizeof.Kind + TAB
 section '.rdata$game_spirv' data readable align 4
 iterate <name,module>, develop_code,develop, chart_code,chart, census_code,census, begin_code,begin, direct_code,direct, update_code,update, \
 	collide_code,collide, resolve_code,resolve, drift_code,drift, report_code,report, render_code,render, scene_vertex_code,scene_vertex, \
-	scene_fragment_code,scene_fragment, particle_vertex_code,particle_vertex, particle_fragment_code,particle_fragment
+	scene_fragment_code,scene_fragment, particle_vertex_code,particle_vertex, particle_fragment_code,particle_fragment, veil_vertex_code,veil_vertex, veil_fragment_code,veil_fragment
 	align 4
 	name file 'build\myhits_game_' bappend `module bappend '.spv'
 	name.size = $ - name

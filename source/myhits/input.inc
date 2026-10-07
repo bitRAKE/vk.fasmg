@@ -20,7 +20,34 @@ PAD_X := 4000h
 PAD_LEFT_DEAD := 7849			; XInput's own dead zones
 PAD_RIGHT_DEAD := 8689
 
+extrn XInputSetState:qword
+
 section '.text$input' code readable executable align 16
+
+; What a frame's events say should be felt: XMM0 for the heavy motor and XMM1
+; for the light, each 0..1. The pad is told only when that changes.
+proc pad_rumble
+	iterate <motor,place>, xmm0,pad_vibration, xmm1,pad_vibration+2
+		mulss motor,[pad_motor]
+		cvtss2si eax,motor
+		xor edx,edx
+		test eax,eax
+		cmovs eax,edx
+		mov edx,65535
+		cmp eax,edx
+		cmova eax,edx
+		mov word [place],ax
+	end iterate
+	mov eax,dword [pad_vibration]
+	cmp eax,[pad_felt]
+	je .done
+	mov [pad_felt],eax
+	cmp [pad_present],0
+	je .done
+	fastcall XInputSetState,0,addr pad_vibration
+.done:
+	ret
+endp
 
 ; A stick, EAX and EDX as XInput gives them and ECX its dead zone, as XMM0 and
 ; XMM1: nothing inside the dead zone, then evenly out to 1 at the rim, with y
@@ -130,5 +157,9 @@ pad_rim dd 32767.0
 pad_one dd 1.0
 pad_aim_speed dd 1400.0			; playfield units a second at the rim
 pad_present dd 0
+pad_motor dd 65535.0
+pad_felt dd 0
+pad_vibration:
+	dw 0,0
 pad_state:
 	rb 16

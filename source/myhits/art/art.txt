@@ -67,3 +67,65 @@ drawn	crosshair	64 64				symmetric
 drawn	shield		96 96				glow symmetric
 	ring	48 48 40 6 c0ffc080
 	ring	48 48 44 2 ffffe0c0
+
+; The digits the HUD counts in: seven strokes each, as on a calculator. They
+; are white, and the HUD inks them.
+drawn	digit_0		28 44
+	line 8 5 20 5 2.2 ffffffff
+	line 22 7 22 20 2.2 ffffffff
+	line 22 24 22 37 2.2 ffffffff
+	line 8 39 20 39 2.2 ffffffff
+	line 6 24 6 37 2.2 ffffffff
+	line 6 7 6 20 2.2 ffffffff
+drawn	digit_1		28 44
+	line 22 7 22 20 2.2 ffffffff
+	line 22 24 22 37 2.2 ffffffff
+drawn	digit_2		28 44
+	line 8 5 20 5 2.2 ffffffff
+	line 22 7 22 20 2.2 ffffffff
+	line 8 22 20 22 2.2 ffffffff
+	line 6 24 6 37 2.2 ffffffff
+	line 8 39 20 39 2.2 ffffffff
+drawn	digit_3		28 44
+	line 8 5 20 5 2.2 ffffffff
+	line 22 7 22 20 2.2 ffffffff
+	line 8 22 20 22 2.2 ffffffff
+	line 22 24 22 37 2.2 ffffffff
+	line 8 39 20 39 2.2 ffffffff
+drawn	digit_4		28 44
+	line 6 7 6 20 2.2 ffffffff
+	line 8 22 20 22 2.2 ffffffff
+	line 22 7 22 20 2.2 ffffffff
+	line 22 24 22 37 2.2 ffffffff
+drawn	digit_5		28 44
+	line 8 5 20 5 2.2 ffffffff
+	line 6 7 6 20 2.2 ffffffff
+	line 8 22 20 22 2.2 ffffffff
+	line 22 24 22 37 2.2 ffffffff
+	line 8 39 20 39 2.2 ffffffff
+drawn	digit_6		28 44
+	line 8 5 20 5 2.2 ffffffff
+	line 6 7 6 20 2.2 ffffffff
+	line 8 22 20 22 2.2 ffffffff
+	line 6 24 6 37 2.2 ffffffff
+	line 8 39 20 39 2.2 ffffffff
+	line 22 24 22 37 2.2 ffffffff
+drawn	digit_7		28 44
+	line 8 5 20 5 2.2 ffffffff
+	line 22 7 22 20 2.2 ffffffff
+	line 22 24 22 37 2.2 ffffffff
+drawn	digit_8		28 44
+	line 8 5 20 5 2.2 ffffffff
+	line 22 7 22 20 2.2 ffffffff
+	line 22 24 22 37 2.2 ffffffff
+	line 8 39 20 39 2.2 ffffffff
+	line 6 24 6 37 2.2 ffffffff
+	line 6 7 6 20 2.2 ffffffff
+	line 8 22 20 22 2.2 ffffffff
+drawn	digit_9		28 44
+	line 8 5 20 5 2.2 ffffffff
+	line 22 7 22 20 2.2 ffffffff
+	line 6 7 6 20 2.2 ffffffff
+	line 8 22 20 22 2.2 ffffffff
+	line 22 24 22 37 2.2 ffffffff
+	line 8 39 20 39 2.2 ffffffff

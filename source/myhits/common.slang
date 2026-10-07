@@ -25,6 +25,7 @@ void open_events(Events* events)
     }
     for (uint slot = 0; slot < 4; ++slot) events.debug[slot] = 0;
     for (uint spare = 0; spare < 16; ++spare) events.reserved[spare] = 0;
+    for (uint word = 0; word < 32; ++word) events.report[word] = 0;
 }
 
 // Ask for a sound: any pass may. A trigger is a count and a sum of where, so

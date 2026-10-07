@@ -12,7 +12,10 @@ static const uint PARTICLES = 16384;
 static const uint TRAILS = 32;
 static const uint REQUESTS = 256;
 static const uint STARS = 160;
-static const uint INSTANCES = STARS + BODIES + 4;
+static const uint HUD = 21;                     // eight digits, three lives, ten pips of rank
+static const uint INSTANCES = STARS + BODIES + 4 + HUD;
+static const uint STOP_TICKS = 4;               // a hurt stops the world this long: it is felt
+static const uint SPRITE_INK = 16;              // a sprite's flags from here are which ink it is drawn in
 static const float SHIP_SPEED = 600.0;
 static const float SHIP_SCALE = 1.5;
 static const float PACE = 240.0;                // the level's full speed
@@ -69,6 +72,12 @@ struct Game
     uint requested;         // ever
     uint alive;             // hostiles, as the last resolve counted
     uint probe;             // the slot of the last chain's head, plus one
+    uint shown;             // the score as the HUD shows it: it chases the real one
+    uint score_seen;
+    uint score_tick;        // when the score last grew, plus one: the digits jump
+    uint stop;              // ticks of stillness still to come
+    uint frozen;            // whether this tick is one of them
+    uint stopped;           // ticks ever spent so
 };
 struct Request { uint kind; float2 at; float angle; uint seed; };
 // The header the CPU writes once: GameWorld in myhits.asm.
@@ -108,6 +117,7 @@ void new_game(Game* game)
     fresh.wave = 0; fresh.wave_tick = game.tick; fresh.members = 0; fresh.member = 0; fresh.member_tick = 0;
     fresh.pace_due = 0; fresh.pace_wanted = 1.0;
     fresh.requests = 0; fresh.requested = 0; fresh.alive = 0; fresh.probe = 0;
+    fresh.shown = 0; fresh.score_seen = 0; fresh.score_tick = 0; fresh.stop = 0; fresh.frozen = 0; fresh.stopped = game.stopped;
     *game = fresh;
 }
 
@@ -121,6 +131,7 @@ void begin()
     world.game.opened = 0;
     world.game.scroll = 0.0;
     world.game.scroll_before = 0.0;
+    world.game.stopped = 0;
     new_game(world.game);
     for (uint body = 0; body < 2 * BODIES; ++body) { world.bodies[body].kind = 0; world.bodies[body].born = 0; }
     for (uint slot = 0; slot < BODIES; ++slot) world.damage[slot] = 0;
@@ -192,9 +203,28 @@ void direct()
     }
     bool playing = game.state == STATE_PLAY;
 
+    // A hurt stops the world for a few ticks. Nothing moves, nothing comes,
+    // nothing is fired; only the clock, the HUD and the veil go on.
+    bool frozen = game.stop != 0;
+    if (frozen)
+    {
+        game.stop -= 1;
+        game.stopped += 1;
+    }
+    game.frozen = frozen ? 1 : 0;
+
+    // The score the HUD shows chases the real one, so it rolls; and when the
+    // real one grows the digits jump.
+    if (game.score != game.score_seen)
+    {
+        game.score_seen = game.score;
+        game.score_tick = tick + 1;
+    }
+    if (game.shown < game.score) game.shown += max((game.score - game.shown) / 8, 1u);
+
     float2 ship = game.ship;
     game.ship_before = ship;
-    if (playing) ship = clamp(ship + root.move * (SHIP_SPEED * TICK_SECONDS), float2(80.0, 60.0), float2(PLAYFIELD_WIDTH - 60.0, PLAYFIELD_HEIGHT - 60.0));
+    if (playing && !frozen) ship = clamp(ship + root.move * (SHIP_SPEED * TICK_SECONDS), float2(80.0, 60.0), float2(PLAYFIELD_WIDTH - 60.0, PLAYFIELD_HEIGHT - 60.0));
     game.ship = ship;
 
     // What last tick did to the ship. A hurt costs a life and some rank, and
@@ -205,6 +235,7 @@ void direct()
         game.hurt_tick = tick + 1;
         game.lives -= 1;
         game.rank = max(game.rank - 0.15, 0.0);
+        game.stop = STOP_TICKS;
         trigger(SOUND_HURT, ship.x);
         emit(world, STYLE_BURST, ship, float2(1.0, 0.0), float2(0.0, 0.0), DEBRIS / 2, tick, tick + 1);
         if (game.lives == 0)
@@ -241,11 +272,12 @@ void direct()
     }
     game.pace = PACE * lerp(game.pace_from, game.pace_to, ease(EASE_INOUT_SINE, float(tick - game.pace_tick + 1) / float(PACE_TICKS)));
     game.scroll_before = game.scroll;
-    game.scroll += game.pace * TICK_SECONDS;
+    if (!frozen) game.scroll += game.pace * TICK_SECONDS;
 
     // What comes next, by the table; and the table again when it runs out.
     // Rank adds to a squad: one more for every third of it. They come whether
     // or not anyone is playing: a run that is over is still a world.
+    if (!frozen)
     {
         Wave next = world.tables.waves[game.wave % world.tables.wave_count];
         if (game.members == 0 && tick >= game.wave_tick + next.after)
@@ -284,6 +316,7 @@ void direct()
 
     // The player's own.
     if (game.cooldown > 0) game.cooldown -= 1;
+    playing = playing && !frozen;
     if (playing && (root.held & BUTTON_FIRE) != 0 && game.cooldown == 0)
     {
         place(world, game.shot_cursor % SHOTS, new_body(world.tables, KIND_SHOT, ship + float2(60.0, 0.0), 0.0, 0, game.tick));
@@ -302,7 +335,7 @@ void direct()
         game.fired += 2;
         trigger(SOUND_LAUNCH, ship.x);
     }
-    game.alive = 0;
+    if (!frozen) game.alive = 0;
 }
 
 // Every body at once: last tick's copy in, this tick's out. A head lays its
@@ -317,7 +350,7 @@ void update(uint3 id : SV_DispatchThreadID)
     Game game = *world.game;
     uint now = (game.tick & 1) * BODIES, before = ((game.tick & 1) ^ 1) * BODIES;
     Body body = world.bodies[before + slot];
-    if (body.kind != 0)
+    if (body.kind != 0 && game.frozen == 0)
     {
         Kind kind = world.tables.kinds[body.kind];
         bool alive;
@@ -381,6 +414,7 @@ void collide(uint3 id : SV_DispatchThreadID)
     uint slot = id.x;
     if (slot >= SHOTS + PELLETS) return;
     Game game = *world.game;
+    if (game.frozen != 0) return;
     uint now = (game.tick & 1) * BODIES, before = ((game.tick & 1) ^ 1) * BODIES;
     Body shot = world.bodies[now + slot];
     if (shot.kind == 0) return;
@@ -436,6 +470,7 @@ void resolve(uint3 id : SV_DispatchThreadID)
     if (id.x >= HOSTILES) return;
     uint slot = HOSTILE_FIRST + id.x;
     Game game = *world.game;
+    if (game.frozen != 0) return;
     uint at = (game.tick & 1) * BODIES + slot;
     uint taken = world.damage[slot];
     if (taken != 0) world.damage[slot] = 0;
@@ -467,7 +502,7 @@ void resolve(uint3 id : SV_DispatchThreadID)
 void drift(uint3 id : SV_DispatchThreadID)
 {
     World* world = root.world;
-    if (id.x >= PARTICLES) return;
+    if (id.x >= PARTICLES || world.game.frozen != 0) return;
     advance_particle(world, id.x, world.game.tick, world.game.ship);
 }
 
@@ -536,6 +571,17 @@ void report()
         events.debug[2] = asuint(most);
     }
     events.debug[3] = world.pool.live;
+    events.report[0] = game.shown;
+    events.report[1] = game.stopped;
+}
+
+// How far a hurt throws the picture about: a little under half a second of
+// it, less and less.
+float2 shake_of(Game game)
+{
+    uint since = game.tick + 1 - game.hurt_tick;
+    if (game.hurt_tick == 0 || since >= 48) return float2(0.0, 0.0);
+    return float2(sin(float(since) * 1.9), cos(float(since) * 2.7)) * (18.0 * (1.0 - ease(EASE_OUT_QUAD, float(since) / 48.0)));
 }
 
 // The level's specks, the bodies between their last two ticks, and the ship
@@ -550,13 +596,14 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
     sprite.axis = float2(0.0, 0.0);
     sprite.frame = FRAME_SPARK;
     sprite.flags = 0;
+    float2 shake = shake_of(game);
     uint index = instance;
     if (index < STARS)
     {
         float depth = 0.25 + 0.75 * unit(hash(index * 3 + 1));
         float span = PLAYFIELD_WIDTH + 80.0;
         float x = unit(hash(index * 3 + 2)) * span - lerp(game.scroll_before, game.scroll, root.blend) * depth;
-        sprite.position = float2(x - span * floor(x / span) - 40.0, unit(hash(index * 3 + 3)) * PLAYFIELD_HEIGHT);
+        sprite.position = float2(x - span * floor(x / span) - 40.0, unit(hash(index * 3 + 3)) * PLAYFIELD_HEIGHT) + shake * depth;
         sprite.axis = float2(0.1 + 0.3 * depth, 0.0);
     }
     else if ((index -= STARS) < BODIES)
@@ -564,16 +611,15 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
         uint now = game.tick & 1;
         Body body = world.bodies[now * BODIES + index];
         Shown shown = show_body(world.bodies[(now ^ 1) * BODIES + index], body, root.blend);
-        sprite.position = shown.position;
+        sprite.position = shown.position + shake;
         sprite.axis = shown.axis;
         sprite.frame = shown.picture;
         uint since = game.tick - body.struck;
         sprite.flags = body.struck != 0 && since < FLASH_TICKS ? (255 - since * 255 / FLASH_TICKS) << SPRITE_FLASH : 0;
     }
-    else
+    else if ((index -= BODIES) < 4)
     {
-        index -= BODIES;
-        float2 ship = lerp(game.ship_before, game.ship, root.blend);
+        float2 ship = lerp(game.ship_before, game.ship, root.blend) + shake;
         bool there = game.state == STATE_PLAY;
         // In its grace the ship blinks.
         uint since = game.tick + 1 - game.hurt_tick;
@@ -601,6 +647,37 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
             sprite.frame = FRAME_CROSSHAIR;
         }
     }
+    else if ((index -= 4) < 8)
+    {
+        // The score, eight digits, the greatest first. Those before its first
+        // are dim; all of them jump when it grows.
+        uint place_of = 1;
+        for (uint power = index; power < 7; ++power) place_of *= 10;
+        float jump = game.score_tick == 0 ? 0.0 : saturate(1.0 - float(game.tick + 1 - game.score_tick) / 30.0);
+        sprite.position = float2(70.0 + 34.0 * index, 56.0 - 10.0 * jump * jump);
+        sprite.axis = float2(1.0 + 0.3 * jump * jump, 0.0);
+        sprite.frame = FRAME_DIGIT_0 + (game.shown / place_of) % 10;
+        sprite.flags = (game.shown < place_of && index != 7 ? 5 : jump > 0.0 ? 2 : 1) << SPRITE_INK;
+    }
+    else if ((index -= 8) < 3)
+    {
+        // The lives, as ships. One just lost shrinks away, red.
+        uint since = game.tick + 1 - game.hurt_tick;
+        bool lost = index == game.lives && game.hurt_tick != 0 && since < 60;
+        sprite.position = float2(PLAYFIELD_WIDTH - 80.0 - 78.0 * index, 56.0);
+        sprite.axis = float2(index < game.lives ? 0.6 : lost ? 0.6 * (1.0 - float(since) / 60.0) : 0.0, 0.0);
+        sprite.frame = FRAME_SHIP;
+        sprite.flags = (lost ? 4 : 1) << SPRITE_INK;
+    }
+    else
+    {
+        // Rank, as ten pips: green, then gold, then red.
+        index -= 3;
+        bool lit = float(index) < game.rank * 10.0;
+        sprite.position = float2(PLAYFIELD_WIDTH * 0.5 - 162.0 + 36.0 * index, 50.0);
+        sprite.axis = float2(lit ? 0.55 : 0.18, 0.0);
+        sprite.flags = (lit ? (index < 4 ? 3 : index < 7 ? 2 : 4) : 5) << SPRITE_INK;
+    }
     return sprite_corner(sprite, world.pictures.frames[sprite.frame], vertex);
 }
 
@@ -611,8 +688,11 @@ float4 scene_fragment(SpriteVertex input) : SV_Target0
     float alpha, toward;
     float4 color = sprite_color(pictures, pictures.frames[input.frame], input, alpha, toward);
     if (alpha <= 0.0) discard;
-    float flash = float(input.flags >> SPRITE_FLASH) * (1.0 / 255.0);
+    float flash = float((input.flags >> SPRITE_FLASH) & 255) * (1.0 / 255.0);
     color.rgb = lerp(color.rgb, float3(color.a, color.a, color.a), flash);
+    // The HUD's pictures are white, and take an ink.
+    static const float3 inks[6] = { float3(1.0, 1.0, 1.0), float3(1.0, 1.0, 1.0), float3(1.0, 0.78, 0.25), float3(0.35, 1.0, 0.45), float3(1.0, 0.25, 0.15), float3(0.2, 0.24, 0.32) };
+    color.rgb *= inks[min((input.flags >> SPRITE_INK) & 15, 5u)];
     return color;
 }
 
@@ -620,11 +700,47 @@ float4 scene_fragment(SpriteVertex input) : SV_Target0
 ParticleVertex particle_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_VulkanInstanceID)
 {
     World* world = root.world;
-    return particle_corner(world, instance, vertex, world.game.tick);
+    ParticleVertex result = particle_corner(world, instance, vertex, world.game.tick);
+    result.position.xy += shake_of(*world.game) / float2(PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT) * 2.0;
+    return result;
 }
 
 [shader("fragment")]
 float4 particle_fragment(ParticleVertex input) : SV_Target0
 {
     return particle_light(input);
+}
+
+struct VeilVertex
+{
+    float4 position : SV_Position;
+    float2 at : TEXCOORD0;                  // -1..1 across the playfield
+    nointerpolation float hurt : COLOR0;
+    nointerpolation float over : COLOR1;
+};
+
+// The last thing drawn, over everything: being hurt reddens the edges of
+// the picture for a moment, and a run that is over dims all of it.
+[shader("vertex")]
+VeilVertex veil_vertex(uint vertex : SV_VulkanVertexID)
+{
+    static const uint corners[6] = { 0, 1, 2, 2, 1, 3 };
+    Game game = *root.world.game;
+    uint since = game.tick + 1 - game.hurt_tick;
+    VeilVertex result;
+    result.at = float2(corners[vertex] & 1, corners[vertex] >> 1) * 2.0 - 1.0;
+    result.hurt = game.hurt_tick == 0 ? 0.0 : saturate(1.0 - float(since) / 80.0);
+    result.over = game.state == STATE_OVER ? saturate(float(game.tick - game.over_tick) / 120.0) : 0.0;
+    // With nothing to show it covers nothing.
+    result.position = float4(result.hurt + result.over > 0.0 ? result.at : float2(0.0, 0.0), 0.0, 1.0);
+    return result;
+}
+
+[shader("fragment")]
+float4 veil_fragment(VeilVertex input) : SV_Target0
+{
+    float edge = smoothstep(0.3, 1.25, length(input.at));
+    float red = input.hurt * input.hurt * edge * 0.8;
+    float dim = input.over * 0.45;
+    return float4(red * 0.9, red * 0.05, red * 0.02, saturate(red * 0.5 + dim));
 }

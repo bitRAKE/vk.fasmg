@@ -197,7 +197,7 @@ memory only shaders touch: `develop` writes every texel (copying the cut
 ones, computing the rest), `chart` derives every mask word from the texels'
 alpha, and `census` counts each frame and compares it with what the packer
 said. Then the packer's block is let go. A frame of the proof is one compute
-pass, which sets down all 69 sprites, and one draw, which pulls sprite, frame,
+pass, which sets down all 89 sprites, and one draw, which pulls sprite, frame,
 texels and normals through the root pointer.
 
 **The checks**, on 120 scripted frames:
@@ -210,18 +210,18 @@ texels and normals through the root pointer.
 | 4 | A frame said to be symmetric is | Its mask equals its mirror, bit for bit |
 | 5 | The masks are what is drawn | At half size the gallery's masks cover a quarter of all solid texels in pixels, and its pictures, by their own filtered alpha, cover the same, each within a sixteenth |
 | 6 | Controls read for frame N move the ship in frame N | As in the spine |
-| 7 | One pass set down every sprite the draw pulls | It reports 69 |
+| 7 | One pass set down every sprite the draw pulls | It reports 89 |
 | 8 | The light stays put while the pictures turn | Summed over the run, at least 85% of the chain's brightened fragments lie on the lit side of their sprite, and at most 70% would have with the light turned with the picture |
 | 9 | The traffic is Root down and Events up | Byte counters, as in the spine |
 | 10 | Three passes make the pictures; a frame is one pass and one draw | Command counters |
 | 11 | The pad maps as designed | Six made-up pad states through `pad_apply`: nothing inside the dead zone, 1 at the rim, a half halfway, up is up, the d-pad and buttons |
 
 Last result here, GTX 1080 Ti, default and validation alike: all eleven hold.
-22 frames (18 cut, 2 made, 2 drawn), 133,985 texels and 3,891 mask words;
-427 KB goes up once and the pictures take 539 KB on the device. The device
+32 frames (18 cut, 2 made, 12 drawn), 146,305 texels and 4,331 mask words;
+429 KB goes up once and the pictures take 590 KB on the device. The device
 counts 52,469 solid texels in the cut frames, as the packer did. The gallery's
-masks cover 13,991 pixels and its pictures 13,931, against a quarter of the
-solid texels at 14,062. Of the chain's brightened fragments 89% lie on the lit
+masks cover 14,752 pixels and its pictures 14,757, against a quarter of the
+solid texels at 14,833. Of the chain's brightened fragments 89% lie on the lit
 side; with the light turned with the pictures it would be 50%.
 
 **Check 2 bites.** Flipping one bit of one texel in the embedded block, in a
@@ -515,8 +515,11 @@ stops for them, and they fire at where you are; when the divers come it
 moves on, and the table begins again. A hit on the ship costs one of three
 lives and two seconds of blinking in which nothing more can hurt. With none
 left the run is over, and the world goes on without you until Enter. The
-title carries the score, lives, rank, squad and the shooting, until the HUD
-of milestone 6 takes them over.
+score, the lives and rank are on the screen, drawn by the device from its
+own game block: the score rolls up to what it is and its digits jump when it
+grows; a life lost shrinks away red; rank is ten pips, green to red. A hurt
+is felt: the world stops for four ticks, the picture is thrown about for
+half a second, its edges redden, and a pad shakes.
 
 **How it is made.** A tick is the five passes of proof 05. The director
 alone reads the wave table, eases the level's pace, looks at the shooting
@@ -542,10 +545,12 @@ badly to its end, and the start of a second.
 | 9 | Kill the head and the chain goes with it | In the second game the worm's head is shot as it comes; five frames after the frame it dies in, at least ten fewer are alive |
 | 10 | Those things were seen | The rise and the falls of rank were each checked at least once, and the head did die |
 | 11 | The sounds are the events | Each sound a frame asked for went to a voice once, none was refused, and every hurt was heard |
-| 12 | The traffic is Root down and Events up; a frame of eight ticks is 41 passes and two draws | Counters |
+| 12 | The traffic is Root down and Events up; a frame of eight ticks is 41 passes and three draws | Counters |
+| 13 | The score on the screen chases the real one | It is never more than the real one, and by the end of the run it is the same |
+| 14 | A hurt is felt | Each stopped the world for exactly four ticks; and what the pad is told is what the events say: all of the heavy motor is 65535, half of the light one 32768 |
 
-Last result here, GTX 1080 Ti, default and validation alike: all twelve hold.
-The run is 4,640 ticks, 23,780 passes and 1,160 draws, and takes four
+Last result here, GTX 1080 Ti, default and validation alike: all fourteen
+hold. The run is 4,640 ticks, 23,780 passes and 1,740 draws, and takes four
 seconds. The world is 753 KB on the device. The head died in frame 562; 77
 sounds went to voices.
 
@@ -560,6 +565,13 @@ stop the squads when the last life went. But then the level, stopped for the
 turrets, would never be told to move on, and the script's later checks would
 depend on when the player happened to die. The squads come whoever is
 playing; only the player's ship, and fire aimed at it, wait for Enter.
+
+**Finding: a stop showed that the script's ship had been hurt all along.**
+The hit-stop of milestone 6 failed the chain's check at frame 162, where no
+hurt was expected: a weaver clips the ship there, and had done since the
+game first ran. The check compares the head "a tick ago" with a segment now,
+and in a tick the world stands still the head a tick ago is where it is. The
+check skips frames that held a stop; the chain was never wrong.
 
 **Finding: the ship cannot be kept safe by standing still.** Every row of
 the playfield is crossed by something. The script's checks of lives are

@@ -91,7 +91,7 @@ foreach ($module in $modules) {
     # pointer. (One that only computes, like a plot of a curve, reaches none.)
     Assert-True ($code -notmatch 'OpTypeImage|OpTypeSampler|DescriptorSet|OpVariable %\S+ (Uniform|StorageBuffer|UniformConstant)\b') "$($module.Name) binds a descriptor"
     if ($code -match 'OpCapability PhysicalStorageBufferAddresses') { $pulling++ }
-    else { Assert-True ($module.Name -match '_plot_|_particle_fragment') "$($module.Name) reaches no memory, and is not one of the shaders known to need none" }
+    else { Assert-True ($module.Name -match '_plot_|_particle_fragment|_veil_fragment') "$($module.Name) reaches no memory, and is not one of the shaders known to need none" }
     $names = @{}
     foreach ($match in [regex]::Matches($code, 'OpMemberName (%\S+) (\d+) "(\w+)"')) { $names["$($match.Groups[1].Value) $($match.Groups[2].Value)"] = $match.Groups[3].Value }
     foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census|Tables|Move|Kind|Style|Recipe|Wave)(?:_\w+)?) (\d+) Offset (\d+)')) {
@@ -206,7 +206,8 @@ try {
             7='a hurt did not cost one life, or two came within the grace, or the run did not end with the last, or begin again on Enter'
             8='the level did not stop for what was anchored to it, or did not move on'; 9='the chain did not die with its head'
             10='a rise or fall of rank, or the death of the head, was never seen'; 11='the sounds asked for did not each go to a voice, or a hurt was not heard'
-            12='the traffic or the passes of a frame are not what the plan allows' } 'myhits.exe'
+            12='the traffic or the passes of a frame are not what the plan allows'; 13='the score the HUD shows passed the real one, or never caught it'
+            14='a hurt did not stop the world for four ticks, or the pad was told wrongly' } 'myhits.exe'
         $frames = [int]$state.frames
         Assert-True ($frames -eq 580 -and [int]$state.events -eq $frames) 'The game did not run its script'
         $voices = if ([int]$state.device) { "$($state.plays) sounds to voices" } else { 'no audio device here' }

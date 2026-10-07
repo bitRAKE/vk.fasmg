@@ -109,7 +109,8 @@ struct Events {                  // 512 bytes; a ring of four slots
     float rank, shield, intensity;       // intensity drives the music mix
     float rumble_low, rumble_high;       // gamepad motors
     uint  flags, debug[4];
-    struct { uint count; int pan; } sound[48];   // triggers
+    struct { uint count; int pan; } sound[32];   // triggers
+    uint    report[32];                           // what a program's last pass tells its checks
 };
 ```
 
@@ -320,7 +321,9 @@ escaped are counted already (proof 04); struck arrives with the hits. How the
 three become rank, over what window, is for milestone 5.
 
 **HUD.** Drawn by the GPU from the game block; the CPU never formats a
-number. The displayed score chases the real one, so it rolls. Each bonus slot
+number. Its pictures are frames like any other, drawn white in art.txt and
+inked by the draw; it is more instances of the one sprite draw, not a pass
+of its own. The displayed score chases the real one, so it rolls. Each bonus slot
 records when it was collected and animates from that with its own curve.
 Damage sets one timestamp that the HUD, the shake, the vignette and the
 rumble all read, with a few frames of hit-stop from the director.
@@ -413,8 +416,10 @@ they change a rule, into this plan.
    far adds to a squad's numbers and to what a kill is worth; how often
    hostiles fire and how fast they come are still to read it. More kinds and
    squads, and a boss, are table work for milestone 7.
-6. **Reward.** Bonuses, the animated HUD, damage you feel, the companion's
-   three stages.
+6. **Reward.** In hand. Done: the HUD, drawn by the device from the game
+   block (a rolling score in seven-stroke digits, lives, rank), and damage
+   that is felt (a stop of four ticks, shake, a red veil, pad rumble). To
+   come: bonuses and their slots, then the companion's three stages.
 7. **Atmosphere.** Backgrounds, music and beat, tuning.
 
 ## Milestone 5 in detail

@@ -85,7 +85,7 @@ shader_line '// Written by source\myhits\shared.asm from shared.inc. Do not edit
 
 shared PLAYFIELD_WIDTH,1920
 shared PLAYFIELD_HEIGHT,1080
-shared SOUND_KINDS,48
+shared SOUND_KINDS,32
 shared EVENT_SLOTS,4			; a power of two
 ; The simulation steps this many times a second, whatever the display's rate.
 shared TICK_RATE,120
@@ -147,6 +147,7 @@ boundary Events
 	u32 debug,4
 	block sound,Trigger,SOUND_KINDS
 	u32 reserved,16
+	u32 report,32			; what a program's last pass tells its checks
 end boundary
 assert sizeof.Events = 512
 

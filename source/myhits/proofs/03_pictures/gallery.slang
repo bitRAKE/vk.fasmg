@@ -8,7 +8,7 @@ static const uint CHAIN = 14;               // head, bodies, tail
 static const float CHAIN_SCALE = 1.5;
 static const float CHAIN_SPACING = 112.0;   // closer than a body is long: the couplings overlap
 static const uint SHOWN = 8;                // the light, pulsing in a row
-static const uint COLUMNS = 11;
+static const uint COLUMNS = 16;
 static const uint SPRITE_CHAIN = 2;         // counted by which side its light falls on
 static const uint SPRITE_GALLERY = 4;       // counted against its mask
 
@@ -72,7 +72,7 @@ void direct()
     // The gallery: every frame as it is, and under it the mask the device made of it.
     for (uint frame = 0; frame < ART_FRAMES; ++frame)
     {
-        float2 at = float2(90.0 + (frame % COLUMNS) * 110.0, 62.0 + (frame / COLUMNS) * 200.0);
+        float2 at = float2(90.0 + (frame % COLUMNS) * 116.0, 62.0 + (frame / COLUMNS) * 200.0);
         place(world, next, at, float2(1.0, 0.0), frame, SPRITE_GALLERY);
         place(world, next, at + float2(0.0, 98.0), float2(1.0, 0.0), frame, SPRITE_MASK);
     }
