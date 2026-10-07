@@ -507,6 +507,7 @@ one world, and its own scripted run holds it to the rules of play.
 ```bat
 build\myhits.exe
 build\myhits.exe --self-test
+build\myhits_music.wav
 ```
 
 **To look at, and to play.** Arrows, WASD or a pad move; Space or the left
@@ -545,6 +546,13 @@ edges, each passing at its own rate, the nearer the faster. It is the
 level's: when the level slows for the turrets all of it slows, and when the
 level stops it stands. Each time the table of squads has been gone through
 its inks change, from blue to magenta to green.
+
+There is music, and it listens. Three voices, each thirty-two notes in
+[tables.inc](../tables.inc), composed on the device after the sounds: a bass
+that is always there, drums that come in as the playfield fills, and a lead
+over them when it is full. Where the music is in its beat goes back down to
+the device, and the lattice's nodes strike with it. The checks write the
+three together as `build\myhits_music.wav`.
 
 And you do not stay alone. Kill the worm's head and something comes out of
 where it died: a companion, joined to the ship by a thread of light. At
@@ -591,8 +599,9 @@ companion, and is left to run until the dragon has come and gone.
 | 19 | The companion comes as a surprise, and grows | None until the worm's head is killed, and one two frames after. It is where the ship was: the first point of the ship's trail while the ship has not gone 150, then 10 past the corner once the ship has gone 160 on; and it has fired with the ship. Made more, its guard stops a pellet sent at it and its gun's shots strike while the player fires nothing. Made more again, its gun points from where it is to the crosshair, to a hundredth of a radian |
 | 20 | The level waits for a boss | The dragon is the sixth squad of the second game. Long after it has come, it and its twelve segments are all there, no squad has come after it, and the level stands. The script strikes its head dead; ten frames on the chain is gone, and by frame 995 the table has begun again and the level is at full pace |
 | 21 | The backdrop is the level's | Held on the pictures themselves, by the proof runner: along the top rail, frames 300 and 320 are the same to the pixel, the level having stood still between them; frames 235 and 300 are not |
+| 22 | The music is its notes, and follows the play | The device finds every stem it rendered loud enough and no louder than its gain. With nothing happening only the bass is wanted, with everything all three, each at its own level. Where there is an audio device the stems are playing, and say where in the beat they are. And the proof runner holds the device's stems to a second synthesis of the same notes, as it does the sounds |
 
-Last result here, GTX 1080 Ti, default and validation alike: all twenty-one
+Last result here, GTX 1080 Ti, default and validation alike: all twenty-two
 hold. The run is 8,000 ticks, 41,000 passes and 4,000 draws, and takes seven
 seconds. The world is 764 KB on the device. The nova went off in frame 468
 and the head died in frame 557; 136 sounds went to voices.
@@ -606,7 +615,8 @@ reached (15, at 418); a shield that takes nothing (16, at 505); a RAPID
 that changes nothing (17, at 432); a DOUBLE that changes nothing (18, at
 469); a companion 100 behind and not 150 (19, at 568); a guard that stops
 nothing (19, at 600); a gun that ignores the aim (19, at 630); a squad that
-holds nothing (20, at 900).
+holds nothing (20, at 900); and a drum's thump a semitone sharp puts 24,140
+of the music's 576,000 samples outside the allowance.
 
 **Finding: a run that is over is still a world.** The first script meant to
 stop the squads when the last life went. But then the level, stopped for the

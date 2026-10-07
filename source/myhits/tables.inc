@@ -21,6 +21,8 @@
 ;
 ;	tone NAME, seconds, WAVE, hertz from, to, CURVE, attack, FALL, noise, gain
 ;						a sound (SOUND_NAME); see Recipe
+;	stem NAME, WAVE, gain, FALL		one voice of the music; then
+;		notes n, n, ...			thirty-two of them, a rest being 0
 ;	squad after, KIND, count, apart, y, spread, pace, pace after, holds
 ;						what comes, and when; see Wave. Times in seconds
 ;
@@ -36,6 +38,8 @@
 ;		game_sounds
 ;	table_waves:
 ;		game_waves
+;	table_stems:
+;		game_music
 ;
 ; tables.asm assembles the same lines into build\myhits_tables.slang, which
 ; gives the shaders the KIND_ numbers.
@@ -138,6 +142,24 @@ macro tone name*,seconds*,shape*,pitch_from*,pitch_to*,curve*,rise*,fall*,hiss*,
 	table.samples = table.samples + trunc ((seconds)*SOUND_RATE+0.5)
 	table.sounds = table.sounds + 1
 	assert table.sounds <= SOUND_KINDS
+end macro
+
+table.stems = 0
+macro stem name*,shape*,loud*,fall*
+	repeat 1, n:table.stems
+		STEM_#name := n
+		table_line 'static const uint STEM_',`name,' = ',`n,';'
+	end repeat
+	table_data WAVE_#shape,1.0*(loud),EASE_#fall
+	table.stems = table.stems + 1
+end macro
+macro notes list*&
+	table.noted = 0
+	iterate note, list
+		table_data note
+		table.noted = table.noted + 1
+	end iterate
+	assert table.noted = MUSIC_STEPS
 end macro
 
 table.waves = 0
@@ -322,5 +344,20 @@ macro game_sounds
 	repeat 1, sounds:table.sounds, samples:table.samples
 		table_line 'static const uint TABLE_SOUNDS = ',`sounds,';'
 		table_line 'static const uint BANK_SAMPLES = ',`samples,';'
+	end repeat
+end macro
+
+; The music: two bars in C minor, three voices. The bass is always there; the
+; drums come in as the playfield fills, and the lead over them.
+macro game_music
+	stem BASS,TRIANGLE,0.55,IN_QUAD
+		notes 36,0,0,36,0,0,36,0, 36,0,0,36,0,0,43,0, 34,0,0,34,0,0,34,0, 31,0,0,31,0,0,38,0
+	stem DRUMS,DRUM,0.5,OUT_CUBIC
+		notes 1,0,3,0, 2,0,3,0, 1,0,3,3, 2,0,3,0, 1,0,3,0, 2,0,3,0, 1,1,3,0, 2,0,3,3
+	stem LEAD,SQUARE,0.2,OUT_QUAD
+		notes 72,75,79,84, 79,75,72,75, 79,84,87,84, 79,75,72,0, 70,74,77,82, 77,74,70,74, 67,71,74,79, 74,71,67,0
+	TABLE_STEMS := table.stems
+	repeat 1, stems:table.stems
+		table_line 'static const uint TABLE_STEMS = ',`stems,';'
 	end repeat
 end macro

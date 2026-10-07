@@ -98,6 +98,12 @@ shared WAVE_SINE,0
 shared WAVE_SQUARE,1
 shared WAVE_SAW,2
 shared WAVE_TRIANGLE,3
+shared WAVE_DRUM,4			; a stem's only: its notes are 1 a thump, 2 a crack, 3 a tick
+; The music is stems of this many steps, each this many samples: two bars of
+; sixteenths at 120 to the minute. A beat is four steps.
+shared MUSIC_STEPS,32
+shared MUSIC_STEP_SAMPLES,6000
+shared MUSIC_SAMPLES,192000
 ; Root.held and Root.pressed
 shared BUTTON_FIRE,1
 shared BUTTON_SECOND,2
@@ -329,16 +335,27 @@ boundary Recipe
 	f32 gain
 end boundary
 
+; One voice of the music: a wave, how loud, how each note falls away, and a
+; note for every step, as its number on a keyboard (69 is the A above middle
+; C) or nothing for a rest. Rendered after the sounds, into the same bank.
+boundary Stem
+	u32 wave
+	f32 gain
+	u32 fall_curve
+	u32 notes,32
+end boundary
+
 boundary Tables
 	ptr moves,Move
 	ptr kinds,Kind
 	ptr styles,Style
 	ptr sounds,Recipe
 	ptr waves,Wave
+	ptr stems,Stem
 	u32 move_count
 	u32 kind_count
 	u32 style_count
 	u32 sound_count
 	u32 wave_count
-	u32 pad
+	u32 stem_count
 end boundary

@@ -11,12 +11,21 @@
 ;			its sums and plays nothing.
 ;	audio_events	RCX = a frame's Events, RDX = the recipes as laid down,
 ;			R8 = the bank. Plays what the frame asked for.
+;	audio_music	RCX = the first stem's samples, in the bank after the
+;			sounds. Starts every stem looping, together and silent.
+;	audio_mix	XMM0 = how much is happening, 0..1: the stems come in
+;			and go out with it, a little at a time.
+;	audio_beat	Returns in XMM0 where the music is in its beat, 0..1, or
+;			less than none where there is no music to ask.
 ;	audio_stop
 iterate function, XAudio2Create,CoInitializeEx,CoUninitialize,Sleep
 	extrn function:qword
 end iterate
 
 AUDIO_VOICES := 16			; a power of two
+AUDIO_STEMS := 3			; and as many again as the music has stems, after them
+XAUDIO2_CommitChanges := 10*8
+XAUDIO2_LOOP_INFINITE := 255
 ; Where each method is in its interface's table. A voice is not a COM object:
 ; its table begins with its own methods.
 XAUDIO2_Release := 2*8
@@ -73,7 +82,7 @@ proc audio_start uses rbx rsi,muted
 	test eax,eax
 	js .stop
 	inc ebx
-	cmp ebx,AUDIO_VOICES
+	cmp ebx,AUDIO_VOICES+AUDIO_STEMS
 	jb .voice
 	mov [audio_ready],1
 	mov eax,1
@@ -216,6 +225,103 @@ proc audio_idle uses rbx rsi rdi
 	ret
 endp
 
+; The music: every stem on a voice of its own, looping for good, started in
+; one operation so that they are together to the sample, and silent until
+; audio_mix says otherwise.
+proc audio_music uses rbx rsi,stems
+	mov rsi,rcx
+	cmp [audio_ready],0
+	je .done
+	xor ebx,ebx
+.stem:
+	lea rax,[audio_voices]
+	mov rax,[rax+rbx*8+AUDIO_VOICES*8]
+	mov [audio_voice],rax
+	mov [audio_loop.data],rsi
+	method [audio_voice],SOURCE_SubmitSourceBuffer,addr audio_loop,0
+	test eax,eax
+	js .failed
+	xorps xmm1,xmm1
+	method [audio_voice],VOICE_SetVolume,0,0
+	method [audio_voice],SOURCE_Start,0,1
+	test eax,eax
+	js .failed
+	add rsi,MUSIC_SAMPLES*4
+	inc ebx
+	cmp ebx,AUDIO_STEMS
+	jb .stem
+	method [audio_engine],XAUDIO2_CommitChanges,1
+	mov [audio_playing],1
+.done:
+	ret
+.failed:
+	inc [audio_failures]
+	ret
+endp
+
+; How loud each stem should be for how much is happening: the bass always,
+; the drums from a little, the lead from a lot. XMM0 = 0..1; into audio_wanted.
+proc audio_levels
+	movss xmm1,[audio_bass]
+	movss [audio_wanted],xmm1
+	iterate <place,from,span,most>, audio_wanted+4,audio_drums_from,audio_drums_span,audio_drums, audio_wanted+8,audio_lead_from,audio_lead_span,audio_lead
+		movaps xmm1,xmm0
+		subss xmm1,[from]
+		divss xmm1,[span]
+		xorps xmm2,xmm2
+		maxss xmm1,xmm2
+		minss xmm1,[audio_one]
+		mulss xmm1,[most]
+		movss [place],xmm1
+	end iterate
+	ret
+endp
+
+; Each frame: the stems move a twentieth of the way to where they should be.
+proc audio_mix uses rbx
+	fastcall audio_levels
+	cmp [audio_playing],0
+	je .done
+	xor ebx,ebx
+.stem:
+	lea rax,[audio_wanted]
+	movss xmm1,[rax+rbx*4]
+	lea rax,[audio_mixed]
+	subss xmm1,[rax+rbx*4]
+	mulss xmm1,[audio_ease]
+	addss xmm1,[rax+rbx*4]
+	movss [rax+rbx*4],xmm1
+	lea rax,[audio_voices]
+	mov rax,[rax+rbx*8+AUDIO_VOICES*8]
+	mov [audio_voice],rax
+	method [audio_voice],VOICE_SetVolume,0,0
+	inc ebx
+	cmp ebx,AUDIO_STEMS
+	jb .stem
+.done:
+	ret
+endp
+
+; Where the music is in its beat: the first stem's samples played, within
+; four steps, as 0..1.
+proc audio_beat
+	movss xmm0,[audio_minus_one]
+	cmp [audio_playing],0
+	je .done
+	lea rax,[audio_voices]
+	mov rax,[rax+AUDIO_VOICES*8]
+	mov [audio_voice],rax
+	method [audio_voice],SOURCE_GetState,addr audio_state,0
+	mov rax,qword [audio_state+12]
+	xor edx,edx
+	mov ecx,MUSIC_STEP_SAMPLES*4
+	div rcx
+	cvtsi2ss xmm0,edx
+	divss xmm0,[audio_beat_samples]
+.done:
+	ret
+endp
+
 ; What the engine itself adds between a voice starting and the sound leaving, in samples.
 proc audio_latency
 	xor eax,eax
@@ -243,8 +349,9 @@ proc audio_stop uses rbx
 	mov qword [rcx+rbx*8],0
 .next:
 	inc ebx
-	cmp ebx,AUDIO_VOICES
+	cmp ebx,AUDIO_VOICES+AUDIO_STEMS
 	jb .voice
+	mov [audio_playing],0
 	cmp [audio_master],0
 	je .engine
 	method [audio_master],VOICE_DestroyVoice
@@ -261,7 +368,20 @@ section '.data$audio' data readable writeable align 16
 audio_engine dq 0
 audio_master dq 0
 audio_voice dq 0
-audio_voices rq AUDIO_VOICES
+audio_voices rq AUDIO_VOICES+AUDIO_STEMS
+audio_playing dd 0			; the music is
+audio_wanted dd 0,0,0			; how loud each stem should be,
+audio_mixed dd 0,0,0			; and is
+audio_bass dd 0.5
+audio_drums dd 0.55
+audio_drums_from dd 0.08
+audio_drums_span dd 0.25
+audio_lead dd 0.5
+audio_lead_from dd 0.4
+audio_lead_span dd 0.4
+audio_ease dd 0.05
+audio_minus_one dd -1.0
+audio_beat_samples dd 24000.0
 audio_ready dd 0
 audio_next dd 0
 audio_plays dd 0			; sounds asked of the voices
@@ -288,6 +408,12 @@ audio_buffer:
 audio_buffer.bytes dd 0
 audio_buffer.data dq 0
 	dd 0,0,0,0,0
+	dq 0
+; The same for a stem: all of it, round and round.
+audio_loop:
+	dd XAUDIO2_END_OF_STREAM,MUSIC_SAMPLES*4
+audio_loop.data dq 0
+	dd 0,0,0,0,XAUDIO2_LOOP_INFINITE
 	dq 0
 audio_state:
 	rb 24

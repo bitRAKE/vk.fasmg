@@ -94,7 +94,7 @@ foreach ($module in $modules) {
     else { Assert-True ($module.Name -match '_plot_|_particle_fragment|_veil_fragment|_backdrop_fragment') "$($module.Name) reaches no memory, and is not one of the shaders known to need none" }
     $names = @{}
     foreach ($match in [regex]::Matches($code, 'OpMemberName (%\S+) (\d+) "(\w+)"')) { $names["$($match.Groups[1].Value) $($match.Groups[2].Value)"] = $match.Groups[3].Value }
-    foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census|Tables|Move|Kind|Style|Recipe|Wave)(?:_\w+)?) (\d+) Offset (\d+)')) {
+    foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census|Tables|Move|Kind|Style|Recipe|Wave|Stem)(?:_\w+)?) (\d+) Offset (\d+)')) {
         $member = "$($match.Groups[2].Value).$($names["$($match.Groups[1].Value) $($match.Groups[3].Value)"])"
         Assert-True ($promised.ContainsKey($member)) "$($module.Name) has $member, which shared.inc does not"
         Assert-True ($promised[$member] -eq [int]$match.Groups[4].Value) "$($module.Name) puts $member at $($match.Groups[4].Value), shared.inc at $($promised[$member])"
@@ -212,10 +212,16 @@ try {
             16='the shield did not take the next hurt, or a life went with it'; 17='RAPID did not double the shots, or SPREAD did not treble them'
             18='the nova did not strike everything, or DOUBLE did not double exactly'
             19='the companion did not come with the worm''s death, or was not where the ship had been, or did not guard, fire or take aim as its stage should'
-            20='the level did not wait for the dragon, or did not move on when it died' } 'myhits.exe'
+            20='the level did not wait for the dragon, or did not move on when it died'
+            22='a stem of the music is too loud or silent, or the stems are not wanted as they should be, or are not playing' } 'myhits.exe'
         $frames = [int]$state.frames
         Assert-True ($frames -eq 1000 -and [int]$state.events -eq $frames) 'The game did not run its script'
         $voices = if ([int]$state.device) { "$($state.plays) sounds to voices" } else { 'no audio device here' }
+        # The music the device rendered is the notes of tables.inc, by a second synthesis; and it is written out to be listened to.
+        $stems = (Resolve-Path -LiteralPath (Join-Path $BuildDir 'myhits_game.music.bin')).Path
+        $played = ([Myhits.Bank]::CompareMusic($stems, (Join-Path $repoRoot 'source\myhits\tables.inc'))) -split ' '
+        Assert-True ([int]$played[0] * 1000 -le [int]$played[1]) "$($played[0]) of the music's $($played[1]) samples are not the second implementation's"
+        [Myhits.Bank]::WriteMix($stems, (Join-Path (Split-Path $stems) 'myhits_music.wav'), [int]$played[2])
         # The backdrop is the level's, and this is held on the pictures themselves. Along the top rail,
         # frames 300 and 320 are the same to the pixel: the level stood still between them. Frames 235
         # and 300 are not: it moved.
@@ -227,7 +233,7 @@ try {
         }
         Assert-True ($rail[300] -eq $rail[320]) 'The backdrop moved while the level stood still'
         Assert-True ($rail[235] -ne $rail[300]) 'The backdrop stood still while the level moved'
-        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through two games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; {9} passes and {10} draws a frame" -f `
+        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through two games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; {9} passes and {10} draws a frame" -f `
             $frames, $state.ticks_a_frame, ([int]$state.kinds - 1), $state.moves, $state.squads, [int]([int]$state.world_bytes / 1024), $state.head_died_frame, $state.hurts_heard, $voices,
             ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
     }

@@ -49,7 +49,8 @@ float4 backdrop_layer(uint layer, float2 at, float3 sky, float3 trace, float3 ri
         float2 part = abs(cell - floor(cell) - 0.5);
         float edge = saturate(1.0 - min(part.x, part.y) * 150.0 / 2.5);
         float node = saturate(1.0 - length(part) * 150.0 / 9.0);
-        return float4(trace * (edge * 0.28 + node * 0.9), 0.0);
+        // Its nodes beat with the music, where there is any.
+        return float4(trace * (edge * 0.28 + node * (0.9 + 2.0 * root.beat)), 0.0);
     }
     if (layer == 2)
     {

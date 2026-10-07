@@ -95,6 +95,8 @@ proc create_world uses rsi rdi
 	mov dword [rdi+ArenaWorld.tables+Tables.sound_count],TABLE_SOUNDS
 	mov qword [rdi+ArenaWorld.tables+Tables.waves],0
 	mov dword [rdi+ArenaWorld.tables+Tables.wave_count],0
+	mov qword [rdi+ArenaWorld.tables+Tables.stems],0
+	mov dword [rdi+ArenaWorld.tables+Tables.stem_count],0
 	mov rax,[world_buffer.address]
 	mov [rdi+ArenaWorld.game],rax
 	add rax,GAME_BYTES

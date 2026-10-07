@@ -116,6 +116,7 @@ struct Game
     float ship_carried;
     uint stage;             // times the table of squads has been gone through: the backdrop's inks
     uint stage_tick;        // when it last was
+    uint music_faults;      // stems of the music that are louder than their gain, or silent
 };
 struct Request { uint kind; float2 at; float angle; uint seed; };
 // The header the CPU writes once: GameWorld in myhits.asm.
@@ -163,7 +164,7 @@ void new_game(Game* game)
     fresh.companion = 0; fresh.promoted = 0; fresh.promoted_at = fresh.ship; fresh.mate = fresh.ship; fresh.mate_before = fresh.ship;
     fresh.mate_gun = 0.0; fresh.mate_guard = 3.14159265; fresh.mate_cooldown = 0; fresh.mate_fired = 0; fresh.mate_struck = 0; fresh.guarded = 0;
     fresh.ship_laid = 0; fresh.ship_carried = 0.0;
-    fresh.stage = 0; fresh.stage_tick = game.tick;
+    fresh.stage = 0; fresh.stage_tick = game.tick; fresh.music_faults = game.music_faults;
     *game = fresh;
 }
 
@@ -179,6 +180,16 @@ void begin()
     world.game.scroll_before = 0.0;
     world.game.stopped = 0;
     world.game.runs = 0;
+    // The music has been rendered by now: every stem should reach its gain,
+    // or near it, and never pass it.
+    uint faults = 0;
+    for (uint which = 0; which < world.tables.stem_count; ++which)
+    {
+        float peak = 0.0, gain = world.tables.stems[which].gain;
+        for (uint index = 0; index < MUSIC_SAMPLES; index += 3) peak = max(peak, abs(world.bank[BANK_SAMPLES + which * MUSIC_SAMPLES + index]));
+        if (peak > gain * 1.0001 || peak < gain * 0.5) ++faults;
+    }
+    world.game.music_faults = faults;
     new_game(world.game);
     for (uint body = 0; body < 2 * BODIES; ++body) { world.bodies[body].kind = 0; world.bodies[body].born = 0; }
     for (uint slot = 0; slot < BODIES; ++slot) world.damage[slot] = 0;
@@ -874,6 +885,7 @@ void report()
     events.report[15] = game.mate_struck;
     events.report[16] = game.guarded;
     events.report[17] = game.stage;
+    events.report[18] = game.music_faults;
     events.multiplier = game.until[BONUS_DOUBLE] > game.tick ? 2 : 1;
     events.shield = float(game.shield);
 }

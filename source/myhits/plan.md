@@ -348,8 +348,16 @@ compute pass renders every recipe once into memory the CPU can read; the
 voices play from there, uncopied. A frame's events carry a count and a sum of
 positions for each sound; the CPU plays each sound asked for once, on the
 next of sixteen voices, louder for being many, between the speakers at their
-mean, and a little off pitch. Music follows as looped stems whose gains track
-`intensity`; the loop position returns as `beat`.
+mean, and a little off pitch.
+
+The music is stems: a wave, a gain, how a note falls away, and thirty-two
+notes, two bars of sixteenths. They are rendered after the sounds into the
+same bank, each on a voice of its own that loops for good, all started in
+one operation so they are together to the sample. Each frame the stems move
+a twentieth of the way to how loud `intensity` says they should be: the bass
+always, the drums from a little, the lead from a lot. Where the first stem
+is in its beat is read back from its voice and goes down in `Root.beat`, so
+the picture can strike with the music. A scripted run hears none of it.
 **Input.** Keyboard and mouse, and an XInput pad when present, merged into
 the same four fields. What is held is read when the frame begins; what was
 pressed comes from the window's messages, and from the edges of the pad's
@@ -367,13 +375,13 @@ buttons. Rumble goes back out from the events.
 | `tools\art.cs`, `cut-art.ps1`, `pack-art.ps1` | Cutting sprites out of sheets (authoring); packing the art (build) | Built |
 | `pictures.inc`, `pictures.slang` | Making the pictures on the device; pulling, filtering and lighting them | Built; proved by 03 |
 | `input.inc` | The pad into Root; rumble to come | Built, without rumble |
-| `tables.inc`, `tables.asm` | The table macros and the game's data; their numbers for the shaders | Kinds, moves, chains, particle styles, sounds, squads |
+| `tables.inc`, `tables.asm` | The table macros and the game's data; their numbers for the shaders | Kinds, moves, chains, particle styles, sounds, squads, the music |
 | `chains.slang` | A head's trail, and the segments that follow it | Built; proved by 07 |
 | `backdrop.slang` | The layers behind everything, as functions of place and the level's travel | Built; held on the pictures |
 | `common.slang` | The root, a hash, opening a frame's events, asking for a sound | Built |
 | `ease.slang`, `motion.slang` | The easing curves; a body and one tick of its program | Built; proved by 04 |
 | `hits.slang`, `particles.slang` | Mask collision; the particle ring, its styles and its light | Built; proved by 05 |
-| `audio.inc`, `sounds.slang` | XAudio2's engine and voices; the bank rendered on the device | Built; proved by 06 |
+| `audio.inc`, `sounds.slang` | XAudio2's engine and voices; the sounds and the music rendered on the device | Built; proved by 06 and 07 |
 | `myhits.asm`, `myhits.slang` | The game | Playable: squads, chains, hostile fire, rank, lives. No HUD yet |
 
 One addition went into `examples\common`: device-local buffers in the pools,
@@ -438,7 +446,10 @@ they change a rule, into this plan.
 7. **Atmosphere.** In hand. Done: the backdrop, four layers of pattern that
    pass at their own rates with the level; rank hurrying everything hostile,
    by a tempo each move takes when it begins; a boss the level waits for, the
-   dragon, as a squad that holds. To come: music and the beat; tuning.
+   dragon, as a squad that holds; music in three stems that come and go with
+   how much is happening, and its beat sent down for the picture. What is
+   left is tuning, which wants someone playing: how hard, how fast, how
+   generous, how loud.
 
 ## Milestone 5 in detail
 

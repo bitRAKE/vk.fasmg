@@ -83,6 +83,65 @@ namespace Myhits {
             return string.Format(CultureInfo.InvariantCulture, "{0} {1} {2} {3:e2} {4}", apart, total, worst, Math.Sqrt(rms / total), tones.Count);
         }
 
+        // The music the same way: each stem of tables.inc, its thirty-two
+        // notes struck one after another, against what the device rendered
+        // (the game's dump of the bank after the sounds). Returns how many
+        // samples differ by more than the allowance, of how many, and how
+        // many stems there are.
+        public static string CompareMusic(string dump, string tables) {
+            const int Step = 6000, Steps = 32, Loop = Step * Steps;
+            string text = File.ReadAllText(tables);
+            MatchCollection stems = Regex.Matches(text, @"(?m)^\s*stem\s+(\w+),(\w+),([\d.]+),(\w+)\s*\r?\n\s*notes\s+([^\r\n;]+)");
+            byte[] bytes = File.ReadAllBytes(dump);
+            if (bytes.Length != stems.Count * Loop * 4) throw new InvalidDataException("The device's music is " + bytes.Length / 4 + " samples; " + stems.Count + " stems make " + stems.Count * Loop);
+            int apart = 0;
+            for (int which = 0; which < stems.Count; ++which) {
+                string shape = stems[which].Groups[2].Value;
+                double gain = double.Parse(stems[which].Groups[3].Value, CultureInfo.InvariantCulture);
+                int fall = Array.IndexOf(Curves.Names, stems[which].Groups[4].Value);
+                string[] written = stems[which].Groups[5].Value.Split(',');
+                if (written.Length != Steps || fall < 0) throw new InvalidDataException("Not a stem this reads: " + stems[which].Groups[1].Value);
+                for (int index = 0; index < Loop; ++index) {
+                    int note = int.Parse(written[index / Step].Trim()), within = index % Step;
+                    double mine = 0;
+                    if (note != 0) {
+                        double seconds = within / (double)Rate, along = within / (double)Step;
+                        double level = Math.Min(seconds / 0.004, 1.0) * (1 - Curves.Ease(fall, along));
+                        if (shape == "DRUM") {
+                            if (note == 1) mine = gain * level * Math.Sin(2 * Math.PI * (48.0 * seconds + 2.2 * (1 - Math.Pow(2, -seconds * 60))));
+                            else {
+                                double hiss = (Hash((uint)index * 2654435761U + (uint)which * 977U) >> 8) * (1.0 / 16777216.0) * 2 - 1;
+                                mine = gain * level * hiss * (note == 2 ? 0.9 : 0.4 * Math.Max(0.0, Math.Min(1.0, 1 - along * 5)));
+                            }
+                        } else {
+                            double cycles = 440.0 * Math.Pow(2, (note - 69) / 12.0) * seconds, part = cycles - Math.Floor(cycles);
+                            double wave = shape == "SQUARE" ? (part < 0.5 ? 1 : -1) : shape == "SAW" ? 2 * part - 1 : shape == "TRIANGLE" ? 1 - 4 * Math.Abs(part - 0.5) : Math.Sin(part * 2 * Math.PI);
+                            mine = gain * level * wave;
+                        }
+                    }
+                    double off = BitConverter.ToSingle(bytes, (which * Loop + index) * 4) - mine;
+                    if (Math.Abs(off) > 0.002 || double.IsNaN(off)) ++apart;
+                }
+            }
+            return string.Format(CultureInfo.InvariantCulture, "{0} {1} {2}", apart, stems.Count * Loop, stems.Count);
+        }
+
+        // The stems together, as they sound with everything happening: for a player.
+        public static void WriteMix(string dump, string wav, int stems) {
+            byte[] bytes = File.ReadAllBytes(dump);
+            int loop = bytes.Length / 4 / stems;
+            byte[] mixed = new byte[loop * 2 * 4];
+            for (int index = 0; index < loop * 2; ++index) {
+                float sum = 0;
+                for (int which = 0; which < stems; ++which) sum += BitConverter.ToSingle(bytes, (which * loop + index % loop) * 4);
+                Buffer.BlockCopy(BitConverter.GetBytes(sum * 0.6f), 0, mixed, index * 4, 4);
+            }
+            string raw = wav + ".raw";
+            File.WriteAllBytes(raw, mixed);
+            WriteWav(raw, wav);
+            File.Delete(raw);
+        }
+
         // The device's bank as it stands, for a player: 32-bit float, mono.
         public static void WriteWav(string dump, string wav) {
             byte[] samples = File.ReadAllBytes(dump);

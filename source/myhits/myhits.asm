@@ -94,12 +94,12 @@ proc create_world uses rsi rdi
 	; The CPU writes the header and the tables once, into host-visible memory.
 	require_ok fastcall create_buffer,addr header_buffer,sizeof.GameWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
 	; And the device writes the sounds once where the CPU, and so the voices, can read them.
-	require_ok fastcall create_buffer,addr bank_buffer,BANK_SAMPLES*4,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
+	require_ok fastcall create_buffer,addr bank_buffer,BANK_TOTAL*4,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
 	mov rdi,[header_buffer.mapped]
 	require_ok fastcall pictures_create,rdi
 	mov rax,[header_buffer.address]
 	add rax,sizeof.GameWorld
-	iterate <table,count,size>, moves,TABLE_MOVES,sizeof.Move, kinds,TABLE_KINDS,sizeof.Kind, styles,TABLE_STYLES,sizeof.Style, sounds,TABLE_SOUNDS,sizeof.Recipe, waves,TABLE_WAVES,sizeof.Wave
+	iterate <table,count,size>, moves,TABLE_MOVES,sizeof.Move, kinds,TABLE_KINDS,sizeof.Kind, styles,TABLE_STYLES,sizeof.Style, sounds,TABLE_SOUNDS,sizeof.Recipe, waves,TABLE_WAVES,sizeof.Wave, stems,TABLE_STEMS,sizeof.Stem
 		mov [rdi+GameWorld.tables+Tables.table],rax
 		add rax,(count)*(size)
 	end iterate
@@ -108,7 +108,7 @@ proc create_world uses rsi rdi
 	mov dword [rdi+GameWorld.tables+Tables.style_count],TABLE_STYLES
 	mov dword [rdi+GameWorld.tables+Tables.sound_count],TABLE_SOUNDS
 	mov dword [rdi+GameWorld.tables+Tables.wave_count],TABLE_WAVES
-	mov dword [rdi+GameWorld.tables+Tables.pad],0
+	mov dword [rdi+GameWorld.tables+Tables.stem_count],TABLE_STEMS
 	mov rax,[world_buffer.address]
 	iterate <pool,bytes>, game,GAME_BYTES, pool,POOL_BYTES, bodies,2*BODIES*BODY_BYTES, damage,BODIES*4, trails,TRAILS*TRAIL_POINTS*8, ship_trail,TRAIL_POINTS*8, queue,REQUESTS*REQUEST_BYTES, particles,PARTICLES*PARTICLE_BYTES
 		mov [rdi+GameWorld.pool],rax
@@ -134,9 +134,11 @@ proc create_world uses rsi rdi
 	require_ok fastcall machine_graphics,addr backdrop_vertex_code,backdrop_vertex_code.size,addr backdrop_fragment_code,backdrop_fragment_code.size,BLEND_OPAQUE,addr backdrop_pipeline
 	require_ok fastcall pictures_develop
 	require_ok fastcall machine_serial_open
+	; The sounds and the music first: nothing of them is uploaded but their
+	; recipes and their notes. Then the game, which listens to what was made.
+	fastcall machine_dispatch,[render_pipeline],(BANK_TOTAL+63)/64
+	fastcall machine_settle
 	fastcall machine_dispatch,[begin_pipeline],1
-	; The sounds, too: nothing of them is uploaded but their recipes.
-	fastcall machine_dispatch,[render_pipeline],(BANK_SAMPLES+63)/64
 	require_ok fastcall machine_serial_close
 	require_ok fastcall invalidate_buffer,addr bank_buffer
 	mov eax,[dispatch_count]
@@ -214,6 +216,22 @@ proc play_frame uses rbx
 	mov dword [root+Root.pressed],BUTTON_START
 .sample:
 	fastcall machine_sample
+	; The beat goes down with the controls: how lately the music struck one,
+	; so the picture can strike with it. A scripted run hears none.
+	mov dword [root+Root.beat],0
+	test dword [root+Root.flags],ROOT_SCRIPTED
+	jnz .open
+	fastcall audio_beat
+	xorps xmm1,xmm1
+	ucomiss xmm0,xmm1
+	jb .open
+	movss xmm1,[felt_all]
+	subss xmm1,xmm0
+	movaps xmm0,xmm1
+	mulss xmm0,xmm1
+	mulss xmm0,xmm1
+	movss dword [root+Root.beat],xmm0
+.open:
 	fastcall machine_open
 	cmp eax,1
 	jne .skipped
@@ -277,6 +295,9 @@ proc consume_events uses rbx rsi rdi,events
 	movss xmm0,dword [rbx+Events.rumble_low]
 	movss xmm1,dword [rbx+Events.rumble_high]
 	fastcall pad_rumble
+	; And how much is happening, to the music.
+	movss xmm0,dword [rbx+Events.intensity]
+	fastcall audio_mix
 	xor edi,edi
 	repeat TABLE_SOUNDS
 		cmp dword [rbx+Events.sound+(%-1)*sizeof.Trigger+Trigger.count],0
@@ -700,6 +721,8 @@ proc consume_events uses rbx rsi rdi,events
 	mov [last_shown],eax
 	mov eax,[rbx+Events.report+4]
 	mov [last_stopped],eax
+	mov eax,[rbx+Events.report+72]
+	mov [last_music_faults],eax
 	iterate <name,offset>, hurts_before,Events.reserved+24, rank_before,Events.rank, scroll_before,Events.reserved+40
 		mov eax,[rbx+offset]
 		mov [name],eax
@@ -709,8 +732,32 @@ proc consume_events uses rbx rsi rdi,events
 	ret
 endp
 
-; 580 frames by the script, then the totals no frame could show alone.
+; The music as the device rendered it, for the script to hold to the notes
+; and to write out as something a player can open.
+proc write_music uses rbx
+	fastcall CreateFileW,<W,'build\myhits_game.music.bin'>,GENERIC_WRITE,FILE_SHARE_READ,0,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,0
+	cmp rax,-1
+	je .failed
+	mov rbx,rax
+	mov rdx,[bank_buffer.mapped]
+	add rdx,BANK_SAMPLES*4
+	fastcall WriteFile,rbx,rdx,TABLE_STEMS*MUSIC_SAMPLES*4,addr written,0
+	test eax,eax
+	jz .close_failed
+	cmp [written],TABLE_STEMS*MUSIC_SAMPLES*4
+	jne .close_failed
+	fastcall CloseHandle,rbx
+	ret
+.close_failed:
+	fastcall CloseHandle,rbx
+.failed:
+	mov [app_io_failed],1
+	ret
+endp
+
+; A thousand frames by the script, then the totals no frame could show alone.
 proc scripted_run uses rbx rsi
+	fastcall write_music
 	or dword [root+Root.flags],ROOT_SCRIPTED
 	mov [script_ticks],GAME_TICKS
 	mov ebx,SCRIPT_FRAMES
@@ -764,6 +811,38 @@ proc scripted_run uses rbx rsi
 	xorps xmm0,xmm0
 	xorps xmm1,xmm1
 	fastcall pad_rumble
+	; 22: the music. The device found every stem it rendered loud enough and
+	; no louder than its gain. With nothing happening only the bass is wanted;
+	; with everything, all three, each at its own level. And where there is a
+	; device the stems are playing, and say where in the beat they are.
+	cmp [last_music_faults],0
+	jne .music_wrong
+	xorps xmm0,xmm0
+	fastcall audio_levels
+	cmp dword [audio_wanted],0.5
+	jne .music_wrong
+	mov eax,dword [audio_wanted+4]
+	or eax,dword [audio_wanted+8]
+	jnz .music_wrong
+	movss xmm0,[felt_all]
+	fastcall audio_levels
+	cmp dword [audio_wanted+4],0.55
+	jne .music_wrong
+	cmp dword [audio_wanted+8],0.5
+	jne .music_wrong
+	cmp [audio_ready],0
+	je .music
+	cmp [audio_playing],1
+	jne .music_wrong
+	fastcall audio_beat
+	xorps xmm1,xmm1
+	ucomiss xmm0,xmm1
+	jb .music_wrong
+	ucomiss xmm0,[felt_all]
+	jb .music
+.music_wrong:
+	fail 22
+.music:
 	; 11: the sounds are the events: each sound a frame asked for went to a
 	; voice once, none was refused, and every hurt was heard.
 	mov eax,[sounds_asked]
@@ -829,6 +908,9 @@ proc mainCRTStartup
 	jz .failed
 	; The checks make no noise; and no device is not a failure.
 	fastcall audio_start,[test_mode]
+	mov rcx,[bank_buffer.mapped]
+	add rcx,BANK_SAMPLES*4
+	fastcall audio_music,rcx
 	cmp [test_mode],0
 	je .show
 	fastcall snapshot_start
@@ -933,7 +1015,7 @@ end iterate
 iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,last_latency,worst_latency,title_rank,sounds_asked,heard_hurts, \
 	last_score,last_lives,last_wave,last_state,last_rank,last_fired,last_struck,last_kills,last_hurts,last_alive, \
 	hurts_before,rank_before,scroll_before,hurt_frame,hurts_total,rise_checked,falls_checked,chain_seen,head_died,alive_before,last_shown,last_stopped, \
-	fired_mark,nova_frame,nova_score,nova_kills,score_before,kills_before,struck_mark
+	fired_mark,nova_frame,nova_score,nova_kills,score_before,kills_before,struck_mark,last_music_faults
 	name dd 0
 end iterate
 
@@ -949,8 +1031,11 @@ table_sounds:
 	game_sounds
 table_waves:
 	game_waves
+table_stems:
+	game_music
 TABLE_BYTES := $ - table_moves
-assert TABLE_BYTES = TABLE_MOVES * sizeof.Move + TABLE_KINDS * sizeof.Kind + TABLE_STYLES * sizeof.Style + TABLE_SOUNDS * sizeof.Recipe + TABLE_WAVES * sizeof.Wave
+assert TABLE_BYTES = TABLE_MOVES * sizeof.Move + TABLE_KINDS * sizeof.Kind + TABLE_STYLES * sizeof.Style + TABLE_SOUNDS * sizeof.Recipe + TABLE_WAVES * sizeof.Wave + TABLE_STEMS * sizeof.Stem
+BANK_TOTAL := BANK_SAMPLES + TABLE_STEMS * MUSIC_SAMPLES	; the sounds, then the stems
 
 section '.rdata$game_spirv' data readable align 4
 iterate <name,module>, develop_code,develop, chart_code,chart, census_code,census, begin_code,begin, direct_code,direct, update_code,update, \

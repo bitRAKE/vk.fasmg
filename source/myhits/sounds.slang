@@ -36,14 +36,39 @@ float sound_sample(Recipe recipe, uint sound, uint index)
     return recipe.gain * level * lerp(wave_at(recipe.wave, cycles), hiss, recipe.noise);
 }
 
-// Once, over every sample of the bank.
+// One sample of one stem of the music. Every step strikes its note afresh,
+// so the loop's end is a step's end like any other.
+float stem_sample(Stem stem, uint which, uint index)
+{
+    uint step = index / MUSIC_STEP_SAMPLES, within = index % MUSIC_STEP_SAMPLES;
+    uint note = stem.notes[step % MUSIC_STEPS];
+    if (note == 0) return 0.0;
+    float seconds = float(within) / float(SOUND_RATE), along = float(within) / float(MUSIC_STEP_SAMPLES);
+    float level = min(seconds / 0.004, 1.0) * (1.0 - ease(stem.fall_curve, along));
+    if (stem.wave == WAVE_DRUM)
+    {
+        // A thump is a low tone falling lower; a crack is noise; a tick is a little of it.
+        if (note == 1) return stem.gain * level * sin(6.2831853 * (48.0 * seconds + 2.2 * (1.0 - exp2(-seconds * 60.0))));
+        float hiss = unit(hash(index * 2654435761U + which * 977U)) * 2.0 - 1.0;
+        return stem.gain * level * hiss * (note == 2 ? 0.9 : 0.4 * saturate(1.0 - along * 5.0));
+    }
+    return stem.gain * level * wave_at(stem.wave, 440.0 * exp2((float(note) - 69.0) / 12.0) * seconds);
+}
+
+// Once, over every sample of the bank: the sounds, and after them the stems
+// of the music where a program has any.
 [shader("compute")]
 [numthreads(64, 1, 1)]
 void render(uint3 id : SV_DispatchThreadID)
 {
     World* world = root.world;
     uint index = id.x;
-    if (index >= BANK_SAMPLES) return;
+    if (index >= BANK_SAMPLES)
+    {
+        uint which = (index - BANK_SAMPLES) / MUSIC_SAMPLES;
+        if (which < world.tables.stem_count) world.bank[index] = stem_sample(world.tables.stems[which], which, (index - BANK_SAMPLES) % MUSIC_SAMPLES);
+        return;
+    }
     Tables tables = world.tables;
     uint low = 0, high = tables.sound_count - 1;
     while (low < high)
