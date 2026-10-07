@@ -72,6 +72,10 @@ is now the first rule of every choreography here.
   allocation. It replaces the examples' pools here.
 - **Charge, the dash, the near miss.** Claim 24.
 - **The hail-mary.** Claim 25.
+- **Room.** The director looks for room and refuses what there is none
+  for; a hostile asks in cells of its own, read in order. Claim 27.
+- **Two runs are the same run.** Claim 28, held across three runs of the
+  script every time the proofs are run.
 
 ## Choreography
 
@@ -204,20 +208,21 @@ whether the near miss pays enough to fly for.
 ## Open problems
 
 What plan.md left open and what reading the code again found. Each has an
-answer, a milestone, and the check that will hold it.
+answer, a milestone, and the check that will hold it. Those marked done are
+built as written, and their check is a numbered claim of the game's.
 
 | # | Problem | Answer | When | Held by |
 | --- | --- | --- | --- | --- |
 | 1 | The layer still borrows the examples' context, commands, barriers and presentation: modules written to negotiate what this layer requires, reaching each other by name | This layer's own, for the modern contract only: a device, a timeline, a swapchain. What the examples' do that an application needs is kept; the negotiation is not | 8 | Every proof as now; the machine includes nothing from `examples` |
-| 2 | A new body can overwrite a living one. Shots, pellets and hostiles each take the next slot of a ring; a bonus dropped while the hostile ring wraps can land on a segment of the dragon | The director looks for free slots, bounded, from its cursor; a chain needs a free run. What cannot be placed is refused and counted, per pool | 8 | A flood on the stage: nothing alive is ever replaced; refusals equal what did not fit |
-| 3 | The order of requests in a tick depends on which thread won | A body's requests go in cells that are its own; the director reads them in slot order. No atomic, no overflow | 8 | The run's two modes, default and validation, report the same hash of the world |
+| 2 | A new body can overwrite a living one. Shots, pellets and hostiles each take the next slot of a ring; a bonus dropped while the hostile ring wraps can land on a segment of the dragon | The director looks for free slots, bounded, from its cursor; a chain needs a free run. What cannot be placed is refused and counted, per pool | done | A flood on the stage: nothing alive is ever replaced; refusals equal what did not fit |
+| 3 | The order of requests in a tick depends on which thread won | A body's requests go in cells that are its own; the director reads them in slot order. No atomic, no overflow | done | The run's two modes, default and validation, report the same hash of the world |
 | 4 | Nothing is timed. Pool sizes and pass costs are guesses | A measuring run: timestamps round every kind of pass, the CPU's time to record and submit, memory by domain (which `memory.inc` already counts). Budgets are written from its first report | 8 | The report is checked against the budgets, so a regression fails |
 | 5 | The player's shots are tested against every hostile: 256 by 384 a tick at most | Measured first, at the full pools. If it must be cut: rows. Shots fly along the playfield, so a shot stays in one or two bands of height; hostiles are listed by band | 8, if at all | The same hits as the whole scan, on every frame of the script |
 | 6 | A shot's sweep takes one sample a texel on its longer side, and could pass a diagonal wall one texel thick | The walk visits both texels at each crossing | 8 | Proof 05: a one-texel diagonal stops a lance at every offset |
 | 7 | Bodies read their tables from host-visible memory every tick | A pass copies the tables to device memory at start, as the pictures are; the upload buffer is then free for reloading | 8 | The measuring run shows the difference |
 | 8 | How far the level has come is a float that only grows | A layer keeps whole periods of its own pattern as an integer and the rest as a float below one period; each lattice adds its share of the periods to its cell number in integers, where wrapping is harmless | 8 | With a billion periods added, the periodic layers are the same to the pixel and the others as sharp |
 | 9 | There are no letters. A pause, a run's end, a stage's name and every tool's readout need them | Sixteen-segment letters: a table of forty words in the shader and no texels, sharp at any size. Strings live in the tables | 8 | Pictures; the pause says what the keys do |
-| 10 | A chain's segment follows the head in its slot. It does compare its seed with the head's birth tick, but no claim holds that | A scene on the stage: a head's slot reused in the tick it died | 8 | The old segments die; none follows the newcomer |
+| 10 | A chain's segment follows the head in its slot. It does compare its seed with the head's birth tick, but no claim holds that | A scene on the stage: a head's slot reused in the tick it died | done | The old segments die; none follows the newcomer |
 | 11 | Rank shortens every tell with everything else | A floor in the tables under each tell | 10 | The stage measures tell to harm |
 | 12 | The thread between the ship and its companion is a row of sparks | It becomes a thing. See "The pair" | 13 | Its own claims |
 | 13 | The pad's layout is provisional, nothing can be rebound, a pad cannot pause | Back pauses. Bindings are a value in the registry, as the window's place is | 13 | Unit checks on made-up states; a hand for the rest |

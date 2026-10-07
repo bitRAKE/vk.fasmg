@@ -626,8 +626,13 @@ it. A paused window draws one frame and then waits, using nothing.
 **How it is made.** A tick is the five passes of proof 05. The director
 alone reads the wave table, eases the level's pace, looks at the shooting
 once a second to move rank, and makes every body, the ones other bodies
-asked for among them: a FIRE move only appends a request to a queue by an
-atomic count. A chain's head lays its path into a ring of points eight units
+asked for among them. A hostile asks in cells that are its own, four for
+what its program fires and two for what its death does, and the director
+reads the cells in order: nothing is contended for, nothing overflows, and
+what is made where does not depend on which thread ran first. And the
+director looks for room: a new body goes where nothing is, a chain where a
+whole run is free, and what there is no room for is refused and counted,
+except one of a squad, which waits. A chain's head lays its path into a ring of points eight units
 apart; a segment reads its head as the head stood last tick and takes the
 point its own distance back.
 
@@ -664,11 +669,13 @@ stage, with no squads, where the script sets down what it wants seen.
 | 24 | Charge is earned and spent | On the stage. A new run has all of it. A pair of missiles takes a quarter. A dash takes a fifth and carries the ship exactly 320, through a shot set down in its way: the shot is counted as passed through, once, and no life is lost. A shot sent by 85 above the ship pays three hundredths, once. A kill pays six. With 19 hundredths left a launch and then a dash are each refused: two clicks counted, nothing fired, nothing moved |
 | 25 | The hail-mary is its beats | On the stage, three divers, each hurt to half by the script. The fix is where the ship is, frame after frame, while the ship is moved. It locks where the ship then was. The heavy shot's mark is the lock, and how much of its way is left grows less every frame; what loosed it is never nearer the lock than when it fired, and is seen to go. It bursts within a unit of the lock. The first time the ship has stayed: one life, by the burst. The second it has dashed 320 away after the lock: nothing. The third diver is struck dead while it is fixing, and the ship stays: its shot comes all the same, for where the fix was, bursts there, and costs a life. Three shots burst in all |
 | 26 | The window is remembered | Under a name of the check's own, so what a player left is not disturbed. With nothing remembered it is to have the whole monitor. Left as a window at a place, it comes back to that place as a window. Left over the whole monitor, it comes back so, and to the same place when the monitor is given up |
+| 27 | Nothing alive is written over | On the stage. A worm's head is struck dead and something else set down in its slot the tick after: the nine segments die of their head's death all the same, and none takes the newcomer for it. Then a flood. Of 400 hostile shots 384 are made and 16 refused. Of 400 drones as many are made as there were places free, and the rest refused. Five places side by side are emptied and a worm asked for: it needs ten, and is refused whole. Of ten drones asked for then, five are made and five refused. Every drone made is still itself afterwards, by the sum of the numbers they were given; and at the end of the run it is all as it was |
+| 28 | Two runs are the same run | Held by the proof runner. The device sums everything it simulates, every body in its slot and the game with it, at the end of each of the three games. The script is run a second time at once, and again under validation: all three runs give the same three sums |
 
-Last result here, GTX 1080 Ti, default and validation alike: all twenty-six
+Last result here, GTX 1080 Ti, default and validation alike: all twenty-eight
 hold. The run is 10,000 ticks, 51,250 passes and 5,000 draws, and takes nine
-seconds. The world is 791 KB on the device. The nova went off in frame 468
-and the head died in frame 557; 180 sounds went to voices. In the third
+seconds. The world is 855 KB on the device. The nova went off in frame 468
+and the head died in frame 557; 186 sounds went to voices. In the third
 game the first diver's shot burst in frame 1090 and cost a life; the
 second's burst in 1145 with the ship 320 away; the third diver was struck
 dead in frame 1164, and its shot burst in 1187 and cost another.
@@ -696,7 +703,13 @@ one that reaches 400 (1146); a dying diver's shot sent at its own wreck and
 not its mark (1164); a third diver left alive (1172); and, at the end, where
 the turns are counted, a diver that being hurt to half changes nothing in,
 and a kill that cancels the shot, which is how it was first built. Three ways of forgetting the window each fail 26: its
-place, whether it had the monitor, and that the first time it is to. And
+place, whether it had the monitor, and that the first time it is to. Four
+ways of making room wrongly each fail 27: taking the next slot whatever is
+in it, making a chain where only its first place is free, and refusing
+without counting (all at frame 1236); and segments that follow whatever is
+in their head's slot (1228). And for 28, a body that lets the order its
+thread arrived in move it a hundredth of a unit: no check inside the run
+notices, and two runs' sums differ at the end of every game. And
 nine ways of getting the window wrong each fail 23: a pause that does not say so, or
 still pays ticks; a paused window that is not a handle, or has no edges; one
 over the whole monitor that still is a handle; a whole monitor a pixel

@@ -10,7 +10,9 @@ static const uint HOSTILES = 384;               // then hostiles and the segment
 static const uint HOSTILE_FIRST = SHOTS + PELLETS;
 static const uint PARTICLES = 16384;
 static const uint TRAILS = 32;
-static const uint REQUESTS = 256;
+static const uint REQUEST_CELLS = 6;            // a hostile's own places to ask the director from: four its program's, two its death's
+static const uint REQUESTS = HOSTILES * REQUEST_CELLS;
+static const uint NO_SLOT = 0xffffffffu;        // what the director says when there is no room
 static const uint STARS = 160;
 static const uint BONUSES = 5;                  // in the order of their kinds and their pictures:
 static const uint BONUS_RAPID = 0;              // shots twice as often
@@ -95,8 +97,7 @@ struct Game
     uint member_tick;       // when the next is due
     uint pace_due;          // the tick a squad's pace takes hold, plus one
     float pace_wanted;
-    uint requests;          // what this tick's bodies asked the director for
-    uint requested;         // ever
+    uint requested;         // what bodies have asked the director for, ever
     uint alive;             // hostiles, as the last resolve counted
     uint probe;             // the slot of the last chain's head, plus one
     uint shown;             // the score as the HUD shows it: it chases the real one
@@ -146,6 +147,9 @@ struct Game
     float2 blast_at;        // where the last was
     uint raider;            // the slot of the last body a script set down, plus one
     uint heavy;             // the slot of the last heavy shot, plus one
+    uint refused_shots;     // what there was no room for, by pool: nothing alive is written over to make room
+    uint refused_pellets;
+    uint refused_hostiles;
 };
 struct Request { uint kind; float2 at; float angle; uint seed; float2 mark; uint marking; };
 // The header the CPU writes once: GameWorld in myhits.asm.
@@ -185,7 +189,7 @@ void new_game(Game* game)
     fresh.ship_hits = 0; fresh.hurts = 0; fresh.hurt_tick = 0;
     fresh.wave = 0; fresh.wave_tick = game.tick; fresh.members = 0; fresh.member = 0; fresh.member_tick = 0;
     fresh.pace_due = 0; fresh.pace_wanted = 1.0;
-    fresh.requests = 0; fresh.requested = 0; fresh.alive = 0; fresh.probe = 0;
+    fresh.requested = 0; fresh.alive = 0; fresh.probe = 0;
     fresh.shown = 0; fresh.score_seen = 0; fresh.score_tick = 0; fresh.stop = 0; fresh.frozen = 0; fresh.stopped = game.stopped;
     fresh.began = game.tick; fresh.runs = game.runs; fresh.life_tick = 0;
     for (uint bonus = 0; bonus < BONUSES; ++bonus) { fresh.until[bonus] = 0; fresh.got[bonus] = 0; fresh.collected[bonus] = 0; fresh.taken[bonus] = 0; }
@@ -197,6 +201,7 @@ void new_game(Game* game)
     fresh.charge = 1.0; fresh.earned = 0; fresh.grazes = 0; fresh.grazes_seen = 0;
     fresh.dash_tick = 0; fresh.slip_until = 0; fresh.dash_way = float2(1.0, 0.0); fresh.dashes = 0; fresh.slipped = 0; fresh.empties = 0;
     fresh.blasts = 0; fresh.blast_hits = 0; fresh.blast_at = float2(0.0, 0.0); fresh.raider = 0; fresh.heavy = 0;
+    fresh.refused_shots = 0; fresh.refused_pellets = 0; fresh.refused_hostiles = 0;
     *game = fresh;
 }
 
@@ -225,6 +230,7 @@ void begin()
     new_game(world.game);
     for (uint body = 0; body < 2 * BODIES; ++body) { world.bodies[body].kind = 0; world.bodies[body].born = 0; }
     for (uint slot = 0; slot < BODIES; ++slot) world.damage[slot] = 0;
+    for (uint cell = 0; cell < REQUESTS; ++cell) world.queue[cell].kind = 0;
     for (uint particle = 0; particle < PARTICLES; ++particle) world.particles[particle].life = 0;
     world.pool.asked = 0;
     open_particles(world);
@@ -236,16 +242,65 @@ void place(World* world, uint slot, Body body)
     world.bodies[((world.game.tick & 1) ^ 1) * BODIES + slot] = body;
 }
 
+// The director looks for room; it does not take the next slot whatever is in
+// it. A slot is free when the copy a new body goes into holds nothing there.
+// From `cursor` on, round a pool of `count` slots that begins at `first`: the
+// slot, or NO_SLOT when the pool is full.
+uint free_slot(World* world, uint first, uint count, inout uint cursor)
+{
+    uint latest = ((world.game.tick & 1) ^ 1) * BODIES;
+    for (uint tried = 0; tried < count; ++tried)
+    {
+        uint slot = (cursor + tried) % count;
+        if (world.bodies[latest + first + slot].kind != 0) continue;
+        cursor = (slot + 1) % count;
+        return first + slot;
+    }
+    return NO_SLOT;
+}
+
+// One of the player's shots, where there is room. What there is none for is
+// refused, and counted: nothing alive is written over.
+bool put_shot(World* world, Body body)
+{
+    uint slot = free_slot(world, 0, SHOTS, world.game.shot_cursor);
+    if (slot == NO_SLOT)
+    {
+        world.game.refused_shots += 1;
+        return false;
+    }
+    place(world, slot, body);
+    return true;
+}
+
+// A hostile shot likewise: its slot, or NO_SLOT.
+uint put_pellet(World* world, Body body)
+{
+    uint slot = free_slot(world, SHOTS, PELLETS, world.game.pellet_cursor);
+    if (slot == NO_SLOT) world.game.refused_pellets += 1;
+    else place(world, slot, body);
+    return slot;
+}
+
 // A hostile of a kind, and with it the segments of its chain if it heads one.
 // A chain takes a run of slots with its head in the last, so the head is
-// drawn over its body; and a ring of trail.
+// drawn over its body; and a ring of trail. It needs the whole run free, and
+// takes none of it otherwise: its head's slot, or NO_SLOT.
 uint spawn_hostile(World* world, uint kind, float2 at, float angle, uint seed)
 {
     Game* game = world.game;
     Kind made = world.tables.kinds[kind];
-    uint run = made.links + 1;
-    uint base = game.hostile_cursor + run > HOSTILES ? 0 : game.hostile_cursor;
-    game.hostile_cursor = base + run;
+    uint run = made.links + 1, latest = ((game.tick & 1) ^ 1) * BODIES;
+    uint starts = HOSTILES - run + 1, base = NO_SLOT;
+    for (uint tried = 0; tried < starts && base == NO_SLOT; ++tried)
+    {
+        uint from = (game.hostile_cursor + tried) % starts;
+        bool room = true;
+        for (uint each = 0; each < run && room; ++each) room = world.bodies[latest + HOSTILE_FIRST + from + each].kind == 0;
+        if (room) base = from;
+    }
+    if (base == NO_SLOT) return NO_SLOT;
+    game.hostile_cursor = (base + run) % starts;
     uint head = HOSTILE_FIRST + base + made.links;
     Body body = new_body(world.tables, kind, at, angle, seed, game.tick);
     if (made.links != 0)
@@ -291,6 +346,7 @@ void direct()
             game.runs += 1;
             new_game(game);
             for (uint body = 0; body < 2 * BODIES; ++body) world.bodies[body].kind = 0;
+            for (uint cell = 0; cell < REQUESTS; ++cell) world.queue[cell].kind = 0;
         }
     }
     bool playing = game.state == STATE_PLAY;
@@ -444,8 +500,7 @@ void direct()
         if (since == 1440) spawn_hostile(world, KIND_DRONE, float2(1300.0, 200.0), 3.14159265, 0);
         if (since == 1460)
         {
-            place(world, SHOTS + game.pellet_cursor % PELLETS, new_body(world.tables, KIND_PELLET, float2(-100.0, 420.0), 0.0, 0, game.tick));
-            game.pellet_cursor += 1;
+            put_pellet(world, new_body(world.tables, KIND_PELLET, float2(-100.0, 420.0), 0.0, 0, game.tick));
         }
     }
 
@@ -461,13 +516,42 @@ void direct()
         if (since == 80 || since == 160)
         {
             bool through = since == 80;
-            place(world, SHOTS + game.pellet_cursor % PELLETS, new_body(world.tables, KIND_PELLET,
+            put_pellet(world, new_body(world.tables, KIND_PELLET,
                 ship + (through ? float2(0.0, -150.0) : float2(400.0, -85.0)), through ? 1.5707963 : 3.14159265, 0, game.tick));
-            game.pellet_cursor += 1;
         }
         if (since == 320 || since == 760 || since == 1200) game.raider = spawn_hostile(world, KIND_DIVER, float2(1500.0, 620.0), 3.14159265, 0) + 1;
         if ((since == 336 || since == 776 || since == 1216) && game.raider != 0) world.damage[game.raider - 1] += 3;
         if (since == 1316 && game.raider != 0) world.damage[game.raider - 1] += 100;
+        // A worm; its head struck dead; and in the very next tick something
+        // else set down in the head's own slot. The segments are to die of
+        // their head's death, and not take the newcomer for it.
+        if (since == 1740) spawn_hostile(world, KIND_WORM, float2(1500.0, 860.0), 3.14159265, 0);
+        if (since == 1760 && game.probe != 0) world.damage[game.probe - 1] += 1000;
+        if (since == 1761 && game.probe != 0) place(world, game.probe - 1, new_body(world.tables, KIND_TARGET, float2(1700.0, 200.0), 0.0, 0, game.tick));
+        // A flood: four hundred hostile shots, where there is room for 384;
+        // then four hundred drones, where there is room for fewer. Then five
+        // places side by side are emptied and a worm asked for: it needs
+        // ten, and is refused whole. Then the five are asked back, with five
+        // more than there is room for. What there is room for is made, the
+        // rest is refused and counted, and nothing that was there is
+        // written over.
+        if (since == 1850)
+            for (uint each = 0; each < 400; ++each)
+                put_pellet(world, new_body(world.tables, KIND_PELLET, float2(900.0 + 8.0 * float(each % 40), 100.0 + 30.0 * float(each / 40)), 0.0, 0, game.tick));
+        if (since == 1860)
+        {
+            for (uint each = 0; each < 400; ++each)
+                if (spawn_hostile(world, KIND_DRONE, float2(1000.0 + 20.0 * float(each % 40), 150.0 + 60.0 * float(each / 40)), 3.14159265, each + 1) == NO_SLOT) game.refused_hostiles += 1;
+            uint latest = ((game.tick & 1) ^ 1) * BODIES + HOSTILE_FIRST + 100, kept[5];
+            for (uint each = 0; each < 5; ++each)
+            {
+                kept[each] = world.bodies[latest + each].seed;
+                world.bodies[latest + each].kind = 0;
+            }
+            if (spawn_hostile(world, KIND_WORM, float2(1500.0, 300.0), 3.14159265, 0) == NO_SLOT) game.refused_hostiles += 1;
+            for (uint each = 0; each < 10; ++each)
+                if (spawn_hostile(world, KIND_DRONE, float2(1000.0 + 20.0 * float(each), 760.0), 3.14159265, kept[each % 5]) == NO_SLOT) game.refused_hostiles += 1;
+        }
     }
 
     // The companion. It arrives when a chain's head is killed, from where
@@ -537,8 +621,7 @@ void direct()
         if (game.mate_cooldown > 0) game.mate_cooldown -= 1;
         if (mate_fires && game.mate_cooldown == 0)
         {
-            place(world, game.shot_cursor % SHOTS, new_body(world.tables, KIND_SHOT, game.mate + heading(game.mate_gun) * 30.0, game.mate_gun, MATE_SHOT, game.tick));
-            game.shot_cursor += 1;
+            put_shot(world, new_body(world.tables, KIND_SHOT, game.mate + heading(game.mate_gun) * 30.0, game.mate_gun, MATE_SHOT, game.tick));
             game.mate_cooldown = MATE_TICKS;
             game.mate_fired += 1;
         }
@@ -590,9 +673,10 @@ void direct()
                 game.pace_due = tick + next.pace_after + 1;
             }
         }
-        if (game.members != 0 && tick >= game.member_tick)
+        // One of a squad that there is no room for waits until there is.
+        if (game.members != 0 && tick >= game.member_tick
+            && spawn_hostile(world, next.kind, float2(PLAYFIELD_WIDTH + 100.0, next.y + next.spread * float(game.member % max(next.count, 1u))), 3.14159265, game.member) != NO_SLOT)
         {
-            spawn_hostile(world, next.kind, float2(PLAYFIELD_WIDTH + 100.0, next.y + next.spread * float(game.member % max(next.count, 1u))), 3.14159265, game.member);
             game.member += 1;
             game.member_tick = tick + next.stagger;
             game.members -= 1;
@@ -609,29 +693,31 @@ void direct()
         }
     }
 
-    // What last tick's bodies asked for: only the director makes a body.
-    uint asked = min(game.requests, REQUESTS);
-    for (uint each = 0; each < asked; ++each)
+    // What last tick's bodies asked for: only the director makes a body. A
+    // hostile asks in cells that are its own, so nothing is contended for and
+    // nothing is lost; and the director reads them in order, so what is made
+    // and where does not depend on which thread came first.
+    for (uint cell = 0; cell < REQUESTS; ++cell)
     {
-        Request request = world.queue[each];
+        if (world.queue[cell].kind == 0) continue;
+        Request request = world.queue[cell];
+        world.queue[cell].kind = 0;
+        game.requested += 1;
         // A bonus someone dropped goes among the hostiles, where the ship can touch it.
         if ((world.tables.kinds[request.kind].flags & KIND_PICKUP) != 0)
         {
-            spawn_hostile(world, request.kind, request.at, 3.14159265, request.seed);
+            if (spawn_hostile(world, request.kind, request.at, 3.14159265, request.seed) == NO_SLOT) game.refused_hostiles += 1;
             continue;
         }
         // What was fired at a mark takes the mark with it.
         Body fired = new_body(world.tables, request.kind, request.at, request.angle, request.seed, game.tick);
         fired.mark = request.mark;
         fired.marking = request.marking;
-        uint into = SHOTS + game.pellet_cursor % PELLETS;
-        place(world, into, fired);
-        game.pellet_cursor += 1;
+        uint into = put_pellet(world, fired);
+        if (into == NO_SLOT) continue;
         if (request.kind == KIND_HEAVY) game.heavy = into + 1;
         trigger(request.kind == KIND_HEAVY ? SOUND_HEAVY : SOUND_SHOT, request.at.x);
     }
-    game.requested += asked;
-    game.requests = 0;
 
     // The player's own.
     if (game.cooldown > 0) game.cooldown -= 1;
@@ -639,21 +725,16 @@ void direct()
     if (playing && (root.held & BUTTON_FIRE) != 0 && game.cooldown == 0)
     {
         // RAPID halves the wait; SPREAD makes each shot three.
-        uint volley = game.until[BONUS_SPREAD] > tick ? 3 : 1;
+        uint volley = game.until[BONUS_SPREAD] > tick ? 3 : 1, away = 0;
         for (uint each = 0; each < volley; ++each)
-        {
-            place(world, game.shot_cursor % SHOTS, new_body(world.tables, KIND_SHOT, ship + float2(60.0, 0.0), (float(each) - float(volley / 2)) * 0.16, 0, game.tick));
-            game.shot_cursor += 1;
-        }
+            if (put_shot(world, new_body(world.tables, KIND_SHOT, ship + float2(60.0, 0.0), (float(each) - float(volley / 2)) * 0.16, 0, game.tick))) ++away;
         game.cooldown = game.until[BONUS_RAPID] > tick ? SHOT_TICKS / 2 : SHOT_TICKS;
-        game.fired += volley;
+        game.fired += away;
         trigger(SOUND_SHOT, ship.x);
         // At first the companion fires when you do, and the way you do.
         if (game.companion == 1)
         {
-            place(world, game.shot_cursor % SHOTS, new_body(world.tables, KIND_SHOT, game.mate + float2(30.0, 0.0), 0.0, MATE_SHOT, game.tick));
-            game.shot_cursor += 1;
-            game.mate_fired += 1;
+            if (put_shot(world, new_body(world.tables, KIND_SHOT, game.mate + float2(30.0, 0.0), 0.0, MATE_SHOT, game.tick))) game.mate_fired += 1;
         }
     }
     if (playing && first && (root.pressed & BUTTON_SECOND) != 0)
@@ -663,11 +744,7 @@ void direct()
         {
             game.charge -= MISSILE_COST;
             for (uint side = 0; side < 2; ++side)
-            {
-                place(world, game.shot_cursor % SHOTS, new_body(world.tables, KIND_MISSILE, ship + float2(30.0, 0.0), 0.0, side, game.tick));
-                game.shot_cursor += 1;
-            }
-            game.fired += 2;
+                if (put_shot(world, new_body(world.tables, KIND_MISSILE, ship + float2(30.0, 0.0), 0.0, side, game.tick))) game.fired += 1;
             trigger(SOUND_LAUNCH, ship.x);
         }
         else
@@ -726,12 +803,12 @@ void update(uint3 id : SV_DispatchThreadID)
                 // side or the other; or, its mark locked, at the mark, which
                 // what it fires then carries and it no longer shows.
                 bool marked = body.marking == MARK_LOCKED;
-                if (game.state == STATE_PLAY)
+                if (game.state == STATE_PLAY && slot >= HOSTILE_FIRST)
                 {
-                    uint count = fires >> FIRE_COUNT, place_in;
-                    InterlockedAdd(world.game.requests, count, place_in);
+                    // Its own cells: the first four are for what its program fires.
+                    uint count = min(fires >> FIRE_COUNT, REQUEST_CELLS - 2), place_in = (slot - HOSTILE_FIRST) * REQUEST_CELLS;
                     float2 toward = (marked ? body.mark : game.ship) - body.position;
-                    for (uint each = 0; each < count && place_in + each < REQUESTS; ++each)
+                    for (uint each = 0; each < count; ++each)
                     {
                         Request request;
                         request.kind = fires & ((1u << FIRE_COUNT) - 1);
@@ -946,9 +1023,8 @@ void resolve(uint3 id : SV_DispatchThreadID)
                     Move still = world.tables.moves[ahead];
                     if (still.action == MOVE_HOLD && still.ticks == 0) break;
                     if (still.action != MOVE_FIRE) continue;
-                    uint place_in;
-                    InterlockedAdd(world.game.requests, 1, place_in);
-                    if (place_in < REQUESTS)
+                    // Its fifth cell is for what it fires as it dies.
+                    uint place_in = (slot - HOSTILE_FIRST) * REQUEST_CELLS + REQUEST_CELLS - 2;
                     {
                         float2 mark = body.marking != 0 ? body.mark : game.ship;
                         float2 toward = mark - body.position;
@@ -976,9 +1052,8 @@ void resolve(uint3 id : SV_DispatchThreadID)
             uint roll = hash(slot * 977 + game.tick);
             if (kind.worth != 0 && unit(roll) < 0.22 + 0.4 * game.rank)
             {
-                uint place_in;
-                InterlockedAdd(world.game.requests, 1, place_in);
-                if (place_in < REQUESTS)
+                // Its sixth cell is for what it leaves behind.
+                uint place_in = (slot - HOSTILE_FIRST) * REQUEST_CELLS + REQUEST_CELLS - 1;
                 {
                     Request request;
                     request.kind = KIND_BONUS_RAPID + (roll >> 8) % BONUSES;
@@ -1078,7 +1153,34 @@ void report()
         events.debug[1] = asuint(least);
         events.debug[2] = asuint(most);
     }
-    events.debug[3] = world.pool.live;
+    // A sum over everything that is simulated: two runs of one script are to
+    // agree on it, whatever order their threads ran in.
+    uint sum = hash(game.score ^ hash(game.tick ^ hash(asuint(game.rank) ^ hash(asuint(game.ship.x) ^ hash(asuint(game.ship.y) ^ hash(asuint(game.mate.x) ^ asuint(game.mate.y)))))));
+    for (uint slot = 0; slot < BODIES; ++slot)
+    {
+        Body body = world.bodies[now + slot];
+        if (body.kind == 0) continue;
+        sum += hash(slot ^ hash(body.kind ^ hash(asuint(body.position.x) ^ hash(asuint(body.position.y) ^ hash(asuint(body.health) ^ hash(body.move * 65536 + body.elapsed))))));
+    }
+    events.debug[3] = sum;
+    // On the stage, where no chain is being watched: how full the hostiles'
+    // pool is and with what, and what has been refused.
+    if ((root.flags & ROOT_SCRIPTED) != 0 && game.runs >= 2)
+    {
+        uint occupied = 0, drones = 0, seeds = 0, worms = 0;
+        for (uint slot = HOSTILE_FIRST; slot < HOSTILE_FIRST + HOSTILES; ++slot)
+        {
+            Body body = world.bodies[now + slot];
+            if (body.kind == 0) continue;
+            ++occupied;
+            if (body.kind == KIND_DRONE) { ++drones; seeds += body.seed; }
+            if (body.kind == KIND_WORM || body.kind == KIND_WORM_BODY || body.kind == KIND_WORM_TAIL) ++worms;
+        }
+        events.reserved[12] = occupied;
+        events.reserved[13] = min(game.refused_shots, 255u) | (min(game.refused_pellets, 255u) << 8) | (min(game.refused_hostiles, 65535u) << 16);
+        events.reserved[14] = seeds;
+        events.reserved[15] = worms | (drones << 16);
+    }
     events.report[0] = game.shown;
     events.report[1] = game.stopped;
     for (uint bonus = 0; bonus < BONUSES; ++bonus) events.report[2 + bonus] = game.taken[bonus];

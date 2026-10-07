@@ -37,7 +37,7 @@ PELLETS := 384
 HOSTILES := 384
 PARTICLES := 16384
 TRAILS := 32
-REQUESTS := 256
+REQUESTS := HOSTILES * 6			; a hostile's own cells to ask the director from
 INSTANCES := 160 + BODIES + 16 + PELLETS + HOSTILES + 21 + 8 + 5 * 9
 GAME_BYTES := 512
 POOL_BYTES := 8 + STYLE_LIMIT * 4
@@ -769,6 +769,15 @@ proc consume_events uses rbx rsi rdi,events
 	jb .staged
 	fastcall check_stage,rbx,rsi
 .staged:
+	; The sum over the world at the end of each game: the proof runner holds
+	; one run's to another's.
+	iterate <when,name>, 399,sum_first, 999,sum_second, 1249,sum_third
+		cmp esi,when
+		jne .unsummed_#when
+		mov eax,[rbx+Events.debug+12]
+		mov [name],eax
+	.unsummed_#when:
+	end iterate
 	iterate <name,offset>, hurts_before,Events.reserved+24, rank_before,Events.rank, scroll_before,Events.reserved+40, \
 		last_counts,Events.report+80, stage_ship_y,Events.report+92
 		mov eax,[rbx+offset]
@@ -971,6 +980,62 @@ proc check_stage uses rbx rsi rdi,events,which
 .stage_wrong:
 	fail 25
 .staged_done:
+	; 27: nothing alive is written over. A worm's head is struck dead and
+	; something else set down in its slot the tick after: the nine segments
+	; die of it all the same. Then a flood: of four hundred hostile shots
+	; 384 are made and sixteen refused; of four hundred drones as many are
+	; made as there were places free, and the rest refused; with five places
+	; emptied side by side a worm, which needs ten, is refused whole; and of
+	; ten drones asked for then, five are made and five refused. Every drone
+	; is still itself afterwards, and at the end it is all as it was.
+	at_frame 1219,Events.reserved+60,10,.room_wrong
+	cmp esi,1228
+	jne .room_before
+	cmp word [rbx+Events.reserved+60],0
+	jne .room_wrong
+	cmp dword [rbx+Events.reserved+48],0
+	je .room_wrong
+.room_before:
+	cmp esi,1230
+	jne .room_after
+	mov eax,[rbx+Events.reserved+48]
+	mov [room_occupied],eax
+	mov eax,[rbx+Events.reserved+52]
+	mov [room_refused],eax
+.room_after:
+	cmp esi,1236
+	je .room_full
+	cmp esi,1249
+	jne .roomed
+.room_full:
+	cmp dword [rbx+Events.reserved+32],384
+	jne .room_wrong
+	cmp dword [rbx+Events.reserved+48],384
+	jne .room_wrong
+	; As many drones as there were places, numbered from one: their numbers sum to n(n+1)/2.
+	mov ecx,384
+	sub ecx,[room_occupied]
+	movzx eax,word [rbx+Events.reserved+62]
+	cmp eax,ecx
+	jne .room_wrong
+	lea eax,[ecx+1]
+	imul eax,ecx
+	shr eax,1
+	cmp eax,[rbx+Events.reserved+56]
+	jne .room_wrong
+	; Sixteen shots more refused than before; and of hostiles, the drones
+	; that did not fit, the worm, and the five too many.
+	mov eax,[rbx+Events.reserved+52]
+	sub eax,[room_refused]
+	mov edx,406
+	sub edx,ecx
+	shl edx,16
+	or edx,16 shl 8
+	cmp eax,edx
+	je .roomed
+.room_wrong:
+	fail 27
+.roomed:
 	ret
 endp
 
@@ -1143,10 +1208,11 @@ proc scripted_run uses rbx rsi
 		'ticks_a_frame=%u',13,10,'bodies=%u',13,10,'particles=%u',13,10,'kinds=%u',13,10,'moves=%u',13,10,'squads=%u',13,10,'world_bytes=%u',13,10, \
 		'head_died_frame=%u',13,10,'nova_frame=%u',13,10,'rise_checked=%u',13,10,'falls_checked=%u',13,10,'hurts_heard=%u',13,10,'sounds_asked=%u',13,10,'plays=%u',13,10,'refused=%u',13,10,'device=%u',13,10, \
 		'score=%u',13,10,'kills=%u',13,10,'rank_thousandths=%u',13,10,'bytes_down=%I64u',13,10,'bytes_up=%I64u',13,10,'startup_dispatches=%u',13,10,'dispatches=%u',13,10,'draws=%u',13,10, \
-		'worst_latency=%u',13,10,'caps=%u',13,10,'required=%u',13,10,'gpu_error=%d',13,10,'failure_stage=%u',13,10>, \
+		'worst_latency=%u',13,10,'caps=%u',13,10,'required=%u',13,10,'gpu_error=%d',13,10,'failure_stage=%u',13,10,'sums=%08X-%08X-%08X',13,10>, \
 		[proof_failure],[proof_failure_frame],[root+Root.frame],[events_seen],GAME_TICKS,BODIES,PARTICLES,TABLE_KINDS,TABLE_MOVES,TABLE_WAVES,WORLD_BYTES, \
 		[head_died],[nova_frame],[rise_checked],[falls_checked],[heard_hurts],[sounds_asked],[audio_plays],[audio_failures],[audio_ready],[last_score],[last_kills],[title_rank], \
-		[traffic_down],[traffic_up],[startup_dispatches],[dispatch_count],[draw_count],[worst_latency],[active_caps],CAP_REQUIRED,[gpu_error],[failure_stage]
+		[traffic_down],[traffic_up],[startup_dispatches],[dispatch_count],[draw_count],[worst_latency],[active_caps],CAP_REQUIRED,[gpu_error],[failure_stage], \
+		[sum_first],[sum_second],[sum_third]
 	fastcall machine_write_report,rax
 	ret
 endp
@@ -1454,7 +1520,8 @@ iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,l
 	last_score,last_lives,last_wave,last_state,last_rank,last_fired,last_struck,last_kills,last_hurts,last_alive, \
 	hurts_before,rank_before,scroll_before,hurt_frame,hurts_total,rise_checked,falls_checked,chain_seen,head_died,alive_before,last_shown,last_stopped, \
 	fired_mark,nova_frame,nova_score,nova_kills,score_before,kills_before,struck_mark,last_music_faults, \
-	start_whole,last_counts,stage_ship_y,stage_phase,stage_round,stage_followed,stage_hurts,stage_recoiled, \
+	start_whole,last_counts,stage_ship_y,stage_phase,stage_round,stage_followed,stage_hurts,stage_recoiled,room_occupied,room_refused, \
+	sum_first,sum_second,sum_third, \
 	lock_x,lock_y,fire_x,fire_y
 	name dd 0
 end iterate

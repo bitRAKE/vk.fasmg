@@ -111,6 +111,7 @@ $previousSync = $env:VK_LAYER_VALIDATE_SYNC
 $previousFeatures = $env:VK_LAYER_ENABLES
 $modes = @('default')
 if ($Validation) { $modes += 'validation' }
+$gameSums = $null
 try {
     foreach ($mode in $modes) {
         $env:VK_INSTANCE_LAYERS = $previousLayers
@@ -213,9 +214,25 @@ try {
             18='the nova did not strike everything, or DOUBLE did not double exactly'
             19='the companion did not come with the worm''s death, or was not where the ship had been, or did not guard, fire or take aim as its stage should'
             20='the level did not wait for the dragon, or did not move on when it died'
-            22='a stem of the music is too loud or silent, or the stems are not wanted as they should be, or are not playing' } 'myhits.exe'
+            22='a stem of the music is too loud or silent, or the stems are not wanted as they should be, or are not playing'
+            23='the window did not pause, or was not a handle when paused, or did not take or give back its monitor exactly'
+            24='charge was not earned or spent as it should be, or a dash did not go its distance or did not slip a shot'
+            25='the hail-mary missed a beat: the fix, the lock, the shot to the lock, the recoil, the fade, the burst, or what each cost'
+            26='the window was not remembered: its place, or whether it had the whole monitor'
+            27='something alive was written over, or what there was no room for was not refused and counted, or segments followed a stranger' } 'myhits.exe'
         $frames = [int]$state.frames
         Assert-True ($frames -eq 1250 -and [int]$state.events -eq $frames) 'The game did not run its script'
+        # 28: two runs are the same run. The sum over everything simulated, at the end of each of the
+        # three games, is what it was the last time the script ran, whatever order the threads ran in:
+        # a second run here and now, and every mode against the first.
+        if (-not $gameSums) {
+            $gameSums = $state.sums
+            $again = [VkFasmgTests.DebugOutputCapture]::Run((Resolve-Path -LiteralPath (Join-Path $BuildDir 'myhits.exe')).Path, $repoRoot, '--self-test')
+            $second = (Read-State (Join-Path $BuildDir 'myhits_game.report.txt')).sums
+            Get-ChildItem -LiteralPath $BuildDir -Filter 'myhits_game.*.bmp' | ForEach-Object { [IO.File]::Delete($_.FullName) }
+            Assert-True ($second -eq $gameSums) "game check 28 failed: one run of the script summed to $gameSums and the next to $second"
+        }
+        Assert-True ($state.sums -eq $gameSums -and $gameSums -notmatch '00000000') "game check 28 failed: this run of the script summed to $($state.sums) and the first to $gameSums"
         $voices = if ([int]$state.device) { "$($state.plays) sounds to voices" } else { 'no audio device here' }
         # The music the device rendered is the notes of tables.inc, by a second synthesis; and it is written out to be listened to.
         $stems = (Resolve-Path -LiteralPath (Join-Path $BuildDir 'myhits_game.music.bin')).Path
@@ -233,7 +250,7 @@ try {
         }
         Assert-True ($rail[300] -eq $rail[320]) 'The backdrop moved while the level stood still'
         Assert-True ($rail[235] -ne $rail[300]) 'The backdrop stood still while the level moved'
-        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through three games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks and bursts where it locked, is dodged by moving and not stopped by killing; the window pauses, moves, takes its monitor and is remembered; {9} passes and {10} draws a frame" -f `
+        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through three games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks and bursts where it locked, is dodged by moving and not stopped by killing; the window pauses, moves, takes its monitor and is remembered; nothing alive is written over, and what there is no room for is refused; two runs sum to the same ($gameSums); {9} passes and {10} draws a frame" -f `
             $frames, $state.ticks_a_frame, ([int]$state.kinds - 1), $state.moves, $state.squads, [int]([int]$state.world_bytes / 1024), $state.head_died_frame, $state.hurts_heard, $voices,
             ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
     }
