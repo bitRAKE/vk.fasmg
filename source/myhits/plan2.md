@@ -40,6 +40,10 @@ Given on 2026-10-07, in answer to the six this plan first asked.
 And one thing given as an example of what is wanted: the hail-mary shot. It
 is built, and it is what "Choreography" below is written from.
 
+Said of the first build of it, which let a kill cancel the shot: that takes
+the danger out of it. **Killing is not enough; the player has to move.** It
+is now the first rule of every choreography here.
+
 ## Where it stands
 
 - The game runs: squads from a table, chains, a boss the level waits for,
@@ -80,6 +84,14 @@ of which the player can see and hear, with time between them in which what
 the player does changes how it ends. An enemy with a choreography has a
 character, and the player answers the character rather than the sprite.
 
+Two rules hold for all of it.
+
+- **The answer is to move.** Firing is what the player does anyway. A danger
+  that firing can cancel is a thing to shoot sooner, and the ship stays
+  where it is. So nothing begun is stopped by a kill: what firepower buys is
+  a say in when and where, and the rest is flying.
+- **Every harm has a tell,** and a floor under how short the tell may be.
+
 ### The reference: the hail-mary
 
 A diver hurt past half and left alive throws one.
@@ -94,19 +106,25 @@ A diver hurt past half and left alive throws one.
 
 What the player can do about it, and so what it changes:
 
-- **Kill it before it fires.** There are 1.7 seconds and it has half its
-  health. A hurt enemy is now something to finish, not to leave.
-- **Leave the lock.** After the lock there are 1.8 seconds to be 140 away:
-  a quarter of a second's flying, or one dash. The crosshairs show exactly
-  how far is far enough.
+- **Leave the lock.** That is the answer, and the only one. After the lock
+  there are 1.8 seconds to be 140 away: a quarter of a second's flying, or
+  one dash. The crosshairs show exactly how far is far enough.
+- **Kill it, and still leave.** A diver that dies before it has fired looses
+  the shot as it dies, at where its fix then is, or at where the ship is if
+  it had not yet begun to fix. The kill does not stop the shot. It decides
+  when the lock falls: the player may pick the moment, and then has the
+  shot's second and a half to be elsewhere.
 - **Not shrug it off.** A dash slips shots; it does not slip a burst.
+
+So a hurt diver is not a thing to finish quickly and forget. Finished or
+not, it puts crosshairs on the ship, and the ship has to go.
 
 The scripted run holds every beat: the fix is where the ship is while the
 ship moves; the lock is where the ship then was and does not move again; the
 shot's mark is the lock and fades every frame; the diver goes the other way;
 the burst is at the lock; a ship that stayed loses a life and one that dashed
-away loses nothing; and a diver struck dead while fixing looses nothing.
-Ten ways of breaking it each fail that claim.
+away loses nothing; and a ship that struck the third diver dead while it was
+fixing, and stayed, loses a life to the shot it loosed as it died.
 
 ### What it took
 
@@ -144,19 +162,20 @@ Each is a few beats and an answer it should teach. None is built.
 
 | Name | Beats | What it changes |
 | --- | --- | --- |
-| The last launch | A carrier hurt to half opens, shows what is in it, and looses all of it at once | Kill the carrier first, or deal with the swarm |
-| The gather | A turret draws light to itself; the line of its beam appears; the beam holds and sweeps. A hit while it gathers staggers it | Fire at the thing that is about to fire |
-| The broken rank | A formation's leader dies; the rest scatter, and then come back as rammers | Which one to shoot first |
-| The last one | The last of a squad turns, marks the ship, and comes faster than any of them did | A fight's end is not its easiest moment |
-| The chain | A volatile thing bursts when killed, a moment after showing how far; others near it go too | Where to kill it, and when |
-| The feint | A diver shows its line, and at high rank the line snaps to another at the last | A tell is read to its end |
+| The last launch | A carrier hurt to half opens, shows what is in it, and looses all of it at once. Killed sooner, it spills them where it dies | Where to be when it opens: behind it, not in front |
+| The gather | A turret draws light to itself; the line of its beam appears; the beam holds and sweeps. A hit while it gathers knocks its aim: the line jumps, and is shown again | Get off the line, and watch where it goes next |
+| The broken rank | A formation's leader dies; the rest scatter, and then come back as rammers, each showing its line | Kill the leader from where the lines will not cross |
+| The last one | The last of a squad turns, marks the ship, and comes faster than any of them did | A fight's end is when to be moving most |
+| The chain | A volatile thing bursts when killed, a moment after showing how far; others near it go too | Kill it from outside its ring, and its neighbours' |
+| The feint | A diver shows its line, and at high rank the line snaps to another at the last | A tell is read to its end, on the move |
 | The thief | Something takes a bonus and runs for the edge | A chase the other way |
-| The rear | A dragon draws its head back before it sweeps; where its head will pass is shown | A boss is read, not memorised |
+| The rear | A dragon draws its head back before it sweeps; where its head will pass is shown | A boss is flown round, not stood in front of |
 
-And one rule over all of them: **every harm has a tell, and a floor under how
-short the tell may be.** Rank hurries everything hostile, so a tell at full
-rank is two thirds of what the table says. A floor is a number in the tables;
-the stage's claims measure the time from tell to harm and hold it.
+Each is written so that the second rule's tell is also the first rule's
+reason to move. On the floor under a tell: rank hurries everything hostile,
+so a tell at full rank is two thirds of what the table says. A floor is a
+number in the tables; the stage's claims measure the time from tell to harm
+and hold it.
 
 ### How a choreography is proved
 
@@ -372,7 +391,7 @@ Beyond the choreographies above; each is mostly lines in the tables.
 | What | Sketch |
 | --- | --- |
 | Fire is a pattern | `fire` takes a count, a spread, a turn between shots and a rhythm: fans, bursts, spirals, walls with a gap |
-| Standing still is hunted | Two seconds within a ship's width and something aimed and announced comes for that spot. It is a choreography with the ship's stillness for its tell |
+| Standing still is hunted | Two seconds within a ship's width and something aimed and announced comes for that spot. It is the first rule made into an enemy: a choreography with the ship's stillness for its tell |
 | The chain of kills | Kills close together raise a multiplier; a pause drains it; a hurt ends it. Rank reads accuracy; this reads tempo |
 | Weapons as bonuses | A lance that pierces; a swarm that homes, on the missile's slow start; a shot that rebounds from the rails; cutters that orbit the ship; mines |
 | Armour with a facing | A kind that takes hits only from behind or the side: the mask's normals already say which way a struck texel faces |
@@ -446,8 +465,10 @@ according to them.
 - **Two runs the same is a claim about one device and driver.** A record made
   on one machine may not replay on another; the file says what made it.
 - **A choreography that is fair on the stage may not be in a crowd.** Three
-  hail-marys at once are three locks to leave. The floor under a tell is per
-  thing; whether there should be one across the field is for play to say.
+  hail-marys at once are three locks to leave, and since a kill no longer
+  cancels one, a nova or a volley through a squad of divers sets them all
+  off together. The floor under a tell is per thing; whether there should be
+  one across the field is for play to say.
 - **The author still cannot hear or feel.** The mix, the loudness report, the
   strip and the stage are for that; they check that nothing is broken, not
   that it is good. That stays with whoever plays.

@@ -293,9 +293,10 @@ proc play_frame uses rbx
 	; under fire.
 	; And of the third: the dash, through a shot; a diver's fix on the ship,
 	; shaking; its lock; its heavy shot on the way and the crosshairs fading;
-	; the burst; and the second's shot coming for where the ship no longer is.
+	; the burst; the second's shot coming for where the ship no longer is; and
+	; the third's, loosed as it died, coming for a ship that only killed it.
 	iterate when, 37,110,165,235,300,320,395,444,468,500,555,568,596,625,900,PAUSED_FRAME, \
-		1011,1056,1066,1082,1091,1136
+		1011,1056,1066,1082,1091,1136,1176
 		cmp dword [root+Root.frame],when
 		jne .no_#when
 		fastcall snapshot_take,when
@@ -769,7 +770,7 @@ proc consume_events uses rbx rsi rdi,events
 	fastcall check_stage,rbx,rsi
 .staged:
 	iterate <name,offset>, hurts_before,Events.reserved+24, rank_before,Events.rank, scroll_before,Events.reserved+40, \
-		last_asked,Events.reserved+44, last_counts,Events.report+80, stage_ship_y,Events.report+92
+		last_counts,Events.report+80, stage_ship_y,Events.report+92
 		mov eax,[rbx+offset]
 		mov [name],eax
 	end iterate
@@ -824,8 +825,9 @@ proc check_stage uses rbx rsi rdi,events,which
 	; the lock, and fades every frame it comes nearer; what loosed it goes the
 	; other way. It bursts at the lock. The first time the ship has stayed,
 	; and the burst costs it a life; the second it has dashed away, and it
-	; costs nothing. The third diver is struck dead while it is still fixing:
-	; no shot comes of it.
+	; costs nothing. The third diver is struck dead while it is still fixing,
+	; and that stops nothing: its shot comes as it dies, for where the fix
+	; was, and the ship, which killed it and stayed, loses a life to it.
 	mov edi,[rbx+Events.report+96]
 	mov eax,edi
 	mov ecx,[stage_phase]
@@ -837,10 +839,6 @@ proc check_stage uses rbx rsi rdi,events,which
 	je .flying
 	cmp ecx,4
 	je .landed
-	cmp ecx,5
-	je .after
-	cmp ecx,6
-	je .staged_done
 	cmp al,MARK_FOCUS
 	jne .staged_done
 	mov [stage_phase],1
@@ -858,16 +856,16 @@ proc check_stage uses rbx rsi rdi,events,which
 	test edi,256
 	jnz .fixed_alive
 	; Dead while it was fixing: that is the third's part, and nobody else's.
+	; Its shot is owed all the same, for where its fix was: on the ship,
+	; which has not moved.
 	cmp [stage_round],2
 	jne .stage_wrong
-	mov [stage_phase],5
-	jmp .staged_done
-.after:
-	; A frame on, whatever its death asked for has been made: nothing more may be.
-	mov eax,[rbx+Events.reserved+44]
-	mov [stage_asked],eax
-	mov [stage_phase],6
-	jmp .staged_done
+	mov eax,[rbx+Events.report+88]
+	mov [lock_x],eax
+	mov eax,[rbx+Events.report+92]
+	mov [lock_y],eax
+	mov [stage_phase],2
+	jmp .locked
 .fixed_alive:
 	cmp al,MARK_LOCKED
 	jne .stage_wrong
@@ -884,6 +882,9 @@ proc check_stage uses rbx rsi rdi,events,which
 .locked:
 	test edi,1024
 	jnz .loosed
+	; (The third is dead, and between a death and its shot there is a tick.)
+	cmp [stage_round],2
+	je .staged_done
 	test edi,256
 	jz .stage_wrong
 	; (Between its mark going with the shot and the shot being made there is a tick.)
@@ -942,17 +943,26 @@ proc check_stage uses rbx rsi rdi,events,which
 	movss xmm0,[fade_before]
 	ucomiss xmm0,[stage_little]
 	ja .stage_wrong
+	; What loosed it was seen to go the other way, if it lived to.
+	cmp [stage_round],2
+	je .burst_seen
 	cmp [stage_recoiled],1
 	jne .stage_wrong
+.burst_seen:
 	mov [stage_phase],4
 	jmp .staged_done
 .landed:
-	cmp byte [rbx+Events.report+84],1
+	; The first caught the ship, which had stayed. The second did not: the
+	; ship had gone. The third caught it: killing was all the ship had done.
+	mov ecx,[stage_round]
+	lea rdx,[stage_caught]
+	movzx eax,byte [rdx+rcx]
+	cmp byte [rbx+Events.report+84],al
 	jne .stage_wrong
 	mov eax,[rbx+Events.reserved+24]
 	sub eax,[stage_hurts]
-	mov ecx,[stage_round]
-	xor ecx,1
+	lea rdx,[stage_cost]
+	movzx ecx,byte [rdx+rcx]
 	cmp eax,ecx
 	jne .stage_wrong
 	inc [stage_round]
@@ -1107,19 +1117,15 @@ proc scripted_run uses rbx rsi
 .commands:
 	fail 12
 .manners:
-	; 25, in part: all three divers had their turn; the fix was seen to follow
-	; the ship; and nothing more was ever asked of the director after the
-	; third died, nor did anything more burst.
-	cmp [stage_round],2
+	; 25, in part: all three divers had their turn, the dead one too; the fix
+	; was seen to follow the ship; and three shots burst, no more.
+	cmp [stage_round],3
 	jne .stage_short
-	cmp [stage_phase],6
+	cmp [stage_phase],0
 	jne .stage_short
 	cmp [stage_followed],1
 	jne .stage_short
-	mov eax,[last_asked]
-	cmp eax,[stage_asked]
-	jne .stage_short
-	cmp byte [last_counts+3],2
+	cmp byte [last_counts+3],3
 	je .staged
 .stage_short:
 	fail 25
@@ -1435,6 +1441,9 @@ stage_slack dd 0.05
 stage_near dd 1.0
 stage_little dd 0.1
 fade_before dd 2.0
+; By which diver: how many bursts have caught the ship once its own has, and what its own cost in lives.
+stage_caught db 1,1,2,0
+stage_cost db 1,0,1,0
 world_buffer GpuBuffer
 header_buffer GpuBuffer
 bank_buffer GpuBuffer
@@ -1445,7 +1454,7 @@ iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,l
 	last_score,last_lives,last_wave,last_state,last_rank,last_fired,last_struck,last_kills,last_hurts,last_alive, \
 	hurts_before,rank_before,scroll_before,hurt_frame,hurts_total,rise_checked,falls_checked,chain_seen,head_died,alive_before,last_shown,last_stopped, \
 	fired_mark,nova_frame,nova_score,nova_kills,score_before,kills_before,struck_mark,last_music_faults, \
-	start_whole,last_asked,last_counts,stage_ship_y,stage_phase,stage_round,stage_followed,stage_asked,stage_hurts,stage_recoiled, \
+	start_whole,last_counts,stage_ship_y,stage_phase,stage_round,stage_followed,stage_hurts,stage_recoiled, \
 	lock_x,lock_y,fire_x,fire_y
 	name dd 0
 end iterate

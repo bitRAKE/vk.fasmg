@@ -59,7 +59,8 @@ macro game_tables
 	; fixes on the ship: the fix is seen, shaking, closing in. The fix locks,
 	; and is seen to. It looses one heavy shot at where the lock is, which is
 	; no longer where the ship need be; and the shot throws it back the way
-	; the shot did not go. Kill it before it fires and there is no shot.
+	; the shot did not go. Killing it before it fires does not stop the shot:
+	; it looses it as it dies, at where the fix then is. The answer is to move.
 	wounded 0.5
 		move 0.3,OUT_QUAD,THRUST,0
 		move 1.1,IN_QUAD,MARK,0,0,PLAYER

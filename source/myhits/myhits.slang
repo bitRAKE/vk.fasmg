@@ -452,7 +452,8 @@ void direct()
     // A scripted run's third game has no squads: a bare stage, on which the
     // script sets down what it wants seen. A shot to dash through; a shot to
     // pass close; and three divers, each hurt to half as soon as it is there,
-    // the third struck dead while it is still fixing on the ship.
+    // the third struck dead while it is still fixing on the ship, which does
+    // not save the ship from it.
     bool staged = (root.flags & ROOT_SCRIPTED) != 0 && game.runs >= 2;
     if (staged && !frozen)
     {
@@ -932,6 +933,38 @@ void resolve(uint3 id : SV_DispatchThreadID)
             InterlockedAdd(world.game.kills, 1);
             InterlockedAdd(world.game.earned, 1);
             trigger(SOUND_BURST, body.position.x);
+            // Killing is not an answer to what a thing was about to do. A
+            // kind with a second part to its program that dies before it has
+            // fired what that part fires, fires it as it dies: at its mark
+            // if it has one, and at where the ship is if it had not got that
+            // far. The kill chooses when the lock falls, not whether.
+            if (kind.wounded_first != 0 && game.state == STATE_PLAY)
+            {
+                uint from = max(body.move, kind.wounded_first);
+                for (uint ahead = from; ahead < from + 8 && ahead < world.tables.move_count; ++ahead)
+                {
+                    Move still = world.tables.moves[ahead];
+                    if (still.action == MOVE_HOLD && still.ticks == 0) break;
+                    if (still.action != MOVE_FIRE) continue;
+                    uint place_in;
+                    InterlockedAdd(world.game.requests, 1, place_in);
+                    if (place_in < REQUESTS)
+                    {
+                        float2 mark = body.marking != 0 ? body.mark : game.ship;
+                        float2 toward = mark - body.position;
+                        Request request;
+                        request.kind = still.target;
+                        request.at = body.position;
+                        request.angle = atan2(toward.y, toward.x);
+                        request.seed = slot;
+                        request.mark = mark;
+                        request.marking = MARK_LOCKED;
+                        world.queue[place_in] = request;
+                        trigger(SOUND_LOCK, mark.x);
+                    }
+                    break;
+                }
+            }
             // The head of a chain, killed, is what brings the companion.
             if (kind.links != 0)
             {

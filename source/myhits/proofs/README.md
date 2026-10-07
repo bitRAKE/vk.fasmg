@@ -23,7 +23,7 @@ build.cmd myhits-survey
 
 So do pictures. A scripted run draws to a window nobody sees, so proofs 04
 to 07 each leave `frame_NNN.png` there: the whole playfield at 1920×1080, at
-the frames of the script worth looking at. The game's twenty-two are its swoopers,
+the frames of the script worth looking at. The game's twenty-three are its swoopers,
 its weavers, the worm coming and then turned back on itself, the turrets
 firing with the level stopped, the run over; and of the second game three
 volleys with RAPID and SPREAD in force, the nova going off, the shield about
@@ -32,8 +32,9 @@ ship was, acting for itself, and taking the player's aim; the dragon, in the
 second place's inks; one frame drawn as a paused one is, dimmed under its
 two bars; and of the third game, on its bare stage, the dash through a shot,
 a diver's fix shaking round the ship, its lock, its heavy shot on the way
-with the crosshairs fading, the burst, and the second's shot coming for
-where the ship no longer is.
+with the crosshairs fading, the burst, the second's shot coming for where
+the ship no longer is, and the third's, loosed as the diver died, coming for
+a ship that killed it and stayed.
 
 | # | Proof | Claim | State |
 | --- | --- | --- | --- |
@@ -597,10 +598,12 @@ wide as what is coming will reach. A third of a second later the diver
 looses one heavy shot at the crosshairs and is thrown back the other way by
 it, and goes. The shot leaves slowly and gathers speed; the crosshairs fade
 as it comes, all there at its launch and gone as it lands; and where they
-were, it bursts. Kill the diver before it fires and there is no shot. Be
-outside the crosshairs when it lands and there is no harm. A nova, which
-strikes everything for three, leaves every diver on the field at exactly
-half.
+were, it bursts. Be outside the crosshairs when it lands and there is no
+harm. That is the only answer. Killing the diver does not stop the shot: one
+that dies before it has fired looses it as it dies, at where its fix then
+is, or at where the ship is if it had not begun to fix. The kill chooses
+when the crosshairs fall; then the ship has to go. A nova, which strikes
+everything for three, leaves every diver on the field at exactly half.
 
 **The window.** It has no caption and no frame. The first time, it takes the
 whole of its monitor; after that it comes back as it was left, a window
@@ -659,15 +662,16 @@ stage, with no squads, where the script sets down what it wants seen.
 | 22 | The music is its notes, and follows the play | The device finds every stem it rendered loud enough and no louder than its gain. With nothing happening only the bass is wanted, with everything all three, each at its own level. Where there is an audio device the stems are playing, and say where in the beat they are. And the proof runner holds the device's stems to a second synthesis of the same notes, as it does the sounds |
 | 23 | The window has its manners | Asked of the window by its own messages, with no one at it. P pauses: the next frame is paid no ticks and carries `ROOT_PAUSED`. Paused, the window says its middle is a handle, its left edge an edge and its corner a corner; playing, or over the whole monitor, that all of it is the game's. F11 gives it exactly its monitor's rectangle and then exactly the one it had. Leaving it pauses it and coming back does not resume it. And the pointer was never taken |
 | 24 | Charge is earned and spent | On the stage. A new run has all of it. A pair of missiles takes a quarter. A dash takes a fifth and carries the ship exactly 320, through a shot set down in its way: the shot is counted as passed through, once, and no life is lost. A shot sent by 85 above the ship pays three hundredths, once. A kill pays six. With 19 hundredths left a launch and then a dash are each refused: two clicks counted, nothing fired, nothing moved |
-| 25 | The hail-mary is its beats | On the stage, three divers, each hurt to half by the script. The fix is where the ship is, frame after frame, while the ship is moved. It locks where the ship then was. The heavy shot's mark is the lock, and how much of its way is left grows less every frame; what loosed it is never nearer the lock than when it fired, and is seen to go. It bursts within a unit of the lock. The first time the ship has stayed: one life, by the burst. The second it has dashed 320 away after the lock: nothing. The third diver is struck dead while fixing: nothing is ever asked of the director again, and nothing more bursts |
+| 25 | The hail-mary is its beats | On the stage, three divers, each hurt to half by the script. The fix is where the ship is, frame after frame, while the ship is moved. It locks where the ship then was. The heavy shot's mark is the lock, and how much of its way is left grows less every frame; what loosed it is never nearer the lock than when it fired, and is seen to go. It bursts within a unit of the lock. The first time the ship has stayed: one life, by the burst. The second it has dashed 320 away after the lock: nothing. The third diver is struck dead while it is fixing, and the ship stays: its shot comes all the same, for where the fix was, bursts there, and costs a life. Three shots burst in all |
 | 26 | The window is remembered | Under a name of the check's own, so what a player left is not disturbed. With nothing remembered it is to have the whole monitor. Left as a window at a place, it comes back to that place as a window. Left over the whole monitor, it comes back so, and to the same place when the monitor is given up |
 
 Last result here, GTX 1080 Ti, default and validation alike: all twenty-six
 hold. The run is 10,000 ticks, 51,250 passes and 5,000 draws, and takes nine
 seconds. The world is 791 KB on the device. The nova went off in frame 468
-and the head died in frame 557; 176 sounds went to voices. In the third
+and the head died in frame 557; 180 sounds went to voices. In the third
 game the first diver's shot burst in frame 1090 and cost a life; the
-second's burst in 1145 with the ship 320 away.
+second's burst in 1145 with the ship 320 away; the third diver was struck
+dead in frame 1164, and its shot burst in 1187 and cost another.
 
 **The checks bite.** Each of these was made and seen to fail the check it
 should: segments a tenth too far apart (5, at frame 150); the director
@@ -683,14 +687,15 @@ of the music's 576,000 samples outside the allowance. Seven ways of getting
 charge wrong each fail 24: missiles that are free (at frame 1006); a dash a
 tick short, or one that slips nothing (1014); a near miss that pays every
 tick it is near (1036); a kill that pays nothing (1204); a launch, and a
-dash, with no charge to pay for it (1210, 1216). Ten of getting the
+dash, with no charge to pay for it (1210, 1216). Twelve of getting the
 hail-mary wrong each fail 25: a fix that does not follow the ship (1050), or
 never locks (1067); a diver thrown forward and not back, and crosshairs that
 do not fade (1068); a shot that follows the ship after the lock (1125); a
 burst sixty to one side of the lock (1090), one that hurts nobody (1091),
-one that reaches 400 (1146); a third diver left alive to fire (1172); and a
-diver that being hurt to half changes nothing in (at the end, where the
-turns are counted). Three ways of forgetting the window each fail 26: its
+one that reaches 400 (1146); a dying diver's shot sent at its own wreck and
+not its mark (1164); a third diver left alive (1172); and, at the end, where
+the turns are counted, a diver that being hurt to half changes nothing in,
+and a kill that cancels the shot, which is how it was first built. Three ways of forgetting the window each fail 26: its
 place, whether it had the monitor, and that the first time it is to. And
 nine ways of getting the window wrong each fail 23: a pause that does not say so, or
 still pays ticks; a paused window that is not a handle, or has no edges; one
