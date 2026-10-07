@@ -32,6 +32,7 @@ MACHINE_BARE := 1
 include '..\common\machine.inc'
 include '..\common\pictures.inc'
 include 'tables.inc'
+include '..\common\files.inc'
 include '..\common\reload.inc'
 include '..\common\audio.inc'
 
@@ -586,6 +587,26 @@ proc consume_events uses rbx rsi rdi,events
 .counted:
 	cmp [test_mode],0
 	je .done
+	; What this frame asked of the voices, and of the music: kept, for the
+	; run to be played back from.
+	cmp esi,SCRIPT_FRAMES
+	jae .unheard
+	imul eax,esi,HEARD_BYTES
+	lea r8,[heard_log]
+	add r8,rax
+	mov [r8],esi
+	mov eax,[rbx+Events.intensity]
+	mov [r8+4],eax
+	lea r9,[rbx+Events.sound]
+	mov ecx,SOUND_KINDS*sizeof.Trigger/8
+.heard:
+	mov rax,[r9]
+	mov [r8+8],rax
+	add r9,8
+	add r8,8
+	dec ecx
+	jnz .heard
+.unheard:
 	; 1: events arrive once each, in frame order, in hand when the next frame begins.
 	cmp esi,[events_seen]
 	jne .order_wrong
@@ -1554,33 +1575,47 @@ proc check_stage uses rbx rsi rdi,events,which
 	ret
 endp
 
-; The music as the device rendered it, for the script to hold to the notes
-; and to write out as something a player can open.
-proc write_music uses rbx
-	fastcall CreateFileW,<W,'build\myhits_game.music.bin'>,GENERIC_WRITE,FILE_SHARE_READ,0,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,0
-	cmp rax,-1
-	je .failed
-	mov rbx,rax
+; The bank as the device rendered it, for the proof runner: the music, to be
+; held to its notes and written out as something a player can open; and the
+; sounds, for the mix of the run.
+proc write_bank
 	mov eax,dword [live_tables+Tables.sound_samples]
 	mov rdx,[bank_buffer.mapped]
 	lea rdx,[rdx+rax*4]
-	fastcall WriteFile,rbx,rdx,TABLE_STEMS*MUSIC_SAMPLES*4,addr written,0
+	fastcall file_put,<W,'build\myhits_game.music.bin'>,rdx,TABLE_STEMS*MUSIC_SAMPLES*4
 	test eax,eax
-	jz .close_failed
-	cmp [written],TABLE_STEMS*MUSIC_SAMPLES*4
-	jne .close_failed
-	fastcall CloseHandle,rbx
-	ret
-.close_failed:
-	fastcall CloseHandle,rbx
+	jz .failed
+	mov r8d,dword [live_tables+Tables.sound_samples]
+	shl r8d,2
+	fastcall file_put,<W,'build\myhits_game.sounds.bin'>,[bank_buffer.mapped],r8
+	test eax,eax
+	jnz .done
 .failed:
 	mov [app_io_failed],1
+.done:
+	ret
+endp
+
+; What every frame of the run asked of the voices and of the music, for the
+; proof runner to play back into a file (tools\mix.cs).
+proc write_heard uses rbx
+	fastcall file_put,<W,'build\myhits_game.heard.bin'>,0,0
+	mov ebx,eax
+	fastcall file_more,addr heard_head,HEARD_HEAD
+	and ebx,eax
+	fastcall file_more,addr heard_log,SCRIPT_FRAMES*HEARD_BYTES
+	and ebx,eax
+	fastcall file_done
+	test eax,ebx
+	jnz .done
+	mov [app_io_failed],1
+.done:
 	ret
 endp
 
 ; A thousand frames by the script, then the totals no frame could show alone.
 proc scripted_run uses rbx rsi
-	fastcall write_music
+	fastcall write_bank
 	fastcall check_fits
 	mov rcx,[live_image]
 	fastcall tables_sum,rcx
@@ -1602,6 +1637,7 @@ proc scripted_run uses rbx rsi
 	test eax,eax
 	jz .broken
 	fastcall machine_write_measure
+	fastcall write_heard
 	mov esi,SCRIPT_FRAMES
 	; 4 and 9, in part: the rises and falls of rank were seen, and the head did die.
 	cmp [rise_checked],0
@@ -2099,6 +2135,11 @@ reload_banks rd 8			; of the bank,
 reload_musics rd 8			; of the music in it,
 reload_played rd 8			; and whether the music was playing from where it is in it
 live_image dq game_image		; the image in force: the one built in, until another is taken
+; What a run heard, as a file: this, and then a frame's number, how much was
+; happening, and its triggers, for every frame.
+HEARD_BYTES := 8 + SOUND_KINDS * sizeof.Trigger
+HEARD_HEAD := 32
+heard_head dd 'HERD',SCRIPT_FRAMES,GAME_TICKS,SOUND_KINDS,HEARD_BYTES,TICK_RATE,SOUND_RATE,TABLE_SOUNDS
 watch_due dq 0				; when the tables' file is next looked at, by the frames' clock
 watch_stamp dq 0			; when it was written, as it was last taken or refused
 watch_seen dq 0
@@ -2124,6 +2165,7 @@ section '.bss$game_tables' readable writeable align 16
 live_tables rb sizeof.Tables		; where the CPU reads each table of the image in force
 taken_image rb TAKEN_ROOM		; what a file held
 kept_image rb TAKEN_ROOM		; and what was taken from one, which is then the image in force
+heard_log rb SCRIPT_FRAMES*HEARD_BYTES
 
 section '.rdata$game_spirv' data readable align 4
 iterate <name,module>, develop_code,develop, chart_code,chart, census_code,census, settle_code,settle, begin_code,begin, direct_code,direct, update_code,update, \

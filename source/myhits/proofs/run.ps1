@@ -43,6 +43,8 @@ function Read-State([string]$path) {
 $spirvDis = Join-Path $env:VULKAN_SDK 'Bin\spirv-dis.exe'
 # The second implementations the device is held to: the curves, and the sounds made of them.
 if (-not ('Myhits.Bank' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot '04_motion\curves.cs'), (Join-Path $PSScriptRoot '06_sound\bank.cs') }
+# And the tool that plays a run back into a file from what it asked of the voices.
+if (-not ('Myhits.Mix' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot '..\tools\mix.cs') }
 
 # Run one proof's program through its script and hold it to its own numbered
 # checks, then to what every proof owes: a clean exit, no diagnostics, the
@@ -272,6 +274,23 @@ try {
         $played = ([Myhits.Bank]::CompareMusic($stems, (Join-Path $repoRoot 'source\myhits\tables.inc'))) -split ' '
         Assert-True ([int]$played[0] * 1000 -le [int]$played[1]) "$($played[0]) of the music's $($played[1]) samples are not the second implementation's"
         [Myhits.Bank]::WriteMix($stems, (Join-Path (Split-Path $stems) 'myhits_music.wav'), [int]$played[2])
+        # 33: the run can be listened to, and nothing in it is out of line. What every frame asked of
+        # the voices is played back into a file, as audio.inc would play it, from the bank the device
+        # rendered: every sound the run asked for is in what was kept; the mix is neither silent nor
+        # crushed; hardly a sample of it is louder than a speaker goes; and no sound stands more than
+        # twelve decibels from the middle of them.
+        $logRoot = (Resolve-Path -LiteralPath (Join-Path $BuildDir "myhits_checks\$mode\game")).Path
+        $mix = @{}
+        foreach ($word in ([Myhits.Mix]::Run((Join-Path (Split-Path $stems) 'myhits_game.heard.bin'), (Join-Path (Split-Path $stems) 'myhits_game.sounds.bin'), $stems,
+                (Join-Path $repoRoot 'source\myhits\tables.inc'), (Join-Path (Split-Path $stems) 'myhits_run.wav'), (Join-Path $logRoot 'run.md'), 1250) -split ' ')) {
+            $name, $value = $word -split '=', 2
+            $mix[$name] = $value
+        }
+        $culture = [Globalization.CultureInfo]::InvariantCulture
+        Assert-True ([int]$mix.asked_all -eq [int]$state.sounds_asked) "game check 33 failed: the run asked for $($state.sounds_asked) sounds and $($mix.asked_all) were kept for the mix"
+        Assert-True ([double]::Parse($mix.level, $culture) -gt -40 -and [double]::Parse($mix.level, $culture) -lt -6) "game check 33 failed: the mix's level is $($mix.level) dB"
+        Assert-True ([int]$mix.clipped * 10000 -lt [int]$mix.samples -and [double]::Parse($mix.peak, $culture) -lt 3) "game check 33 failed: $($mix.clipped) of the mix's $($mix.samples) samples are louder than a speaker goes, and its peak is $($mix.peak) dB"
+        Assert-True ([Math]::Abs([double]::Parse($mix.apart, $culture)) -le 12) "game check 33 failed: $($mix.furthest) stands $($mix.apart) dB from the middle of the sounds"
         # The backdrop is the level's, and this is held on the pictures themselves. Along the top rail,
         # frames 300 and 320 are the same to the pixel: the level stood still between them. Frames 235
         # and 300 are not: it moved.
@@ -305,7 +324,7 @@ try {
         }
         Assert-True ($said[1290] -gt 1000 -and $said[900] -lt 100) "game check 32 failed: the frame after the tables were taken has $($said[1290]) pixels of words along its top, and a frame long before has $($said[900])"
         Assert-True ([int]$state.reloads -eq 5 -and [int]$state.reloads_refused -eq 1) 'game check 32 failed: the tables were not taken five times and refused once'
-        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through four games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks and bursts where it locked, is dodged by moving and not stopped by killing; the window pauses, moves, takes its monitor and is remembered; nothing alive is written over, and what there is no room for is refused; its tables are taken again from a file as it runs ($($state.reload_bytes) bytes in five takings), and refused when their names are not its own; two runs sum to the same ($gameSums); $costs; {9} passes and {10} draws a frame" -f `
+        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through four games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; the run as it sounded is $BuildDir\myhits_run.wav, $($mix.seconds) seconds at $($mix.level) dB, its peak $($mix.peak) dB with $($mix.clipped) samples cut off, and $($mix.furthest) the sound furthest from the rest, by $($mix.apart) dB; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks and bursts where it locked, is dodged by moving and not stopped by killing; the window pauses, moves, takes its monitor and is remembered; nothing alive is written over, and what there is no room for is refused; its tables are taken again from a file as it runs ($($state.reload_bytes) bytes in five takings), and refused when their names are not its own; two runs sum to the same ($gameSums); $costs; {9} passes and {10} draws a frame" -f `
             $frames, $state.ticks_a_frame, ([int]$state.kinds - 1), $state.moves, $state.squads, [int]([int]$state.world_bytes / 1024), $state.head_died_frame, $state.hurts_heard, $voices,
             ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
     }

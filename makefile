@@ -592,7 +592,7 @@ $(BUILD)\myhits_game_backdrop_fragment.spv: $(GAME_SOURCES)
 	$(MYHITS_SLANG) -entry backdrop_fragment -stage fragment -o $@ $(GAME_SLANG)
 	$(MYHITS_VALIDATE) $@
 
-$(BUILD)\myhits.obj: $(MYHITS)\myhits.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\audio.inc $(COMMON)\reload.inc $(MYHITS)\tables_image.inc $(GAME_SHADERS)
+$(BUILD)\myhits.obj: $(MYHITS)\myhits.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\audio.inc $(COMMON)\files.inc $(COMMON)\reload.inc $(MYHITS)\tables_image.inc $(GAME_SHADERS)
 	$(ASSEMBLE) -Source $(MYHITS)\myhits.asm -Output $@
 
 # The game's tables as a file: what a game started with --watch takes again

@@ -49,7 +49,7 @@ is now the first rule of every choreography here.
 - The game runs: squads from a table, chains, a boss the level waits for,
   rank that reads the shooting, bonuses, a companion in three stages, a
   backdrop that is the level's, music that listens; and now charge, a dash,
-  the near miss, and the first choreographed attack. Thirty-two numbered
+  the near miss, and the first choreographed attack. Thirty-three numbered
   claims hold on a scripted run of four games, under validation too.
 - Milestone 8, the ground, is built: each of its problems below is done, or
   was measured and found not to need doing. Its list for a hand is untried.
@@ -97,6 +97,9 @@ is now the first rule of every choreography here.
 - **Reloading the tables.** `--watch`, `build\myhits_tables.bin` and
   `source\myhits\tools\watch.ps1`; `reload.inc` in the layer. Claim 32.
   The first of milestone 9's tools, and the one the others stand on.
+- **The mix and the loudness report.** The scripted run, as it sounded, in
+  `build\myhits_run.wav`, and every sound's level in a table. Claim 33. It
+  found the mix a decibel over full scale in five samples.
 
 ## Choreography
 
@@ -348,8 +351,8 @@ sound is too loud against the rest; the music is one two-bar loop.
 | Loops | `loop` lines: a sound whose length is a whole number of its periods. Events carry a level for each: an engine by speed, a fix being held on the ship, a boss's presence, an alarm at the last life | Problem 15 |
 | Songs | Patterns of notes and an order to play them in, a section to a stage and one for a boss; a stinger that waits for the next sixteenth, so a bonus rings in time | More than two bars |
 | `tools\notes.ps1`, with the game's tools | Reads a MIDI file's track into `notes` lines | Music from any editor |
-| The mix | The scripted run's events played into a file: every sound and stem at the level and time the game asked | `build\myhits_run.wav`: the game can be listened to without playing it |
-| The loudness report | Level and peak of every sound and of the mix; how many samples clip; which sound stands furthest from the rest | A table the author can check without ears; a sound 12 dB hot fails |
+| The mix (built) | The scripted run's events played into a file: every sound and stem at the level and time the game asked. `source\myhits\tools\mix.cs`, from what the run keeps of what it asked | `build\myhits_run.wav`: the game can be listened to without playing it |
+| The loudness report (built) | Level and peak of every sound and of the mix; how many samples clip; which sound stands furthest from the rest | `run.md`, beside the run's pictures: a table the author can check without ears; a sound 12 dB hot fails. Claim 33 |
 
 The second synthesis in `bank.cs` follows every addition, as it follows the
 recipes now.

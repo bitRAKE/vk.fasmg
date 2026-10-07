@@ -29,7 +29,8 @@ addresses.
 | [work.inc](work.inc) | One command buffer and one timeline. A submission's name is the value it raises the timeline to; whether it is done is two numbers compared. The barriers between passes |
 | [present.inc](present.inc) | The surface, and a swapchain for the window as it is: an image to draw to, and the frame's work and that image to the monitor |
 | [memory.inc](memory.inc) | Buffers, asked for by who touches them: `MEMORY_DEVICE`, `MEMORY_UPLOAD`, `MEMORY_READBACK`. Each is its own allocation; nothing pools or defers. An image, for the snapshots |
-| [reload.inc](reload.inc) | What a running program can take again from a file: whether a file has been written since it was last looked at, the whole of it into memory, and for tables, whether an image of them is one this program can take, where its tables lie, and a sum of them a device can be held to |
+| [files.inc](files.inc) | Whole files by name: when one was last written, all of one into memory, all of one out of it, in one piece or several |
+| [reload.inc](reload.inc) | What a running program can take again from a file. For tables: whether an image of them is one this program can take, where its tables lie, and sums of them a device can be held to |
 | [state.inc](state.inc) | What a program remembers between runs: values by name in the registry, under `HKEY_CURRENT_USER\Software\vk.fasmg\<program>` |
 | [input.inc](input.inc) | A pad by XInput, over the keys and the mouse; rumble |
 | [audio.inc](audio.inc) | XAudio2 called from assembly: sixteen voices for sounds asked for by count and place, looping voices for stems of music mixed by a level, and where the music is in its beat |
