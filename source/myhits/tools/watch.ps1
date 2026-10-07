@@ -25,8 +25,10 @@ param([string]$Fasm2, [string]$BuildDir = 'build', [switch]$Play)
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 Set-Location -LiteralPath $repoRoot
-if (-not $Fasm2) { $Fasm2 = if ($env:FASM2) { $env:FASM2 } else { '..\fasm2\fasm2.cmd' } }
-if (-not (Get-Command $Fasm2 -ErrorAction SilentlyContinue)) { throw "fasm2 was not found at $Fasm2; say where with -Fasm2" }
+# Where the makefile looks; and, from a worktree, where its main checkout would.
+if (-not $Fasm2) { $Fasm2 = @($env:FASM2, '..\fasm2\fasm2.cmd', '..\..\..\..\fasm2\fasm2.cmd') | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1 }
+if (-not $Fasm2 -or -not (Get-Command $Fasm2 -ErrorAction SilentlyContinue)) { throw 'fasm2 was not found; say where it is with -Fasm2' }
+$Fasm2 = (Resolve-Path -LiteralPath $Fasm2).Path
 $sources = 'source\myhits\tables.inc', 'source\myhits\tables_image.inc', 'source\common\tables.inc', 'source\common\shared.inc'
 $file = Join-Path $BuildDir 'myhits_tables.bin'
 $fresh = Join-Path $BuildDir 'myhits_tables.new'

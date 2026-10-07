@@ -19,6 +19,9 @@
 ;				lines it has
 ;	tables_sum	image		a sum of the tables' words, which a device holding
 ;				them can be held to
+;	tables_counted	image		a number made of how many lines each table has and
+;				what the sounds come to: what a device should make
+;				of its own Tables
 ;
 ; What a program does with an image that fits is its own business, and so is
 ; what it does about whatever was running by the old one.
@@ -147,6 +150,19 @@ proc tables_sum image
 	dec edx
 	jnz .word
 .done:
+	ret
+endp
+
+; (As tables_counted in common.slang.)
+proc tables_counted image
+	mov eax,[rcx+TableImage.samples]
+	xor edx,edx
+.sort:
+	imul eax,eax,31
+	add eax,[rcx+TableImage.counts+rdx*4]
+	inc edx
+	cmp edx,TABLE_SORTS
+	jb .sort
 	ret
 endp
 

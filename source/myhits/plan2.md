@@ -301,7 +301,9 @@ still a world for squads to come to.
 
 This is startup traffic, not a frame's: the claim that a frame is the root
 down and the events up stays as it is, and what a reload sends is counted
-apart. Claim 32 holds all of it, in the scripted run.
+apart. Claim 32 holds all of it, in the scripted run, and fifteen ways of
+getting it wrong each fail it. What it cannot hold is a hand at an editor:
+the list for that is with the claim, in the proofs.
 
 Still to come: the packed art by the same road; the gallery, the range and
 the board watching as the game does; and the theatre, which will bring a

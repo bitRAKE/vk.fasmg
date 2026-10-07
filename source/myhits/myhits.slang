@@ -1285,9 +1285,13 @@ void report()
     events.debug[3] = sum;
     // How often the tables have been taken again, and what is being said of
     // it; and, in the frame a scripted run is told of it, the device's own
-    // sum of the tables it holds.
+    // sum of the tables it holds, and what it makes of how many lines each has.
     events.flags = (game.reloads & 255) | (game.notice << 8);
-    if (scripted && (root.flags & (ROOT_RELOADED | ROOT_REFUSED)) != 0) events.debug[1] = tables_held(world);
+    if (scripted && (root.flags & (ROOT_RELOADED | ROOT_REFUSED)) != 0)
+    {
+        events.debug[1] = tables_held(world);
+        events.debug[2] = tables_counted(world.tables);
+    }
     // On the stage, where no chain is being watched: how full the hostiles'
     // pool is and with what, and what has been refused.
     if ((root.flags & ROOT_SCRIPTED) != 0 && game.runs == 2)

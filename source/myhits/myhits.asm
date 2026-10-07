@@ -60,8 +60,10 @@ RESTART_FRAME := 400			; the script presses Enter here; the first game is over b
 STAGE_FRAME := 1000			; and here: the second is over, and the third is on a bare stage
 assert STAGE_FRAME = 1000		; the script's frames of the third are written out from it too
 LAST_FRAME := 1250			; and here: the third is ended for it, and the fourth is a game like the first,
-assert LAST_FRAME = 1250		; for the tables to be changed under
-RELOAD_FRAME := LAST_FRAME+39		; which they are here, three swoopers having come
+assert LAST_FRAME = 1250		; for the tables to be changed under: three times.
+DUE_FRAME := LAST_FRAME+15		; In the very tick its first squad is due;
+MID_FRAME := LAST_FRAME+23		; with that squad half out;
+RELOAD_FRAME := LAST_FRAME+39		; and with a squad out and done
 PAUSED_FRAME := 950			; and this frame's picture is a paused one's
 assert RESTART_FRAME = 400		; the script's later frames are written out from it
 public mainCRTStartup
@@ -397,8 +399,9 @@ proc play_frame uses rbx
 	; cannot take; then its own again, and this time by the watcher, as a
 	; game started with --watch takes them; the watcher once more, which has
 	; nothing new to look at; then its own offered outright, which is no
-	; change. In the fourth, with a squad on the screen: the others again.
-	iterate <when,name>, 3,tables_alt_name, 5,tables_bad_name, 7,0, 9,0, 11,tables_name, RELOAD_FRAME,tables_alt_name
+	; change. In the fourth: the others, in the tick the first squad is due;
+	; its own, with that squad half out; and the others, with it out and done.
+	iterate <when,name>, 3,tables_alt_name, 5,tables_bad_name, 7,0, 9,0, 11,tables_name, DUE_FRAME,tables_alt_name, MID_FRAME,tables_name, RELOAD_FRAME,tables_alt_name
 		cmp dword [root+Root.frame],when
 		jne .kept_#when
 		match =0, name
@@ -1058,6 +1061,10 @@ proc script_record uses rbx,result,which
 	fastcall tables_sum,rcx
 	lea rdx,[reload_sums]
 	mov [rdx+rbx*4],eax
+	mov rcx,[live_image]
+	fastcall tables_counted,rcx
+	lea rdx,[reload_counts]
+	mov [rdx+rbx*4],eax
 	fastcall bank_sum
 	lea rdx,[reload_banks]
 	mov [rdx+rbx*4],eax
@@ -1126,16 +1133,19 @@ endp
 ; three games that follow are held to everything they were, and sum to what
 ; they did.
 ;
-; Then, in the fourth game, with three swoopers on the screen and their
-; squad done: the other image again. In the frame that tells of it the three
-; are gone and the squad has begun again; and it comes as the new tables
-; have it, five and not three.
+; Then the fourth game, where there is something to let go of. The changed
+; image is taken in the very tick the first squad is due: the squad comes
+; whole, a tick later, and as the new tables have it. With two of its five
+; out, the game's own image: the two are gone within the frame and the squad
+; has begun again, as three. With those three out and their squad done, the
+; changed image once more: the three are gone, the squad has begun again,
+; and five come.
 proc check_reload uses rbx rsi rdi,events,which
 	mov rbx,rcx
 	mov esi,edx
 	; What each offer came to, by which it was.
 	iterate <when,which,result,told,taken>, 3,0,TABLES_FIT,ROOT_RELOADED,1, 5,1,TABLES_OTHER,ROOT_REFUSED,1, 7,2,TABLES_FIT,ROOT_RELOADED,2, 9,3,TABLES_UNSEEN,0,2, \
-		11,4,TABLES_SAME,0,2, RELOAD_FRAME,5,TABLES_FIT,ROOT_RELOADED,3
+		11,4,TABLES_SAME,0,2, DUE_FRAME,5,TABLES_FIT,ROOT_RELOADED,3, MID_FRAME,6,TABLES_FIT,ROOT_RELOADED,4, RELOAD_FRAME,7,TABLES_FIT,ROOT_RELOADED,5
 		cmp esi,when
 		jne .not_#when
 		cmp [reload_results+which*4],result
@@ -1147,6 +1157,10 @@ proc check_reload uses rbx rsi rdi,events,which
 		if told
 			mov eax,[reload_sums+which*4]
 			cmp eax,[rbx+Events.debug+4]
+			jne .wrong
+			; And what it made of how many lines each table has.
+			mov eax,[reload_counts+which*4]
+			cmp eax,[rbx+Events.debug+8]
 			jne .wrong
 		end if
 	.not_#when:
@@ -1161,9 +1175,12 @@ proc check_reload uses rbx rsi rdi,events,which
 	end iterate
 	cmp esi,11
 	jne .later
-	; The other image is another image, and so is its bank; what was refused
-	; changed neither; and the game's own, taken back, is what it was at
-	; start, bank and all.
+	; The other image is another image, with a table that is longer, and so
+	; is its bank; what was refused changed neither; and the game's own,
+	; taken back, is what it was at start, bank and all.
+	mov eax,[reload_counts]
+	cmp eax,[reload_counts+8]
+	je .wrong
 	mov eax,[reload_sums]
 	cmp eax,[sum_at_start]
 	je .wrong
@@ -1209,14 +1226,24 @@ proc check_reload uses rbx rsi rdi,events,which
 	cmp [reload_dispatches],4
 	jne .wrong
 .later:
-	; The fourth game: three swoopers and their squad done, as in the first.
+	; The fourth game. Nothing has come when the tables are first taken, in
+	; the tick the squad is due; and the squad loses none to that: two of it
+	; are out when the second taking comes.
+	at_frame DUE_FRAME-1,Events.reserved+28,0,.wrong
+	at_frame MID_FRAME-1,Events.reserved+28,2,.wrong
+	at_frame MID_FRAME-1,Events.wave,0,.wrong
+	; Told in the frame's first tick: by its last the two are gone and the
+	; squad's first has come again.
+	at_frame MID_FRAME,Events.reserved+28,1,.wrong
+	at_frame MID_FRAME,Events.wave,0,.wrong
+	; As the game's own tables have it: three, and their squad done.
 	at_frame RELOAD_FRAME-1,Events.reserved+28,3,.wrong
 	at_frame RELOAD_FRAME-1,Events.wave,1,.wrong
-	; Told of the tables in the frame's first tick: by its last the three
-	; are gone, the squad is to come again, and its first has.
+	; The third taking: the three are gone, the squad is to come again, and
+	; its first has.
 	at_frame RELOAD_FRAME,Events.reserved+28,1,.wrong
 	at_frame RELOAD_FRAME,Events.wave,0,.wrong
-	; And it comes as the new tables have it: five.
+	; And it comes as the changed tables have it: five.
 	at_frame RELOAD_FRAME+24,Events.reserved+28,5,.wrong
 	at_frame RELOAD_FRAME+24,Events.wave,1,.wrong
 	ret
@@ -1253,13 +1280,15 @@ endp
 proc check_fits uses rsi
 	fastcall take_own
 	fastcall check_fit,TABLES_FIT
-	; Not an image at all; one cut short; one whose tables do not come to what it says.
+	; Not an image at all; one whose tables do not come to what it says; and
+	; one whose file is shorter than it says: half-way to being written.
 	mov dword [taken_image+TableImage.magic],0
-	fastcall check_fit,TABLES_BROKEN
-	sub dword [taken_image+TableImage.bytes],4
 	fastcall check_fit,TABLES_BROKEN
 	inc dword [taken_image+TableImage.counts]
 	fastcall check_fit,TABLES_BROKEN
+	fastcall tables_fit,addr taken_image,sizeof.TableImage+TABLE_IMAGE_BYTES-4,TABLE_PRINT,TABLE_ROOM
+	cmp eax,TABLES_BROKEN
+	jne .mistaken
 	; A whole one of other names.
 	xor dword [taken_image+TableImage.print],1
 	fastcall check_fit,TABLES_OTHER
@@ -1267,6 +1296,7 @@ proc check_fits uses rsi
 	fastcall tables_fit,addr taken_image,sizeof.TableImage+TABLE_IMAGE_BYTES,TABLE_PRINT,TABLE_IMAGE_BYTES-4
 	cmp eax,TABLES_OTHER
 	je .right
+.mistaken:
 	xor esi,esi
 	fail 32
 .right:
@@ -1723,10 +1753,10 @@ proc scripted_run uses rbx rsi
 	mov ebx,eax
 	lea rcx,[report_text]
 	lea rcx,[rcx+rbx*2]
-	fastcall wsprintfW,rcx,<W,'offers=%u,%u,%u,%u,%u,%u',13,10,'played=%u,%u,%u,%u,%u,%u',13,10,'banks=%08X,%08X,%08X,%08X,%08X,%08X,%08X',13,10>, \
-		[reload_results],[reload_results+4],[reload_results+8],[reload_results+12],[reload_results+16],[reload_results+20], \
-		[reload_played],[reload_played+4],[reload_played+8],[reload_played+12],[reload_played+16],[reload_played+20], \
-		[bank_at_start],[reload_banks],[reload_banks+4],[reload_banks+8],[reload_banks+12],[reload_banks+16],[reload_banks+20]
+	fastcall wsprintfW,rcx,<W,'offers=%u,%u,%u,%u,%u,%u,%u,%u',13,10,'played=%u,%u,%u,%u,%u,%u,%u,%u',13,10,'banks=%08X,%08X,%08X,%08X,%08X,%08X,%08X,%08X,%08X',13,10>, \
+		[reload_results],[reload_results+4],[reload_results+8],[reload_results+12],[reload_results+16],[reload_results+20],[reload_results+24],[reload_results+28], \
+		[reload_played],[reload_played+4],[reload_played+8],[reload_played+12],[reload_played+16],[reload_played+20],[reload_played+24],[reload_played+28], \
+		[bank_at_start],[reload_banks],[reload_banks+4],[reload_banks+8],[reload_banks+12],[reload_banks+16],[reload_banks+20],[reload_banks+24],[reload_banks+28]
 	add eax,ebx
 	fastcall machine_write_report,rax
 	ret
@@ -2064,6 +2094,7 @@ end iterate
 
 reload_results rd 8			; what each of the script's offers of tables came to,
 reload_sums rd 8			; the sum of the image then in force,
+reload_counts rd 8			; what its tables' lengths come to,
 reload_banks rd 8			; of the bank,
 reload_musics rd 8			; of the music in it,
 reload_played rd 8			; and whether the music was playing from where it is in it

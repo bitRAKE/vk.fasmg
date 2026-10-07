@@ -691,46 +691,63 @@ short fourth, like the first, for the tables to be changed under.
 | 25 | The hail-mary is its beats | On the stage, three divers, each hurt to half by the script. The fix is where the ship is, frame after frame, while the ship is moved. It locks where the ship then was. The heavy shot's mark is the lock, and how much of its way is left grows less every frame; what loosed it is never nearer the lock than when it fired, and is seen to go. It bursts within a unit of the lock. The first time the ship has stayed: one life, by the burst. The second it has dashed 320 away after the lock: nothing. The third diver is struck dead while it is fixing, and the ship stays: its shot comes all the same, for where the fix was, bursts there, and costs a life. Three shots burst in all |
 | 26 | The window is remembered | Under a name of the check's own, so what a player left is not disturbed. With nothing remembered it is to have the whole monitor. Left as a window at a place, it comes back to that place as a window. Left over the whole monitor, it comes back so, and to the same place when the monitor is given up |
 | 27 | Nothing alive is written over | On the stage. A worm's head is struck dead and something else set down in its slot the tick after: the nine segments die of their head's death all the same, and none takes the newcomer for it. Then a flood. Of 400 hostile shots 384 are made and 16 refused. Of 400 drones as many are made as there were places free, and the rest refused. Five places side by side are emptied and a worm asked for: it needs ten, and is refused whole. Of ten drones asked for then, five are made and five refused. Every drone made is still itself afterwards, by the sum of the numbers they were given; and at the end of the run it is all as it was |
-| 28 | Two runs are the same run | Held by the proof runner. The device sums everything it simulates, every body in its slot and the game with it, at the end of each of the three games. The script is run a second time at once, and again under validation: all three runs give the same three sums |
+| 28 | Two runs are the same run | Held by the proof runner. The device sums everything it simulates, every body in its slot and the game with it, at the end of each of the four games. The script is run a second time at once, and again under validation: all three runs give the same four sums |
 | 29 | A tick is within its budget | Held by the proof runner, from what the game measured of itself: the device's own clock, stamped after every pass, and its mean over the run for each of a tick's five passes held to a budget several times what it was when the budget was written. Under validation the numbers are shown and not held |
 | 30 | The level's distance is exact however far it has come | Asked by the device at start, of the functions the backdrop is drawn by, with the level three thousand million units on: five months at full pace. The layers that repeat are, to the bit, what they are at the start. The layers that do not still move as the level does: twenty-five units more of travel is the far layer one unit to the left, and ten is the ridge three. Every speck is where it would be |
 | 31 | A pause is in words | Held on the pictures, by the proof runner: where the line that says what the keys do is drawn, the frame drawn as a paused one has letters, pale on the dimmed picture, and a frame that is not paused has none |
-| 32 | The tables are taken again while the game runs | Images of the tables are offered from files, between frames, as a watched game is offered them. One with the game's names and two things changed (`07_game\tables_alt.asm`) is taken: the frame after says so, the device's own sum of the tables it holds is the file's, the bank is another bank in which the music is sample for sample what it was, further in, and the music is playing from there. One with a kind the game was not built with (`07_game\tables_bad.asm`) is refused, which is said, and nothing changes. The game's own, by the watcher: the device holds it and the bank is to the bit the bank made at start. The watcher again: the file is as it was and is not looked into. The game's own outright: no change. All of that is in the first game's first frames, before anything has come, and the three games after it sum to what they always did. In the fourth game, with three swoopers out and their squad done, the changed image again: within the frame the three are gone and the squad has begun again, and five come. Before the run, images spoiled five ways are each told for what they are. And on the pictures: the frame after has words along its top, and a frame long before has none |
+| 32 | The tables are taken again while the game runs | Images of the tables are offered from files, between frames, as a watched game is offered them. One with the game's names and a few things changed (`07_game\tables_alt.asm`: a first squad of five and not three, a squad more, a shot's sound twice as long) is taken: the frame after says so; the device's own sum of the tables it holds is the file's, and what it makes of how many lines each table has is the file's too; the bank is another bank, in which the music is sample for sample what it was, further in; and the music is playing from there. One with a kind the game was not built with (`07_game\tables_bad.asm`) is refused, which is said, and nothing changes. The game's own, by the watcher: the device holds it and the bank is to the bit the bank made at start. The watcher again: the file is as it was and is not looked into. The game's own outright: no change. All of that is in the first game's first frames, before anything has come, and the three games after it sum to what they always did. The fourth game is where there is something to let go of. The changed image is taken in the very tick the first squad is due: the squad loses none to that. With two of its five out, the game's own: within the frame the two are gone and the squad has begun again, as three. With those three out and their squad done, the changed image again: the three are gone, the squad has begun again, and five come. Before the run, images spoiled five ways are each told for what they are: not an image, tables that do not come to what it says, a file shorter than it says, other names, too large. And on the pictures: the frame after a taking has words along its top, and a frame long before has none |
 
-Last result here, GTX 1080 Ti, default and validation alike: all thirty-one
+Last result here, GTX 1080 Ti, default and validation alike: all thirty-two
 hold. A tick costs the device 62 microseconds: 15 for the director, 8 for
 the bodies, 31 for the shots, 4 for the struck, 4 for the particles. A
 picture, at the unseen window's 960 by 540, costs 103, nearly all of it the
 backdrop. (Of a device left idle. One just played on is a third quicker in
 all of it: see the finding below.) The report, which in a scripted run sums the world and counts its
-pools on one thread, costs 730; a played frame's report does neither. The run is 10,000 ticks, 51,250 passes and 5,000 draws, and takes nine
+pools on one thread, costs 730; a played frame's report does neither. The run is 10,640 ticks, 54,530 passes and 5,320 draws, and takes about ten
 seconds. The world is 855 KB on the device. The nova went off in frame 468
 and the head died in frame 557; 186 sounds went to voices. In the third
 game the first diver's shot burst in frame 1090 and cost a life; the
 second's burst in 1145 with the ship 320 away; the third diver was struck
 dead in frame 1164, and its shot burst in 1187 and cost another.
 
-**Where claim 32 stands.** It is new. It has held in the game's own run, in
-the default mode; the run of every proof under validation with it in is
-still owed. Twelve ways of breaking it were each seen to fail it: bodies not
-let go, and a squad not brought again (frame 1289); tables not laid down
-(7); a bank not rendered again, music not begun again, voices not stopped
-first, and the same tables taken for a change (11); other names taken, and
-too large an image taken (before the run); a refusal not said (5); a watcher
-that forgets what it saw (9); and a device never told (3). Three more were
-not: a file cut short is caught by another test than the one meant for it;
-nothing in the run offers tables in the very tick a squad is due; and
-tables whose counts are never written.
+**Claim 32's checks bite.** Fifteen ways of getting it wrong were each seen
+to fail it. Before the run: other names taken, too large an image taken, a
+file cut short taken. In the first game: a device never told, and the
+counts of the game's own tables kept for an image that has one squad more
+(frame 3); a refusal not said (5); tables not laid down at all (7); a
+watcher that forgets what it saw (9); a bank not rendered again, music not
+begun again, voices not stopped first, and the same tables taken for a
+change (11). In the fourth: squads asked for in the tick the tables are
+taken, which costs the squad its first (1272); bodies not let go, and a
+squad not brought again (1273).
 
-**Finding: a broken program can break more than itself.** That last was run
-three times, to see why it seemed to pass. It did not pass: the game could
-not start, left no report, and the harness read the report of the run
-before. What it did do was leave the device reading counts that were never
-written, and each of the three runs put an error from the display driver in
-the system's log and, in the end, cost a restart of the machine. So: a
-change that leaves the device with garbage is reasoned about and not run; a
-harness deletes the last report before it runs anything; and a program that
-dies is not run again to see.
+**Finding: a broken program can break more than itself.** One mutation was
+not among those fifteen as it was first written: the counts of the tables
+never written at all. It seemed to pass. It had not: the game could not
+start, left no report, and the harness read the report of the run before.
+It was run twice more, to see why. Each of the three runs left the device
+reading counts that were never set, each put a burst of errors from the
+display driver in the system's log, and the machine was restarted to be rid
+of what that left behind. So, since then: a change that would leave the
+device with garbage is reasoned about and not run, and the counts' check is
+bitten instead by counts that are valid and wrong; the harness deletes the
+last report before it runs anything; and a program that dies on the device
+is not run again to see.
+
+**Finding: a voice is emptied when the engine comes round to it.** Stopped,
+emptied, given the music again and started, each stem's voice was asked at
+once how many runs of samples it held, and said two: the old one was still
+there. A moment later it said one, and that one was the new: the voice
+names what it is playing, and it is where the music now is in the bank. The
+check waits for that, a quarter of a second at most. Without the stopping
+and emptying it never comes: the new music waits for ever behind a loop
+that does not end, which is one of the fifteen.
+
+**Finding: nothing that has not come can be disturbed.** Four offers of
+tables in the first game's first frames, two of them taken, changed nothing
+that followed: the three games after them were held to every claim they
+were held to before there was such a thing as taking tables, and summed to
+the same three numbers.
 
 **The checks bite.** Each of these was made and seen to fail the check it
 should: segments a tenth too far apart (5, at frame 150); the director
@@ -792,6 +809,22 @@ These want trying, once, by whoever plays:
 - [ ] The first run of all takes the whole monitor. Left as a window
   somewhere, the next run is a window there; left over the monitor, the next
   run is over it, on the same monitor.
+
+**What 32 cannot hold, and a hand must.** The script offers tables; it does
+not save a file in an editor, hear a sound, or leave the game for another
+window. Once, by whoever is changing the tables:
+
+- [ ] `powershell -File source\myhits\tools\watch.ps1 -Play`. In
+  `tables.inc`, make the first squad's 3 a 6 and save. Within two seconds
+  the game says TABLES TAKEN, what was on the screen is gone, and six come.
+- [ ] Click the editor: the game goes on behind it, and does not pause.
+- [ ] Change SHOT's pitches and save; fire. It sounds different, and the
+  music did not stumble for longer than a blink.
+- [ ] Add a `tone` line and save: TABLES REFUSED, and the game goes on as it
+  was. Take the line out again and save: TABLES TAKEN.
+- [ ] Put a mistake in a line and save: the tool shows the assembler's
+  complaint, and the game goes on with what it had.
+- [ ] Start the game without `--watch` and save the tables: nothing happens.
 
 **What 24 and 25 cannot hold, and play must.** The checks hold that these
 things happen as written. Whether they are any good is not a thing a check
