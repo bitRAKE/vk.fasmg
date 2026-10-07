@@ -10,3 +10,4 @@ game_styles
 game_sounds
 game_waves
 game_music
+game_says

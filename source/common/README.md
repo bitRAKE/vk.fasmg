@@ -40,6 +40,7 @@ addresses.
 | [particles.slang](particles.slang) | A ring of particles in styles, with a cap a tick for each |
 | [chains.slang](chains.slang) | A head and segments that go exactly where it went |
 | [sounds.slang](sounds.slang) | Sounds and stems rendered from recipes, on the device |
+| [letters.slang](letters.slang) | Words with no texels behind them: a letter is some of twenty strokes in its cell, sharp at any size; what is said is in the tables |
 
 Each is proved by a program in [myhits\proofs](../myhits/proofs/README.md),
 which is also where to see it run.

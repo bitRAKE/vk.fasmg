@@ -49,7 +49,7 @@ is now the first rule of every choreography here.
 - The game runs: squads from a table, chains, a boss the level waits for,
   rank that reads the shooting, bonuses, a companion in three stages, a
   backdrop that is the level's, music that listens; and now charge, a dash,
-  the near miss, and the first choreographed attack. Twenty-nine numbered
+  the near miss, and the first choreographed attack. Thirty-one numbered
   claims hold on a scripted run of three games, under validation too.
 - Its content is thin: 24 kinds, 6 squads in one loop, 14 sounds, 3 stems of
   two bars, 4 particle styles, 41 pictures, one place in three inks.
@@ -82,6 +82,10 @@ is now the first rule of every choreography here.
   sixty-fold regression in the director the day it was written.
 - **A sweep that cannot slip through a corner.** Proof 05, claim 12.
 - **The header and the tables in device memory.**
+- **The level's distance, exact however far.** Claim 30.
+- **Letters.** `letters.slang` in the layer: twenty strokes to a letter and
+  no texels. What is said is `say` lines in the tables. A pause says what
+  the keys do and a run that is over says how to begin another. Claim 31.
 
 ## Choreography
 
@@ -226,8 +230,8 @@ built as written, and their check is a numbered claim of the game's.
 | 5 | The player's shots are tested against every hostile: 256 by 384 a tick at most | Measured, and left as it is: the pass that does it, for every shot of both sides, costs 31 microseconds of a tick's 62. Rows would save a part of that | not needed | The measuring run |
 | 6 | A shot's sweep takes one sample a texel on its longer side, and could pass a diagonal wall one texel thick | The walk visits both texels at each crossing | done | Proof 05: a one-texel diagonal stops a lance at every offset |
 | 7 | Bodies read their tables from host-visible memory every tick | A pass copies the header and the tables to device memory at start; the CPU's copy is then free for reloading. It made no difference that could be measured | done | The measuring run, before and after |
-| 8 | How far the level has come is a float that only grows | A layer keeps whole periods of its own pattern as an integer and the rest as a float below one period; each lattice adds its share of the periods to its cell number in integers, where wrapping is harmless | 8 | With a billion periods added, the periodic layers are the same to the pixel and the others as sharp |
-| 9 | There are no letters. A pause, a run's end, a stage's name and every tool's readout need them | Sixteen-segment letters: a table of forty words in the shader and no texels, sharp at any size. Strings live in the tables | 8 | Pictures; the pause says what the keys do |
+| 8 | How far the level has come is a float that only grows | A layer keeps whole periods of its own pattern as an integer and the rest as a float below one period; each lattice adds its share of the periods to its cell number in integers, where wrapping is harmless | done | With a billion periods added, the periodic layers are the same to the pixel and the others as sharp |
+| 9 | There are no letters. A pause, a run's end, a stage's name and every tool's readout need them | Sixteen-segment letters: a table of forty words in the shader and no texels, sharp at any size. Strings live in the tables | done | Pictures; the pause says what the keys do |
 | 10 | A chain's segment follows the head in its slot. It does compare its seed with the head's birth tick, but no claim holds that | A scene on the stage: a head's slot reused in the tick it died | done | The old segments die; none follows the newcomer |
 | 11 | Rank shortens every tell with everything else | A floor in the tables under each tell | 10 | The stage measures tell to harm |
 | 12 | The thread between the ship and its companion is a row of sparks | It becomes a thing. See "The pair" | 13 | Its own claims |

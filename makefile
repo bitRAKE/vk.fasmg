@@ -79,7 +79,7 @@ BOARD_SLANG = $(MYHITS)\proofs\06_sound\board.slang
 BOARD_SOURCES = $(BOARD_SLANG) $(COMMON)\common.slang $(COMMON)\ease.slang $(COMMON)\sounds.slang $(MYHITS_TABLES) $(MYHITS_HEADER)
 BOARD_SHADERS = $(BUILD)\myhits_sound_render.spv $(BUILD)\myhits_sound_examine.spv $(BUILD)\myhits_sound_direct.spv $(BUILD)\myhits_sound_wave_vertex.spv $(BUILD)\myhits_sound_wave_fragment.spv
 GAME_SLANG = $(MYHITS)\myhits.slang
-GAME_SOURCES = $(GAME_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\hits.slang $(COMMON)\particles.slang $(COMMON)\chains.slang $(COMMON)\sounds.slang $(MYHITS)\backdrop.slang $(MYHITS_HEADER)
+GAME_SOURCES = $(GAME_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\hits.slang $(COMMON)\particles.slang $(COMMON)\chains.slang $(COMMON)\sounds.slang $(COMMON)\letters.slang $(MYHITS)\backdrop.slang $(MYHITS_HEADER)
 GAME_SHADERS = $(BUILD)\myhits_game_develop.spv $(BUILD)\myhits_game_chart.spv $(BUILD)\myhits_game_census.spv $(BUILD)\myhits_game_settle.spv $(BUILD)\myhits_game_begin.spv \
 	$(BUILD)\myhits_game_direct.spv $(BUILD)\myhits_game_update.spv $(BUILD)\myhits_game_collide.spv $(BUILD)\myhits_game_resolve.spv \
 	$(BUILD)\myhits_game_drift.spv $(BUILD)\myhits_game_report.spv $(BUILD)\myhits_game_render.spv $(BUILD)\myhits_game_scene_vertex.spv \

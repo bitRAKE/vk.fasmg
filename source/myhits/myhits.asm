@@ -133,7 +133,7 @@ proc create_world uses rsi rdi
 	mov dword [rdi+GameWorld.words],HOME_BYTES/4
 	; The tables are found where the device will keep them.
 	add rax,sizeof.GameWorld
-	iterate <table,count,size>, moves,TABLE_MOVES,sizeof.Move, kinds,TABLE_KINDS,sizeof.Kind, styles,TABLE_STYLES,sizeof.Style, sounds,TABLE_SOUNDS,sizeof.Recipe, waves,TABLE_WAVES,sizeof.Wave, stems,TABLE_STEMS,sizeof.Stem
+	iterate <table,count,size>, moves,TABLE_MOVES,sizeof.Move, kinds,TABLE_KINDS,sizeof.Kind, styles,TABLE_STYLES,sizeof.Style, sounds,TABLE_SOUNDS,sizeof.Recipe, waves,TABLE_WAVES,sizeof.Wave, stems,TABLE_STEMS,sizeof.Stem, says,TABLE_SAYS,sizeof.Say
 		mov [rdi+GameWorld.tables+Tables.table],rax
 		add rax,(count)*(size)
 	end iterate
@@ -143,6 +143,7 @@ proc create_world uses rsi rdi
 	mov dword [rdi+GameWorld.tables+Tables.sound_count],TABLE_SOUNDS
 	mov dword [rdi+GameWorld.tables+Tables.wave_count],TABLE_WAVES
 	mov dword [rdi+GameWorld.tables+Tables.stem_count],TABLE_STEMS
+	mov dword [rdi+GameWorld.tables+Tables.say_count],TABLE_SAYS
 	mov rax,[world_buffer.address]
 	iterate <pool,bytes>, game,GAME_BYTES, pool,POOL_BYTES, bodies,2*BODIES*BODY_BYTES, damage,BODIES*4, trails,TRAILS*TRAIL_POINTS*8, ship_trail,TRAIL_POINTS*8, queue,REQUESTS*REQUEST_BYTES, asking,HOSTILES/8, particles,PARTICLES*PARTICLE_BYTES
 		mov [rdi+GameWorld.pool],rax
@@ -1158,7 +1159,7 @@ proc scripted_run uses rbx rsi
 	; no louder than its gain. With nothing happening only the bass is wanted;
 	; with everything, all three, each at its own level. And where there is a
 	; device the stems are playing, and say where in the beat they are.
-	cmp [last_music_faults],0
+	cmp byte [last_music_faults],0
 	jne .music_wrong
 	xorps xmm0,xmm0
 	fastcall audio_levels
@@ -1186,6 +1187,15 @@ proc scripted_run uses rbx rsi
 .music_wrong:
 	fail 22
 .music:
+	; 30: the level's distance is exact however far the level has come. At
+	; start the device asked it of the functions the backdrop is drawn by,
+	; with the level three thousand million units on: what repeats was to
+	; the bit what it is at the start, what does not repeat still changed
+	; from each pixel to the next, and every speck was where it would be.
+	cmp byte [last_music_faults+1],0
+	je .exact
+	fail 30
+.exact:
 	; 11: the sounds are the events: each sound a frame asked for went to a
 	; voice once, none was refused, and every hurt was heard.
 	mov eax,[sounds_asked]
@@ -1591,9 +1601,11 @@ table_waves:
 	game_waves
 table_stems:
 	game_music
+table_says:
+	game_says
 TABLE_BYTES := $ - table_moves
 HOME_BYTES := (sizeof.GameWorld + TABLE_BYTES + 3) and not 3	; the header and the tables, in whole words
-assert TABLE_BYTES = TABLE_MOVES * sizeof.Move + TABLE_KINDS * sizeof.Kind + TABLE_STYLES * sizeof.Style + TABLE_SOUNDS * sizeof.Recipe + TABLE_WAVES * sizeof.Wave + TABLE_STEMS * sizeof.Stem
+assert TABLE_BYTES = TABLE_MOVES * sizeof.Move + TABLE_KINDS * sizeof.Kind + TABLE_STYLES * sizeof.Style + TABLE_SOUNDS * sizeof.Recipe + TABLE_WAVES * sizeof.Wave + TABLE_STEMS * sizeof.Stem + TABLE_SAYS * sizeof.Say
 BANK_TOTAL := BANK_SAMPLES + TABLE_STEMS * MUSIC_SAMPLES	; the sounds, then the stems
 
 section '.rdata$game_spirv' data readable align 4

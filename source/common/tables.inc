@@ -30,6 +30,8 @@
 ;		notes n, n, ...			thirty-two of them, a rest being 0
 ;	squad after, KIND, count, apart, y, spread, pace, pace after, holds
 ;						what comes, and when; see Wave. Times in seconds
+;	say NAME, 'text'			something to be said on the screen (SAY_NAME): capitals,
+;						digits, and - + / . : ! '; see letters.slang
 ;
 ; A program includes this and, in a data section, lays the tables down:
 ;
@@ -45,6 +47,8 @@
 ;		game_waves
 ;	table_stems:
 ;		game_music
+;	table_says:
+;		game_says
 ;
 ; The game's tables.asm assembles the same lines into build\myhits_tables.slang,
 ; which gives the shaders the KIND_ numbers.
@@ -180,6 +184,24 @@ macro notes list*&
 		table.noted = table.noted + 1
 	end iterate
 	assert table.noted = MUSIC_STEPS
+end macro
+
+table.says = 0
+macro say name*,text*
+	local start,size
+	repeat 1, n:table.says
+		SAY_#name := n
+		table_line 'static const uint SAY_',`name,' = ',`n,';'
+	end repeat
+	if ~ definite TABLE_HEADER
+		start = $
+		db text
+		size = $ - start
+		assert size <= SAY_LETTERS
+		db SAY_LETTERS - size dup 0
+		dd size
+	end if
+	table.says = table.says + 1
 end macro
 
 table.waves = 0

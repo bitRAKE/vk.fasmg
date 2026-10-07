@@ -228,7 +228,8 @@ try {
             24='charge was not earned or spent as it should be, or a dash did not go its distance or did not slip a shot'
             25='the hail-mary missed a beat: the fix, the lock, the shot to the lock, the recoil, the fade, the burst, or what each cost'
             26='the window was not remembered: its place, or whether it had the whole monitor'
-            27='something alive was written over, or what there was no room for was not refused and counted, or segments followed a stranger' } 'myhits.exe'
+            27='something alive was written over, or what there was no room for was not refused and counted, or segments followed a stranger'
+            30='with the level very far on, a layer of the backdrop that repeats would not be what it was, or one that does not would stand in steps' } 'myhits.exe'
         $frames = [int]$state.frames
         Assert-True ($frames -eq 1250 -and [int]$state.events -eq $frames) 'The game did not run its script'
         # 28: two runs are the same run. The sum over everything simulated, at the end of each of the
@@ -274,6 +275,17 @@ try {
         }
         Assert-True ($rail[300] -eq $rail[320]) 'The backdrop moved while the level stood still'
         Assert-True ($rail[235] -ne $rail[300]) 'The backdrop stood still while the level moved'
+        # 31: a pause is in words. Where the line that says what the keys do is drawn, the paused
+        # frame has letters, pale on the dimmed picture, and a frame that is not paused has none.
+        $pale = @{}
+        foreach ($frame in 900, 950) {
+            $picture = New-Object System.Drawing.Bitmap (Join-Path $BuildDir "myhits_checks\$mode\game\frame_$frame.png")
+            $count = 0
+            foreach ($y in 714..746) { foreach ($x in 400..1520) { $pixel = $picture.GetPixel($x, $y); if ($pixel.R -gt 170 -and $pixel.G -gt 170 -and $pixel.B -gt 170) { ++$count } } }
+            $picture.Dispose()
+            $pale[$frame] = $count
+        }
+        Assert-True ($pale[950] -gt 1500 -and $pale[900] -lt 100) "game check 31 failed: the paused frame has $($pale[950]) pale pixels where its words should be, and a frame that is not paused has $($pale[900])"
         Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through three games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks and bursts where it locked, is dodged by moving and not stopped by killing; the window pauses, moves, takes its monitor and is remembered; nothing alive is written over, and what there is no room for is refused; two runs sum to the same ($gameSums); $costs; {9} passes and {10} draws a frame" -f `
             $frames, $state.ticks_a_frame, ([int]$state.kinds - 1), $state.moves, $state.squads, [int]([int]$state.world_bytes / 1024), $state.head_died_frame, $state.hurts_heard, $voices,
             ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))

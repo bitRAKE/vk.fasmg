@@ -618,7 +618,8 @@ the pointer is the crosshair: the arrow is hidden and cannot leave the
 window, so a press cannot land on another program. P pauses, and so does
 leaving for another program (Alt+Tab, the Windows key) or making it an icon;
 coming back does not resume, P does. Paused, the picture dims under two
-bars, the arrow is back and free, and the window is all handle: press and
+bars and says what the keys are, the arrow is back and free, and the window
+is all handle: press and
 hold anywhere on it to move it, or within ten pixels of an edge or a corner
 to size it. Over the whole monitor it does not move. That is an ordinary
 window still, not exclusive and not topmost: other windows come and go over
@@ -675,8 +676,10 @@ stage, with no squads, where the script sets down what it wants seen.
 | 27 | Nothing alive is written over | On the stage. A worm's head is struck dead and something else set down in its slot the tick after: the nine segments die of their head's death all the same, and none takes the newcomer for it. Then a flood. Of 400 hostile shots 384 are made and 16 refused. Of 400 drones as many are made as there were places free, and the rest refused. Five places side by side are emptied and a worm asked for: it needs ten, and is refused whole. Of ten drones asked for then, five are made and five refused. Every drone made is still itself afterwards, by the sum of the numbers they were given; and at the end of the run it is all as it was |
 | 28 | Two runs are the same run | Held by the proof runner. The device sums everything it simulates, every body in its slot and the game with it, at the end of each of the three games. The script is run a second time at once, and again under validation: all three runs give the same three sums |
 | 29 | A tick is within its budget | Held by the proof runner, from what the game measured of itself: the device's own clock, stamped after every pass, and its mean over the run for each of a tick's five passes held to a budget several times what it was when the budget was written. Under validation the numbers are shown and not held |
+| 30 | The level's distance is exact however far it has come | Asked by the device at start, of the functions the backdrop is drawn by, with the level three thousand million units on: five months at full pace. The layers that repeat are, to the bit, what they are at the start. The layers that do not still move as the level does: twenty-five units more of travel is the far layer one unit to the left, and ten is the ridge three. Every speck is where it would be |
+| 31 | A pause is in words | Held on the pictures, by the proof runner: where the line that says what the keys do is drawn, the frame drawn as a paused one has letters, pale on the dimmed picture, and a frame that is not paused has none |
 
-Last result here, GTX 1080 Ti, default and validation alike: all twenty-nine
+Last result here, GTX 1080 Ti, default and validation alike: all thirty-one
 hold. A tick costs the device 62 microseconds: 15 for the director, 8 for
 the bodies, 31 for the shots, 4 for the struck, 4 for the particles. A
 picture, at the unseen window's 960 by 540, costs 85, nearly all of it the
@@ -717,7 +720,9 @@ in it, making a chain where only its first place is free, and refusing
 without counting (all at frame 1236); and segments that follow whatever is
 in their head's slot (1228). And for 28, a body that lets the order its
 thread arrived in move it a hundredth of a unit: no check inside the run
-notices, and two runs' sums differ at the end of every game. And
+notices, and two runs' sums differ at the end of every game. For 30, a
+share of the level's travel taken with a float: by a layer that repeats, by
+a layer of noise, by the specks. And
 nine ways of getting the window wrong each fail 23: a pause that does not say so, or
 still pays ticks; a paused window that is not a handle, or has no edges; one
 over the whole monitor that still is a handle; a whole monitor a pixel
@@ -759,6 +764,17 @@ can say:
   lock heard? Is the second and a half enough, too much? Does a hurt diver
   now get finished first, which is the point of it?
 - [ ] The sounds of all of it, which the checks play to nobody.
+
+**Finding: a check may ask the wrong question and be answered yes.** The
+level's distance was a float that only grew. It is now whole units and a
+part, and each layer takes its share in whole numbers. The first check of
+the layers that do not repeat asked whether, with the level very far on,
+they still changed from each pixel to the next: a float's travel was
+expected to make them stand in steps. With the float put back for them, the
+check passed. In this arithmetic a float's travel does not coarsen the
+layer in space; it coarsens when the layer moves, in steps of thirteen
+pixels. The check now asks that: that so much more travel is the layer so
+much to the left. Three ways of taking a share with a float each fail it.
 
 **Finding: one thread on the device is slow, and the check could not see
 it.** The first way of reading requests in order had the director walk every

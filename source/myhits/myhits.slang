@@ -71,8 +71,9 @@ struct Game
     float pace_from;        // shares of its full pace
     float pace_to;
     uint pace_tick;
-    float scroll;
-    float scroll_before;
+    uint level_units;       // how far the level has come: whole units,
+    float level_part;       // the part of one over,
+    float level_step;       // and how much of it was this tick's
     uint cooldown;
     uint shot_cursor;
     uint pellet_cursor;
@@ -132,6 +133,7 @@ struct Game
     uint stage;             // times the table of squads has been gone through: the backdrop's inks
     uint stage_tick;        // when it last was
     uint music_faults;      // stems of the music that are louder than their gain, or silent
+    uint backdrop_faults;   // what the backdrop would get wrong with the level very far on: a bit each
     float charge;           // 0..1: what missiles and the dash are paid from
     uint earned;            // kills since the director last looked: each pays charge
     uint grazes;            // hostile shots that passed close and did not strike
@@ -177,6 +179,16 @@ uint near_key(float2 from, float2 to, uint who) { return (uint(min(distance(from
 #include "chains.slang"
 #include "sounds.slang"
 #include "backdrop.slang"
+#include "letters.slang"
+
+// The level's travel as a picture shows it: between its last two ticks.
+Travel level_shown(Game game)
+{
+    Travel travel;
+    travel.units = game.level_units;
+    travel.part = game.level_part - (1.0 - root.blend) * game.level_step;
+    return travel;
+}
 
 Sprite ship_pose(float2 at)
 {
@@ -195,7 +207,7 @@ void new_game(Game* game)
     fresh.state = STATE_PLAY; fresh.over_tick = 0;
     fresh.ship = float2(300.0, 540.0); fresh.ship_before = fresh.ship;
     fresh.pace = PACE; fresh.pace_from = 1.0; fresh.pace_to = 1.0; fresh.pace_tick = 0;
-    fresh.scroll = game.scroll; fresh.scroll_before = game.scroll_before;
+    fresh.level_units = game.level_units; fresh.level_part = game.level_part; fresh.level_step = 0.0;
     fresh.cooldown = 0; fresh.shot_cursor = 0; fresh.pellet_cursor = 0; fresh.hostile_cursor = 0; fresh.trail_cursor = 0;
     fresh.fired = 0; fresh.escaped = 0; fresh.struck = 0; fresh.looked_escaped = 0; fresh.looked_struck = 0;
     fresh.rank = 0.0; fresh.kills = 0; fresh.score = 0; fresh.lives = LIVES;
@@ -210,7 +222,7 @@ void new_game(Game* game)
     fresh.companion = 0; fresh.promoted = 0; fresh.promoted_at = fresh.ship; fresh.mate = fresh.ship; fresh.mate_before = fresh.ship;
     fresh.mate_gun = 0.0; fresh.mate_guard = 3.14159265; fresh.mate_cooldown = 0; fresh.mate_fired = 0; fresh.mate_struck = 0; fresh.guarded = 0;
     fresh.ship_laid = 0; fresh.ship_carried = 0.0;
-    fresh.stage = 0; fresh.stage_tick = game.tick; fresh.music_faults = game.music_faults;
+    fresh.stage = 0; fresh.stage_tick = game.tick; fresh.music_faults = game.music_faults; fresh.backdrop_faults = game.backdrop_faults;
     fresh.charge = 1.0; fresh.earned = 0; fresh.grazes = 0; fresh.grazes_seen = 0;
     fresh.dash_tick = 0; fresh.slip_until = 0; fresh.dash_way = float2(1.0, 0.0); fresh.dashes = 0; fresh.slipped = 0; fresh.empties = 0;
     fresh.blasts = 0; fresh.blast_hits = 0; fresh.blast_at = float2(0.0, 0.0); fresh.raider = 0; fresh.heavy = 0;
@@ -240,8 +252,10 @@ void begin()
     World* world = root.world;
     world.game.tick = 0;
     world.game.opened = 0;
-    world.game.scroll = 0.0;
-    world.game.scroll_before = 0.0;
+    world.game.level_units = 0;
+    world.game.level_part = 0.0;
+    world.game.level_step = 0.0;
+    world.game.backdrop_faults = backdrop_faults();
     world.game.stopped = 0;
     world.game.runs = 0;
     // The music has been rendered by now: every stem should reach its gain,
@@ -666,8 +680,12 @@ void direct()
         game.pace_due = 0;
     }
     game.pace = PACE * lerp(game.pace_from, game.pace_to, ease(EASE_INOUT_SINE, float(tick - game.pace_tick + 1) / float(PACE_TICKS)));
-    game.scroll_before = game.scroll;
-    if (!frozen) game.scroll += game.pace * TICK_SECONDS;
+    // How far the level has come: whole units and the part of one over, so
+    // that it is exact however far that is.
+    game.level_step = frozen ? 0.0 : game.pace * TICK_SECONDS;
+    float gone = game.level_part + game.level_step;
+    game.level_units += uint(floor(gone));
+    game.level_part = gone - floor(gone);
 
     // What comes next, by the table; and the table again when it runs out.
     // Rank adds to a squad: one more for every third of it. They come whether
@@ -1162,7 +1180,7 @@ void report()
     events.reserved[7] = game.alive;
     events.reserved[8] = pellets;
     events.reserved[9] = asuint(game.pace);
-    events.reserved[10] = asuint(game.scroll);
+    events.reserved[10] = game.level_units * 256 + uint(game.level_part * 256.0);
     events.reserved[11] = game.requested;
     // The last chain: its head as it stood a tick ago, and its first segment
     // now. The one should be a spacing along the path from the other.
@@ -1232,7 +1250,7 @@ void report()
     events.report[15] = game.mate_struck;
     events.report[16] = game.guarded;
     events.report[17] = game.stage;
-    events.report[18] = game.music_faults;
+    events.report[18] = game.music_faults | (game.backdrop_faults << 8);
     events.report[19] = asuint(game.charge);
     events.report[20] = (game.dashes & 255) | ((game.slipped & 255) << 8) | ((game.grazes & 255) << 16) | ((game.blasts & 255) << 24);
     events.report[21] = (game.blast_hits & 255) | ((game.empties & 255) << 8);
@@ -1301,9 +1319,11 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
     uint index = instance;
     if (index < STARS)
     {
-        float depth = 0.25 + 0.75 * unit(hash(index * 3 + 1));
-        float span = PLAYFIELD_WIDTH + 80.0;
-        float x = unit(hash(index * 3 + 2)) * span - lerp(game.scroll_before, game.scroll, root.blend) * depth;
+        // A speck's depth is a number of sixty-fourths, so that its share of
+        // the level's travel is taken exactly.
+        uint nearness = 16 + hash(index * 3 + 1) % 49;
+        float depth = float(nearness) / 64.0, span = float(SPECK_SPAN);
+        float x = unit(hash(index * 3 + 2)) * span - speck_gone(level_shown(game), nearness);
         sprite.position = float2(x - span * floor(x / span) - 40.0, unit(hash(index * 3 + 3)) * PLAYFIELD_HEIGHT) + shake * depth;
         sprite.axis = float2(0.1 + 0.3 * depth, 0.0);
     }
@@ -1525,6 +1545,25 @@ float4 particle_fragment(ParticleVertex input) : SV_Target0
     return particle_light(input);
 }
 
+// What the veil says, over everything: where its lines are, and how tall.
+float veil_words(Tables tables, float2 at, bool paused, bool over)
+{
+    float ink = 0.0;
+    if (paused)
+    {
+        ink = max(ink, say_ink(tables, SAY_PAUSED, at, float2(960.0, 330.0), 96.0));
+        ink = max(ink, say_ink(tables, SAY_PAUSE_KEYS, at, float2(960.0, 730.0), 34.0));
+        ink = max(ink, say_ink(tables, SAY_PAUSE_WINDOW, at, float2(960.0, 800.0), 26.0));
+        ink = max(ink, say_ink(tables, SAY_PAUSE_PLAY, at, float2(960.0, 860.0), 26.0));
+    }
+    else if (over)
+    {
+        ink = max(ink, say_ink(tables, SAY_OVER, at, float2(960.0, 450.0), 80.0));
+        ink = max(ink, say_ink(tables, SAY_OVER_KEYS, at, float2(960.0, 580.0), 36.0));
+    }
+    return ink;
+}
+
 struct VeilVertex
 {
     float4 position : SV_Position;
@@ -1564,10 +1603,15 @@ float4 veil_fragment(VeilVertex input) : SV_Target0
     // A nova is a flash of white light over everything: it adds.
     float white = input.nova * input.nova * 0.6;
     float4 veil = float4(red * 0.9 + white, red * 0.05 + white, red * 0.02 + white, saturate(red * 0.5 + dim));
-    if (input.paused == 0.0) return veil;
+    // Words, where there are any: a run that is over says so, once its veil
+    // has come down, and a pause says what the keys do.
+    float2 place_of = (input.at * 0.5 + 0.5) * float2(PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT);
+    float words = veil_words(root.world.tables, place_of, input.paused != 0.0, input.over >= 1.0);
+    if (input.paused == 0.0) return float4(veil.rgb * (1.0 - words) + float3(1.0, 0.86, 0.55) * words, saturate(veil.a + words));
     // Paused: darker than a run that is over, and the bars, with soft edges.
     float2 place = float2(abs(input.at.x) * float(PLAYFIELD_WIDTH) / float(PLAYFIELD_HEIGHT), abs(input.at.y));
     float bar = saturate((0.028 - abs(place.x - 0.062)) * 220.0) * saturate((0.15 - place.y) * 220.0);
+    bar = max(bar, words);
     float shade = 0.55 * (1.0 - bar);
     return float4(veil.rgb * (1.0 - shade) + float3(0.82, 0.90, 1.0) * bar, saturate(veil.a + shade * (1.0 - veil.a) + bar));
 }
@@ -1576,9 +1620,10 @@ struct BackdropVertex
 {
     float4 position : SV_Position;
     float2 at : TEXCOORD0;                  // on the playfield
-    nointerpolation float scroll : COLOR0;
+    nointerpolation float part : COLOR0;    // the level's travel: the part of a unit,
     nointerpolation float fade : COLOR1;
     nointerpolation uint stage : COLOR2;
+    nointerpolation uint units : COLOR3;    // and the whole units
 };
 
 // The first thing drawn, under everything: the backdrop, where the level has
@@ -1593,7 +1638,9 @@ BackdropVertex backdrop_vertex(uint vertex : SV_VulkanVertexID)
     BackdropVertex result;
     result.position = float4(corner * 2.0 - 1.0, 0.0, 1.0);
     result.at = corner * float2(PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT) - shake_of(game) * 0.5;
-    result.scroll = lerp(game.scroll_before, game.scroll, root.blend);
+    Travel shown = level_shown(game);
+    result.units = shown.units;
+    result.part = shown.part;
     result.fade = saturate(float(game.tick - game.stage_tick) / 480.0);
     result.stage = game.stage;
     return result;
@@ -1602,5 +1649,8 @@ BackdropVertex backdrop_vertex(uint vertex : SV_VulkanVertexID)
 [shader("fragment")]
 float4 backdrop_fragment(BackdropVertex input) : SV_Target0
 {
-    return float4(backdrop(input.at, input.scroll, input.stage == 0 ? 0 : input.stage - 1, input.stage, input.fade), 1.0);
+    Travel travel;
+    travel.units = input.units;
+    travel.part = input.part;
+    return float4(backdrop(input.at, travel, input.stage == 0 ? 0 : input.stage - 1, input.stage, input.fade), 1.0);
 }

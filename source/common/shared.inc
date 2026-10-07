@@ -356,6 +356,13 @@ boundary Stem
 	u32 notes,32
 end boundary
 
+; Something said on the screen: its letters, four to a word, and how many.
+shared SAY_LETTERS,64
+boundary Say
+	u32 letters,16
+	u32 count
+end boundary
+
 boundary Tables
 	ptr moves,Move
 	ptr kinds,Kind
@@ -363,10 +370,13 @@ boundary Tables
 	ptr sounds,Recipe
 	ptr waves,Wave
 	ptr stems,Stem
+	ptr says,Say
 	u32 move_count
 	u32 kind_count
 	u32 style_count
 	u32 sound_count
 	u32 wave_count
 	u32 stem_count
+	u32 say_count
+	u32 spare
 end boundary
