@@ -210,7 +210,7 @@ memory only shaders touch: `develop` writes every texel (copying the cut
 ones, computing the rest), `chart` derives every mask word from the texels'
 alpha, and `census` counts each frame and compares it with what the packer
 said. Then the packer's block is let go. A frame of the proof is one compute
-pass, which sets down all 105 sprites, and one draw, which pulls sprite, frame,
+pass, which sets down all 107 sprites, and one draw, which pulls sprite, frame,
 texels and normals through the root pointer.
 
 **The checks**, on 120 scripted frames:
@@ -223,18 +223,18 @@ texels and normals through the root pointer.
 | 4 | A frame said to be symmetric is | Its mask equals its mirror, bit for bit |
 | 5 | The masks are what is drawn | At half size the gallery's masks cover a quarter of all solid texels in pixels, and its pictures, by their own filtered alpha, cover the same, each within a sixteenth |
 | 6 | Controls read for frame N move the ship in frame N | As in the spine |
-| 7 | One pass set down every sprite the draw pulls | It reports 105 |
+| 7 | One pass set down every sprite the draw pulls | It reports 107 |
 | 8 | The light stays put while the pictures turn | Summed over the run, at least 85% of the chain's brightened fragments lie on the lit side of their sprite, and at most 70% would have with the light turned with the picture |
 | 9 | The traffic is Root down and Events up | Byte counters, as in the spine |
 | 10 | Three passes make the pictures; a frame is one pass and one draw | Command counters |
 | 11 | The pad maps as designed | Six made-up pad states through `pad_apply`: nothing inside the dead zone, 1 at the rim, a half halfway, up is up, the d-pad and buttons |
 
 Last result here, GTX 1080 Ti, default and validation alike: all eleven hold.
-40 frames (18 cut, 2 made, 20 drawn), 238,929 texels and 7,363 mask words;
-430 KB goes up once and the pictures take 964 KB on the device. The device
+41 frames (18 cut, 2 made, 21 drawn), 243,025 texels and 7,491 mask words;
+430 KB goes up once and the pictures take 980 KB on the device. The device
 counts 52,469 solid texels in the cut frames, as the packer did. The gallery's
-masks cover 16,879 pixels and its pictures 16,850, against a quarter of the
-solid texels at 16,961. Of the chain's brightened fragments 90% lie on the lit
+masks cover 16,878 pixels and its pictures 16,874, against a quarter of the
+solid texels at 16,973. Of the chain's brightened fragments 90% lie on the lit
 side; with the light turned with the pictures it would be 43%.
 
 **Check 2 bites.** Flipping one bit of one texel in the embedded block, in a
@@ -407,8 +407,9 @@ They are drawn with no texel at all: a particle is its own falloff, and adds.
 | 9 | Particles are exactly what was asked for | Six sparks a hit and 48 for the death; 500 asked of a style in one tick, 128 let in; 224 in all, and by the end every one has lived its life and gone |
 | 10 | The sounds are the events | Summed over the run, the triggers are 12 shots, 1 launch, 8 hits, 1 death, 1 hurt: what happened |
 | 11 | The traffic is Root down and Events up; a frame of two ticks is eleven passes and two draws | Counters |
+| 12 | Nothing slips through a corner | A wall one texel thick lying across the diagonal, whose texels touch only at their corners. Of 400 crossings square to it, each a little farther along it than the last, so that some go through the middle of a texel and some exactly between two, every one strikes |
 
-Last result here, GTX 1080 Ti, default and validation alike: all eleven hold.
+Last result here, GTX 1080 Ti, default and validation alike: all twelve hold.
 52,469 solid texels come back through each of the four poses. 13 fired, 8
 struck, 5 escaped.
 
@@ -623,7 +624,9 @@ to size it. Over the whole monitor it does not move. That is an ordinary
 window still, not exclusive and not topmost: other windows come and go over
 it. A paused window draws one frame and then waits, using nothing.
 
-**How it is made.** A tick is the five passes of proof 05. The director
+**How it is made.** Before anything, one pass copies the header and the
+tables from where the CPU wrote them to memory of the device's own. A tick
+is the five passes of proof 05. The director
 alone reads the wave table, eases the level's pace, looks at the shooting
 once a second to move rank, and makes every body, the ones other bodies
 asked for among them. A hostile asks in cells that are its own, four for
@@ -671,9 +674,14 @@ stage, with no squads, where the script sets down what it wants seen.
 | 26 | The window is remembered | Under a name of the check's own, so what a player left is not disturbed. With nothing remembered it is to have the whole monitor. Left as a window at a place, it comes back to that place as a window. Left over the whole monitor, it comes back so, and to the same place when the monitor is given up |
 | 27 | Nothing alive is written over | On the stage. A worm's head is struck dead and something else set down in its slot the tick after: the nine segments die of their head's death all the same, and none takes the newcomer for it. Then a flood. Of 400 hostile shots 384 are made and 16 refused. Of 400 drones as many are made as there were places free, and the rest refused. Five places side by side are emptied and a worm asked for: it needs ten, and is refused whole. Of ten drones asked for then, five are made and five refused. Every drone made is still itself afterwards, by the sum of the numbers they were given; and at the end of the run it is all as it was |
 | 28 | Two runs are the same run | Held by the proof runner. The device sums everything it simulates, every body in its slot and the game with it, at the end of each of the three games. The script is run a second time at once, and again under validation: all three runs give the same three sums |
+| 29 | A tick is within its budget | Held by the proof runner, from what the game measured of itself: the device's own clock, stamped after every pass, and its mean over the run for each of a tick's five passes held to a budget several times what it was when the budget was written. Under validation the numbers are shown and not held |
 
-Last result here, GTX 1080 Ti, default and validation alike: all twenty-eight
-hold. The run is 10,000 ticks, 51,250 passes and 5,000 draws, and takes nine
+Last result here, GTX 1080 Ti, default and validation alike: all twenty-nine
+hold. A tick costs the device 62 microseconds: 15 for the director, 8 for
+the bodies, 31 for the shots, 4 for the struck, 4 for the particles. A
+picture, at the unseen window's 960 by 540, costs 85, nearly all of it the
+backdrop. The report, which in a scripted run sums the world and counts its
+pools on one thread, costs 730; a played frame's report does neither. The run is 10,000 ticks, 51,250 passes and 5,000 draws, and takes nine
 seconds. The world is 855 KB on the device. The nova went off in frame 468
 and the head died in frame 557; 186 sounds went to voices. In the third
 game the first diver's shot burst in frame 1090 and cost a life; the
@@ -751,6 +759,28 @@ can say:
   lock heard? Is the second and a half enough, too much? Does a hurt diver
   now get finished first, which is the point of it?
 - [ ] The sounds of all of it, which the checks play to nobody.
+
+**Finding: one thread on the device is slow, and the check could not see
+it.** The first way of reading requests in order had the director walk every
+hostile's cells: 2,304 steps a tick. Nothing looked wrong, every claim held
+and the run took nine seconds as before, because the run is held to the
+display's rate and not to the device's speed. Then the passes were timed.
+The director took 565 microseconds a tick, sixty times what it had; cut
+short before the walk, 10. A lone thread on the device spends about a
+quarter of a microsecond on every step of a loop that reads memory. So the
+director walks no pool now. A hostile that asks raises a bit, and the
+director reads twelve words of bits; the companion's nearest hostile and
+nearest shot are found by those pools' own threads, each saying how near it
+is and an atomic minimum keeping the least; and the report sums and counts
+only in a scripted run. The director is 15 microseconds again, and claim 29
+holds every pass to a budget from now on.
+
+**Finding: where the tables are makes no difference that can be measured.**
+The header and the tables were in memory the CPU can see, and every pass
+read them there. A pass now copies them to memory of the device's own at
+start, which was the plan's long-standing answer to a cost it expected. The
+passes cost the same before and after, to the microsecond. It is kept: it is
+the right place for them, and it leaves the CPU's copy free for reloading.
 
 **Finding: a run that is over is still a world.** The first script meant to
 stop the squads when the last life went. But then the level, stopped for the

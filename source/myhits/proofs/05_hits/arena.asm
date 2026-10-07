@@ -286,6 +286,14 @@ proc consume_events uses rbx rsi,events
 .survey_wrong:
 	fail 2
 .survey:
+	; 12: nothing slips through a corner. A wall one texel thick lying across
+	; the diagonal has texels that only touch at their corners; of four
+	; hundred crossings square to it, some through the middle of a texel and
+	; some exactly between two, every one strikes.
+	cmp dword [rbx+Events.multiplier],400
+	je .wired
+	fail 12
+.wired:
 	; 3: every shot is accounted for, in every frame: fired is struck, escaped and flying.
 	mov eax,[rbx+Events.reserved+8]
 	add eax,[rbx+Events.reserved+12]

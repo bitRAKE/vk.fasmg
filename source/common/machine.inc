@@ -17,6 +17,11 @@
 ; that simulates runs its passes Root.ticks times in the frame, which may be
 ; none, and draws its world Root.blend of the way between the last two.
 ;
+; What a frame costs can be measured: machine_measure before the first frame,
+; machine_stamp with a number of the program's choosing after each thing to
+; be timed, and measure_mean for what each number came to. A stamp is the
+; device's own clock, read when everything recorded before it is done.
+;
 ; The window's manners are here too. P pauses and resumes: a paused frame is
 ; paid no ticks and carries ROOT_PAUSED. F11 or Alt+Enter gives the window the
 ; whole of its monitor and takes it back. A program that defines MACHINE_BARE
@@ -65,6 +70,9 @@ BLEND_PREMULTIPLIED := 3		; the pictures': one blend covers and adds alike
 TICKS_LIMIT := 8			; the most one frame runs; past that, lost time stays lost
 SCRIPT_TICKS := 2			; a scripted frame is a sixtieth of a second
 QS_ALLINPUT := 4FFh
+MEASURE_STAMPS := 96			; the most one frame may take
+MEASURE_KINDS := 16			; and how many things a program may tell apart
+MEASURE_PICTURE := MEASURE_KINDS-1	; the machine's own: from the last stamp to the picture's being done
 GWL_STYLE = -16
 SWP_FRAMECHANGED = 20h
 SWP_NOOWNERZORDER = 200h
@@ -746,6 +754,7 @@ endp
 ; instead keeps both at one frame, and reads the controls as late as can be.
 proc machine_await
 	require_vk fastcall wait_retirement,[last_retirement]
+	fastcall measure_collect
 	if definite MACHINE_SNAPSHOT
 		fastcall snapshot_save
 	end if
@@ -946,12 +955,171 @@ proc merge_presses pad_held
 	ret
 endp
 
+; Measure from here on: nonzero if the device keeps time for this queue.
+proc machine_measure
+	mov eax,[queue_info.queueFamilyIndex]
+	imul eax,eax,sizeof.VkQueueFamilyProperties
+	lea rdx,[queues]
+	cmp [rdx+rax+VkQueueFamilyProperties.timestampValidBits],0
+	je .none
+	vkCreateQueryPool [device],addr measure_info,0,addr measure_pool
+	test eax,eax
+	jnz .none
+	mov [measuring],1
+	mov eax,1
+	ret
+.none:
+	xor eax,eax
+	ret
+endp
+
+; The device's clock, when all that is recorded so far is done. What has
+; passed since the stamp before is put down to `kind`.
+proc machine_stamp uses rbx,kind
+	cmp [measuring],0
+	je .done
+	mov ebx,[measure_count]
+	cmp ebx,MEASURE_STAMPS
+	jae .done
+	lea rax,[measure_kinds]
+	mov [rax+rbx],cl
+	vkCmdWriteTimestamp [command_buffer],VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,[measure_pool],rbx
+	inc [measure_count]
+.done:
+	ret
+endp
+
+; The last frame's stamps, now that it is finished: each one's distance from
+; the one before, added to its kind's total.
+proc measure_collect uses rbx rsi rdi
+	cmp [measuring],0
+	je .done
+	mov ebx,[measure_count]
+	mov [measure_count],0
+	cmp ebx,2
+	jb .done
+	lea rax,[rbx*8]
+	mov [measure_bytes],rax
+	vkGetQueryPoolResults [device],[measure_pool],0,rbx,[measure_bytes],addr measure_values,8,VK_QUERY_RESULT_64_BIT
+	test eax,eax
+	jnz .done
+	lea rsi,[measure_values]
+	lea rdi,[measure_kinds]
+	mov ecx,1
+.stamp:
+	mov rax,[rsi+rcx*8]
+	sub rax,[rsi+rcx*8-8]
+	jb .next			; a clock that went backwards measured nothing
+	movzx edx,byte [rdi+rcx]
+	and edx,MEASURE_KINDS-1
+	lea r8,[measure_total]
+	add [r8+rdx*8],rax
+	lea r8,[measure_times]
+	inc dword [r8+rdx*4]
+	lea r8,[measure_most]
+	cmp rax,[r8+rdx*8]
+	jbe .next
+	mov [r8+rdx*8],rax
+.next:
+	inc ecx
+	cmp ecx,ebx
+	jb .stamp
+.done:
+	ret
+endp
+
+; What a kind came to: EAX its mean in nanoseconds, EDX its greatest, ECX how
+; many times it was stamped.
+proc measure_mean kind
+	mov r8d,ecx
+	lea rax,[measure_times]
+	mov ecx,[rax+r8*4]
+	xor eax,eax
+	xor edx,edx
+	test ecx,ecx
+	jz .done
+	cvtss2sd xmm2,[properties2.properties.limits.timestampPeriod]
+	lea rax,[measure_total]
+	cvtsi2sd xmm0,qword [rax+r8*8]
+	cvtsi2sd xmm1,ecx
+	divsd xmm0,xmm1
+	mulsd xmm0,xmm2
+	cvtsd2si eax,xmm0
+	lea rdx,[measure_most]
+	cvtsi2sd xmm0,qword [rdx+r8*8]
+	mulsd xmm0,xmm2
+	cvtsd2si edx,xmm0
+.done:
+	ret
+endp
+
+; What was measured, as a file beside the report: build\myhits_<tag>.measure.txt.
+; A line for each kind that was stamped: its mean and its greatest, in
+; nanoseconds, and how many times; then the CPU's part of a frame, in
+; microseconds, and the memory held, by who touches it.
+proc machine_write_measure uses rbx rsi rdi
+	cmp [measuring],0
+	je .done
+	fastcall CreateFileW,<W,'build\myhits_' bappend MACHINE_TAG bappend '.measure.txt'>,GENERIC_WRITE,FILE_SHARE_READ,0,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,0
+	cmp rax,-1
+	je .done
+	mov rbx,rax
+	xor esi,esi
+.kind:
+	fastcall measure_mean,rsi
+	test ecx,ecx
+	jz .next
+	mov [measure_line],eax
+	mov [measure_line+4],edx
+	mov [measure_line+8],ecx
+	fastcall wsprintfW,addr title_text,<W,'stamp_%u=%u %u %u',13,10>,rsi,[measure_line],[measure_line+4],[measure_line+8]
+	lea edi,[eax*2]
+	fastcall WriteFile,rbx,addr title_text,rdi,addr written,0
+.next:
+	inc esi
+	cmp esi,MEASURE_KINDS
+	jb .kind
+	fastcall measure_cpu
+	mov [measure_line],eax
+	mov [measure_line+4],edx
+	fastcall wsprintfW,addr title_text,<W,'cpu=%u %u %I64u',13,10,'memory=%I64u %I64u %I64u',13,10>,[measure_line],[measure_line+4],[cpu_frames], \
+		[memory_held+MEMORY_DEVICE*8],[memory_held+MEMORY_UPLOAD*8],[memory_held+MEMORY_READBACK*8]
+	lea edi,[eax*2]
+	fastcall WriteFile,rbx,addr title_text,rdi,addr written,0
+	fastcall CloseHandle,rbx
+.done:
+	ret
+endp
+
+; The CPU's own part of a frame, from opening it to having submitted it: EAX
+; its mean in microseconds, EDX its greatest.
+proc measure_cpu
+	xor eax,eax
+	xor edx,edx
+	cmp [cpu_frames],0
+	je .done
+	cvtsi2sd xmm2,qword [clock_frequency]
+	cvtsi2sd xmm0,qword [cpu_total]
+	cvtsi2sd xmm1,qword [cpu_frames]
+	divsd xmm0,xmm1
+	divsd xmm0,xmm2
+	mulsd xmm0,[million]
+	cvtsd2si eax,xmm0
+	cvtsi2sd xmm0,qword [cpu_most]
+	divsd xmm0,xmm2
+	mulsd xmm0,[million]
+	cvtsd2si edx,xmm0
+.done:
+	ret
+endp
+
 ; Open a frame: a swapchain image in, this frame's event slot chosen, Root
 ; pushed. Returns 1 to record, 2 to skip this turn, 0 on failure. The program
 ; has filled Root; nothing else goes down.
 proc machine_open uses rbx rsi
 	xor esi,esi
 	mov [failure_stage],5
+	fastcall QueryPerformanceCounter,addr cpu_opened
 	cmp [wsi_dirty],0
 	jne .resize
 	mov eax,[frame_width]
@@ -996,6 +1164,11 @@ proc machine_open uses rbx rsi
 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_ACCESS_SHADER_READ_BIT or VK_ACCESS_SHADER_WRITE_BIT
 	vkCmdPushConstants [command_buffer],[machine_layout],MACHINE_STAGES,0,sizeof.Root,addr root
 	add [traffic_down],sizeof.Root
+	cmp [measuring],0
+	je .opened
+	vkCmdResetQueryPool [command_buffer],[measure_pool],0,MEASURE_STAMPS
+	fastcall machine_stamp,0
+.opened:
 	mov eax,1
 	ret
 .retry:
@@ -1075,6 +1248,8 @@ endp
 ; Close the frame: present it, and remember when its events may be read.
 proc machine_close
 	vkCmdEndRendering [command_buffer]
+	; What was left when the last draw was stamped: the end of the pass.
+	fastcall machine_stamp,MEASURE_PICTURE
 	if definite MACHINE_SNAPSHOT
 		cmp [snapshot_wanted],0
 		je .present
@@ -1093,6 +1268,16 @@ proc machine_close
 	mov [last_retirement],rcx
 	inc dword [root+Root.frame]
 	mov [failure_stage],0
+	; What the frame cost this side of the device.
+	fastcall QueryPerformanceCounter,addr clock_now
+	mov rax,[clock_now]
+	sub rax,[cpu_opened]
+	add [cpu_total],rax
+	inc [cpu_frames]
+	cmp rax,[cpu_most]
+	jbe .counted
+	mov [cpu_most],rax
+.counted:
 	mov eax,1
 	ret
 .failed:
@@ -1105,6 +1290,7 @@ endp
 ; Everything submitted is finished and its events handed over.
 proc machine_drain
 	require_vk fastcall wsi_wait_work
+	fastcall measure_collect
 	if definite MACHINE_SNAPSHOT
 		fastcall snapshot_save
 	end if
@@ -1142,6 +1328,11 @@ proc machine_stop
 	fastcall release_world
 	fastcall wsi_destroy_swapchain
 	fastcall destroy_buffer,addr events_buffer
+	cmp [measure_pool],0
+	je .unmeasured
+	vkDestroyQueryPool [device],[measure_pool],0
+	mov [measure_pool],0
+.unmeasured:
 	cmp [machine_layout],0
 	je .pools
 	vkDestroyPipelineLayout [device],[machine_layout],0
@@ -1240,6 +1431,24 @@ ticks_run dq 0
 tick_debt dq 0.0			; seconds of real time not yet paid out in ticks
 tick_rate dq 1.0*TICK_RATE
 whole_tick dq 1.0
+measure_pool dq 0
+measure_bytes dq 0
+measure_total rq MEASURE_KINDS		; the device's clock ticks, by kind
+measure_most rq MEASURE_KINDS
+measure_values rq MEASURE_STAMPS
+cpu_opened dq 0
+cpu_total dq 0
+cpu_most dq 0
+cpu_frames dq 0
+million dq 1000000.0
+measure_times rd MEASURE_KINDS
+measure_line dd 0,0,0,0
+measure_count dd 0
+measuring dd 0
+measure_kinds:
+	rb MEASURE_STAMPS
+	align 8
+measure_info VkQueryPoolCreateInfo sType: VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,queryType: VK_QUERY_TYPE_TIMESTAMP,queryCount: MEASURE_STAMPS
 traffic_down dq 0			; bytes the CPU sent after startup
 traffic_up dq 0				; bytes the CPU read back
 events_retirement rq EVENT_SLOTS

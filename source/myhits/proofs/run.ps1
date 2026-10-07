@@ -24,6 +24,14 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 Set-Location -LiteralPath $repoRoot
 if (-not ('VkFasmgTests.DebugOutputCapture' -as [type])) { Add-Type -Path (Join-Path $repoRoot 'tests\capture-debug-output.cs') }
 function Assert-True($condition, [string]$message) { if (-not $condition) { throw $message } }
+# What a measuring run left: each line a name and its numbers.
+function Read-Measure([string]$path) {
+    $measured = @{}
+    foreach ($line in [IO.File]::ReadAllLines($path, [Text.Encoding]::Unicode)) {
+        if ($line -match '^(\w+)=(.*)$') { $measured[$Matches[1]] = $Matches[2] -split ' ' }
+    }
+    return $measured
+}
 function Read-State([string]$path) {
     $state = @{}
     foreach ($line in [IO.File]::ReadAllLines($path, [Text.Encoding]::Unicode)) {
@@ -176,7 +184,8 @@ try {
             3='a shot is unaccounted for'; 4='a shot did not strike the ring where the ring begins'; 5='a lance passed through a wall'
             6='a shot struck the empty corner of a picture'; 7='the drone did not die of its third hit, for its worth'
             8='a near miss hurt the ship, or a touch did not, or hurt it twice, or was not felt'; 9='the particles are not six a hit and 48 a death, or a style let in more than its cap, or some never died'
-            10='the sounds asked for are not the things that happened'; 11='the traffic or the passes of a frame are not what the plan allows' }
+            10='the sounds asked for are not the things that happened'; 11='the traffic or the passes of a frame are not what the plan allows'
+            12='something crossing a wall one texel thick slipped between two of its texels' }
         $frames = [int]$state.frames
         Assert-True ($frames -eq 280 -and [int]$state.events -eq $frames) 'The hits proof did not run its script'
         Assert-True ([int]$state.solid -eq $packed) "The hits proof was built against $($state.solid) solid texels; the packer counted $packed"
@@ -233,6 +242,21 @@ try {
             Assert-True ($second -eq $gameSums) "game check 28 failed: one run of the script summed to $gameSums and the next to $second"
         }
         Assert-True ($state.sums -eq $gameSums -and $gameSums -notmatch '00000000') "game check 28 failed: this run of the script summed to $($state.sums) and the first to $gameSums"
+        # 29: what a tick costs the device is within its budget. The game stamps the device's clock
+        # after each pass; the means over the run, in nanoseconds, are held to budgets several times
+        # what they were when the budgets were written, so that only a real regression fails.
+        $measured = Read-Measure (Join-Path $BuildDir 'myhits_game.measure.txt')
+        Copy-Item -LiteralPath (Join-Path $BuildDir 'myhits_game.measure.txt') -Destination (Join-Path $BuildDir "myhits_checks\$mode\game")
+        $budget = [ordered]@{ director = 1, 100000; bodies = 2, 60000; shots = 3, 200000; struck = 4, 40000; particles = 5, 40000 }
+        $tick = 0
+        foreach ($pass in $budget.Keys) {
+            $mean = [int]$measured["stamp_$($budget[$pass][0])"][0]
+            Assert-True ($mean -gt 0) "game check 29 failed: the $pass pass was never timed"
+            if ($mode -eq 'default') { Assert-True ($mean -le $budget[$pass][1]) "game check 29 failed: the $pass pass takes $mean ns a tick; its budget is $($budget[$pass][1])" }
+            $tick += $mean
+        }
+        $picture = 0; foreach ($stamp in 7, 8, 9, 10, 15) { $picture += [int]$measured["stamp_$stamp"][0] }
+        $costs = "a tick costs the device {0:0} microseconds, its director {1:0}; a picture {2:0}" -f ($tick / 1000), ([int]$measured['stamp_1'][0] / 1000), ($picture / 1000)
         $voices = if ([int]$state.device) { "$($state.plays) sounds to voices" } else { 'no audio device here' }
         # The music the device rendered is the notes of tables.inc, by a second synthesis; and it is written out to be listened to.
         $stems = (Resolve-Path -LiteralPath (Join-Path $BuildDir 'myhits_game.music.bin')).Path
@@ -250,7 +274,7 @@ try {
         }
         Assert-True ($rail[300] -eq $rail[320]) 'The backdrop moved while the level stood still'
         Assert-True ($rail[235] -ne $rail[300]) 'The backdrop stood still while the level moved'
-        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through three games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks and bursts where it locked, is dodged by moving and not stopped by killing; the window pauses, moves, takes its monitor and is remembered; nothing alive is written over, and what there is no room for is refused; two runs sum to the same ($gameSums); {9} passes and {10} draws a frame" -f `
+        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through three games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks and bursts where it locked, is dodged by moving and not stopped by killing; the window pauses, moves, takes its monitor and is remembered; nothing alive is written over, and what there is no room for is refused; two runs sum to the same ($gameSums); $costs; {9} passes and {10} draws a frame" -f `
             $frames, $state.ticks_a_frame, ([int]$state.kinds - 1), $state.moves, $state.squads, [int]([int]$state.world_bytes / 1024), $state.head_died_frame, $state.hurts_heard, $voices,
             ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
     }

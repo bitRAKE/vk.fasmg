@@ -49,10 +49,10 @@ is now the first rule of every choreography here.
 - The game runs: squads from a table, chains, a boss the level waits for,
   rank that reads the shooting, bonuses, a companion in three stages, a
   backdrop that is the level's, music that listens; and now charge, a dash,
-  the near miss, and the first choreographed attack. Twenty-six numbered
+  the near miss, and the first choreographed attack. Twenty-nine numbered
   claims hold on a scripted run of three games, under validation too.
 - Its content is thin: 24 kinds, 6 squads in one loop, 14 sounds, 3 stems of
-  two bars, 4 particle styles, 40 pictures, one place in three inks.
+  two bars, 4 particle styles, 41 pictures, one place in three inks.
 - It has never been tuned. The author of its code has not heard it or played
   it.
 - Changing anything costs a rebuild and a restart, and seeing the result
@@ -76,6 +76,12 @@ is now the first rule of every choreography here.
   for; a hostile asks in cells of its own, read in order. Claim 27.
 - **Two runs are the same run.** Claim 28, held across three runs of the
   script every time the proofs are run.
+- **The measuring run.** The device's clock stamped after every pass and
+  draw, in any run that asks (`--measure`) and every scripted one; a file of
+  what each cost; budgets on a tick's passes. Claim 29. It found a
+  sixty-fold regression in the director the day it was written.
+- **A sweep that cannot slip through a corner.** Proof 05, claim 12.
+- **The header and the tables in device memory.**
 
 ## Choreography
 
@@ -216,10 +222,10 @@ built as written, and their check is a numbered claim of the game's.
 | 1 | The layer still borrows the examples' context, commands, barriers and presentation: modules written to negotiate what this layer requires, reaching each other by name | This layer's own, for the modern contract only: a device, a timeline, a swapchain. What the examples' do that an application needs is kept; the negotiation is not | 8 | Every proof as now; the machine includes nothing from `examples` |
 | 2 | A new body can overwrite a living one. Shots, pellets and hostiles each take the next slot of a ring; a bonus dropped while the hostile ring wraps can land on a segment of the dragon | The director looks for free slots, bounded, from its cursor; a chain needs a free run. What cannot be placed is refused and counted, per pool | done | A flood on the stage: nothing alive is ever replaced; refusals equal what did not fit |
 | 3 | The order of requests in a tick depends on which thread won | A body's requests go in cells that are its own; the director reads them in slot order. No atomic, no overflow | done | The run's two modes, default and validation, report the same hash of the world |
-| 4 | Nothing is timed. Pool sizes and pass costs are guesses | A measuring run: timestamps round every kind of pass, the CPU's time to record and submit, memory by domain (which `memory.inc` already counts). Budgets are written from its first report | 8 | The report is checked against the budgets, so a regression fails |
-| 5 | The player's shots are tested against every hostile: 256 by 384 a tick at most | Measured first, at the full pools. If it must be cut: rows. Shots fly along the playfield, so a shot stays in one or two bands of height; hostiles are listed by band | 8, if at all | The same hits as the whole scan, on every frame of the script |
-| 6 | A shot's sweep takes one sample a texel on its longer side, and could pass a diagonal wall one texel thick | The walk visits both texels at each crossing | 8 | Proof 05: a one-texel diagonal stops a lance at every offset |
-| 7 | Bodies read their tables from host-visible memory every tick | A pass copies the tables to device memory at start, as the pictures are; the upload buffer is then free for reloading | 8 | The measuring run shows the difference |
+| 4 | Nothing is timed. Pool sizes and pass costs are guesses | A measuring run: timestamps round every kind of pass, the CPU's time to record and submit, memory by domain (which `memory.inc` already counts). Budgets are written from its first report | done | The report is checked against the budgets, so a regression fails |
+| 5 | The player's shots are tested against every hostile: 256 by 384 a tick at most | Measured, and left as it is: the pass that does it, for every shot of both sides, costs 31 microseconds of a tick's 62. Rows would save a part of that | not needed | The measuring run |
+| 6 | A shot's sweep takes one sample a texel on its longer side, and could pass a diagonal wall one texel thick | The walk visits both texels at each crossing | done | Proof 05: a one-texel diagonal stops a lance at every offset |
+| 7 | Bodies read their tables from host-visible memory every tick | A pass copies the header and the tables to device memory at start; the CPU's copy is then free for reloading. It made no difference that could be measured | done | The measuring run, before and after |
 | 8 | How far the level has come is a float that only grows | A layer keeps whole periods of its own pattern as an integer and the rest as a float below one period; each lattice adds its share of the periods to its cell number in integers, where wrapping is harmless | 8 | With a billion periods added, the periodic layers are the same to the pixel and the others as sharp |
 | 9 | There are no letters. A pause, a run's end, a stage's name and every tool's readout need them | Sixteen-segment letters: a table of forty words in the shader and no texels, sharp at any size. Strings live in the tables | 8 | Pictures; the pause says what the keys do |
 | 10 | A chain's segment follows the head in its slot. It does compare its seed with the head's birth tick, but no claim holds that | A scene on the stage: a head's slot reused in the tick it died | done | The old segments die; none follows the newcomer |
@@ -446,6 +452,10 @@ according to them.
   events it reads at the end of a run, or when asked, never every frame.
 - Five passes a tick and a report a frame, until a measurement argues for
   another.
+- The director walks no pool. One thread on the device spends a quarter of a
+  microsecond on each step of a loop that reads memory; what a pool has to
+  tell the director, its own threads tell it, with a bit or an atomic
+  minimum. A tick's passes are held to budgets.
 - Nothing bound: every pipeline's interface is the root block.
 - The tables hold no code. A kind, a sound, a squad, a string is a line.
 - Every claim is numbered, was seen to fail when the code was broken, and

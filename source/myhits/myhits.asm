@@ -41,9 +41,14 @@ REQUESTS := HOSTILES * 6			; a hostile's own cells to ask the director from
 INSTANCES := 160 + BODIES + 16 + PELLETS + HOSTILES + 21 + 8 + 5 * 9
 GAME_BYTES := 512
 POOL_BYTES := 8 + STYLE_LIMIT * 4
-WORLD_BYTES := GAME_BYTES + POOL_BYTES + 2 * BODIES * BODY_BYTES + BODIES * 4 + (TRAILS + 1) * TRAIL_POINTS * 8 + REQUESTS * REQUEST_BYTES + PARTICLES * PARTICLE_BYTES
+WORLD_BYTES := GAME_BYTES + POOL_BYTES + 2 * BODIES * BODY_BYTES + BODIES * 4 + (TRAILS + 1) * TRAIL_POINTS * 8 + REQUESTS * REQUEST_BYTES + HOSTILES / 8 + PARTICLES * PARTICLE_BYTES
 TICK_DISPATCHES := 5			; the director, the bodies, the shots, the struck, the particles
-STARTUP_DISPATCHES := PICTURES_PASSES + 2
+; What the measuring run tells apart: the five passes of a tick, the report,
+; and the four draws.
+iterate name, DIRECT,UPDATE,COLLIDE,RESOLVE,DRIFT,REPORT,BACKDROP,SCENE,PARTICLES,VEIL
+	STAMP_#name := %
+end iterate
+STARTUP_DISPATCHES := PICTURES_PASSES + 3	; and the settling, the sounds, the beginning
 GAME_TICKS := 8				; a scripted frame of the game runs this many: it has far to go
 SCRIPT_FRAMES := 1250
 RESTART_FRAME := 400			; the script presses Enter here; the first game is over by then
@@ -68,6 +73,11 @@ boundary GameWorld
 	ptr ship_trail,float2
 	u32 capacity
 	u32 particle_capacity
+	ptr staged,uint			; this header and the tables, where the CPU wrote them,
+	ptr home,uint			; and where the device keeps them
+	u32 words
+	u32 spare
+	ptr asking,uint
 end boundary
 
 section '.text$game' code readable executable align 16
@@ -107,13 +117,21 @@ proc create_world uses rsi rdi
 	mov [failure_stage],3
 	; Only shaders touch the world: device-local memory, reached by address.
 	require_ok fastcall create_buffer,addr world_buffer,WORLD_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_DEVICE
-	; The CPU writes the header and the tables once, into host-visible memory.
-	require_ok fastcall create_buffer,addr header_buffer,sizeof.GameWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_UPLOAD
+	; The CPU writes the header and the tables once, into memory it can see;
+	; the device's first pass copies them to memory of its own, and that is
+	; where every pass after reads them.
+	require_ok fastcall create_buffer,addr header_buffer,HOME_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_UPLOAD
+	require_ok fastcall create_buffer,addr home_buffer,HOME_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_DEVICE
 	; And the device writes the sounds once where the CPU, and so the voices, can read them.
 	require_ok fastcall create_buffer,addr bank_buffer,BANK_TOTAL*4,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_READBACK
 	mov rdi,[header_buffer.mapped]
 	require_ok fastcall pictures_create,rdi
 	mov rax,[header_buffer.address]
+	mov [rdi+GameWorld.staged],rax
+	mov rax,[home_buffer.address]
+	mov [rdi+GameWorld.home],rax
+	mov dword [rdi+GameWorld.words],HOME_BYTES/4
+	; The tables are found where the device will keep them.
 	add rax,sizeof.GameWorld
 	iterate <table,count,size>, moves,TABLE_MOVES,sizeof.Move, kinds,TABLE_KINDS,sizeof.Kind, styles,TABLE_STYLES,sizeof.Style, sounds,TABLE_SOUNDS,sizeof.Recipe, waves,TABLE_WAVES,sizeof.Wave, stems,TABLE_STEMS,sizeof.Stem
 		mov [rdi+GameWorld.tables+Tables.table],rax
@@ -126,7 +144,7 @@ proc create_world uses rsi rdi
 	mov dword [rdi+GameWorld.tables+Tables.wave_count],TABLE_WAVES
 	mov dword [rdi+GameWorld.tables+Tables.stem_count],TABLE_STEMS
 	mov rax,[world_buffer.address]
-	iterate <pool,bytes>, game,GAME_BYTES, pool,POOL_BYTES, bodies,2*BODIES*BODY_BYTES, damage,BODIES*4, trails,TRAILS*TRAIL_POINTS*8, ship_trail,TRAIL_POINTS*8, queue,REQUESTS*REQUEST_BYTES, particles,PARTICLES*PARTICLE_BYTES
+	iterate <pool,bytes>, game,GAME_BYTES, pool,POOL_BYTES, bodies,2*BODIES*BODY_BYTES, damage,BODIES*4, trails,TRAILS*TRAIL_POINTS*8, ship_trail,TRAIL_POINTS*8, queue,REQUESTS*REQUEST_BYTES, asking,HOSTILES/8, particles,PARTICLES*PARTICLE_BYTES
 		mov [rdi+GameWorld.pool],rax
 		add rax,bytes
 	end iterate
@@ -140,6 +158,12 @@ proc create_world uses rsi rdi
 	rep movsb
 	require_ok fastcall flush_buffer,addr header_buffer
 	mov rax,[header_buffer.address]
+	mov [root+Root.world],rax
+	require_ok fastcall machine_compute,addr settle_code,settle_code.size,addr settle_pipeline
+	require_ok fastcall machine_serial_open
+	fastcall machine_dispatch,[settle_pipeline],(HOME_BYTES/4+63)/64
+	require_ok fastcall machine_serial_close
+	mov rax,[home_buffer.address]
 	mov [root+Root.world],rax
 	iterate name, begin,direct,update,collide,resolve,drift,report,render
 		require_ok fastcall machine_compute,addr name#_code,name#_code.size,addr name#_pipeline
@@ -170,7 +194,7 @@ endp
 
 proc release_world
 	fastcall audio_stop
-	iterate name, begin,direct,update,collide,resolve,drift,report,render,scene,particle,veil,backdrop
+	iterate name, settle,begin,direct,update,collide,resolve,drift,report,render,scene,particle,veil,backdrop
 		cmp [name#_pipeline],0
 		je .skip_#name
 		vkDestroyPipeline [device],[name#_pipeline],0
@@ -180,6 +204,7 @@ proc release_world
 	fastcall pictures_release
 	fastcall destroy_buffer,addr bank_buffer
 	fastcall destroy_buffer,addr header_buffer
+	fastcall destroy_buffer,addr home_buffer
 	fastcall destroy_buffer,addr world_buffer
 	ret
 endp
@@ -272,18 +297,24 @@ proc play_frame uses rbx
 	jz .ticked
 	fastcall machine_dispatch,[direct_pipeline],1
 	fastcall machine_settle
+	fastcall machine_stamp,STAMP_DIRECT
 	fastcall machine_dispatch,[update_pipeline],BODIES/64
 	fastcall machine_settle
+	fastcall machine_stamp,STAMP_UPDATE
 	fastcall machine_dispatch,[collide_pipeline],(SHOTS+PELLETS)/64
 	fastcall machine_settle
+	fastcall machine_stamp,STAMP_COLLIDE
 	fastcall machine_dispatch,[resolve_pipeline],HOSTILES/32
 	fastcall machine_settle
+	fastcall machine_stamp,STAMP_RESOLVE
 	fastcall machine_dispatch,[drift_pipeline],PARTICLES/64
 	fastcall machine_settle
+	fastcall machine_stamp,STAMP_DRIFT
 	dec ebx
 	jmp .tick
 .ticked:
 	fastcall machine_dispatch,[report_pipeline],1
+	fastcall machine_stamp,STAMP_REPORT
 	fastcall machine_canvas
 	fastcall draw_world
 	; The scripted run leaves pictures of itself: the swoopers, the weavers,
@@ -315,9 +346,13 @@ endp
 ; the light; then the veil a hurt or the end of a run draws over it all.
 proc draw_world
 	fastcall machine_draw,[backdrop_pipeline],6,1
+	fastcall machine_stamp,STAMP_BACKDROP
 	fastcall machine_draw,[scene_pipeline],6,INSTANCES
+	fastcall machine_stamp,STAMP_SCENE
 	fastcall machine_draw,[particle_pipeline],6,PARTICLES
+	fastcall machine_stamp,STAMP_PARTICLES
 	fastcall machine_draw,[veil_pipeline],6,1
+	fastcall machine_stamp,STAMP_VEIL
 	ret
 endp
 
@@ -1077,6 +1112,7 @@ proc scripted_run uses rbx rsi
 	fastcall machine_drain
 	test eax,eax
 	jz .broken
+	fastcall machine_write_measure
 	mov esi,SCRIPT_FRAMES
 	; 4 and 9, in part: the rises and falls of rank were seen, and the head did die.
 	cmp [rise_checked],0
@@ -1386,6 +1422,12 @@ proc mainCRTStartup
 	mov rcx,[bank_buffer.mapped]
 	add rcx,BANK_SAMPLES*4
 	fastcall audio_music,rcx
+	; A scripted run is always measured; a played one when it is asked to be.
+	fastcall command_option,<W,'--measure'>
+	or eax,[test_mode]
+	jz .unmeasured
+	fastcall machine_measure
+.unmeasured:
 	cmp [test_mode],0
 	je .show
 	fastcall snapshot_start
@@ -1454,6 +1496,14 @@ proc mainCRTStartup
 .failed:
 	mov [app_io_failed],1
 .finish:
+	cmp [test_mode],0
+	jne .measured
+	cmp [device],0
+	je .measured
+	; What a played run cost, if it was measured.
+	fastcall machine_drain
+	fastcall machine_write_measure
+.measured:
 	fastcall free_options
 	fastcall machine_stop
 	fastcall machine_report_exit
@@ -1512,8 +1562,9 @@ stage_caught db 1,1,2,0
 stage_cost db 1,0,1,0
 world_buffer GpuBuffer
 header_buffer GpuBuffer
+home_buffer GpuBuffer
 bank_buffer GpuBuffer
-iterate name, begin,direct,update,collide,resolve,drift,report,render,scene,particle,veil,backdrop
+iterate name, settle,begin,direct,update,collide,resolve,drift,report,render,scene,particle,veil,backdrop
 	name#_pipeline dq 0
 end iterate
 iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,last_latency,worst_latency,title_rank,sounds_asked,heard_hurts, \
@@ -1541,11 +1592,12 @@ table_waves:
 table_stems:
 	game_music
 TABLE_BYTES := $ - table_moves
+HOME_BYTES := (sizeof.GameWorld + TABLE_BYTES + 3) and not 3	; the header and the tables, in whole words
 assert TABLE_BYTES = TABLE_MOVES * sizeof.Move + TABLE_KINDS * sizeof.Kind + TABLE_STYLES * sizeof.Style + TABLE_SOUNDS * sizeof.Recipe + TABLE_WAVES * sizeof.Wave + TABLE_STEMS * sizeof.Stem
 BANK_TOTAL := BANK_SAMPLES + TABLE_STEMS * MUSIC_SAMPLES	; the sounds, then the stems
 
 section '.rdata$game_spirv' data readable align 4
-iterate <name,module>, develop_code,develop, chart_code,chart, census_code,census, begin_code,begin, direct_code,direct, update_code,update, \
+iterate <name,module>, develop_code,develop, chart_code,chart, census_code,census, settle_code,settle, begin_code,begin, direct_code,direct, update_code,update, \
 	collide_code,collide, resolve_code,resolve, drift_code,drift, report_code,report, render_code,render, scene_vertex_code,scene_vertex, \
 	scene_fragment_code,scene_fragment, particle_vertex_code,particle_vertex, particle_fragment_code,particle_fragment, veil_vertex_code,veil_vertex, veil_fragment_code,veil_fragment, backdrop_vertex_code,backdrop_vertex, backdrop_fragment_code,backdrop_fragment
 	align 4

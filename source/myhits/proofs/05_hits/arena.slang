@@ -37,7 +37,9 @@ struct Game
     uint fireworks;         // how many were let in, the last time they were asked for
     uint survey[4];         // solid texels found through each of four poses
     uint survey_wrong;      // texels hit where the mask says there is nothing, or the other way
+    uint survey_crossed;    // crossings of the wire that struck it
 };
+static const uint WIRE_CROSSINGS = 400;
 // The header the CPU writes once: ArenaWorld in arena.asm.
 struct World
 {
@@ -72,6 +74,7 @@ void begin()
     game.ship_hits = 0; game.hurts = 0; game.hurt_tick = 0; game.hit_count = 0; game.fireworks = 0;
     for (uint pose = 0; pose < 4; ++pose) game.survey[pose] = 0;
     game.survey_wrong = 0;
+    game.survey_crossed = 0;
     *world.game = game;
     for (uint body = 0; body < 2 * CAPACITY; ++body) { world.bodies[body].kind = 0; world.bodies[body].born = 0; }
     for (uint slot = 0; slot < CAPACITY; ++slot) world.damage[slot] = 0;
@@ -115,6 +118,22 @@ void survey(uint3 id : SV_DispatchThreadID)
         // The cut frames have a count from outside the device: the packer's.
         if (frame.recipe == RECIPE_BAKED) InterlockedAdd(world.game.survey[pose], found);
         InterlockedAdd(world.game.survey_wrong, wrong);
+    }
+    // And the wire: a wall one texel thick lying across the diagonal, whose
+    // texels touch only at their corners. Four hundred crossings, square to
+    // it, each a little farther along it than the last, so that some pass
+    // through the middle of a texel and some exactly between two. Every one
+    // must strike.
+    if (id.x == FRAME_WIRE)
+    {
+        uint struck = 0;
+        float2 along = float2(0.70710678, 0.70710678), across = float2(0.70710678, -0.70710678);
+        for (uint each = 0; each < WIRE_CROSSINGS; ++each)
+        {
+            float2 at = float2(20.5, 20.5) + along * (float(each) * 0.037);
+            if (sweep(pictures, frame, at - across * 3.0, at + across * 3.0) >= 0.0) ++struck;
+        }
+        world.game.survey_crossed = struck;
     }
 }
 
@@ -327,6 +346,7 @@ void report()
         if (world.bodies[now + slot].kind != 0) ++flying;
     events.score = game.score;
     events.wave = game.survey_wrong;
+    events.multiplier = game.survey_crossed;
     // Being hurt is felt: for half a second, and less as it passes.
     float hurt = game.hurt_tick == 0 ? 0.0 : saturate(1.0 - float(game.tick + 1 - game.hurt_tick) / 60.0);
     events.rumble_low = hurt;

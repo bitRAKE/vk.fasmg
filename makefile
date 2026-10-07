@@ -80,7 +80,7 @@ BOARD_SOURCES = $(BOARD_SLANG) $(COMMON)\common.slang $(COMMON)\ease.slang $(COM
 BOARD_SHADERS = $(BUILD)\myhits_sound_render.spv $(BUILD)\myhits_sound_examine.spv $(BUILD)\myhits_sound_direct.spv $(BUILD)\myhits_sound_wave_vertex.spv $(BUILD)\myhits_sound_wave_fragment.spv
 GAME_SLANG = $(MYHITS)\myhits.slang
 GAME_SOURCES = $(GAME_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\hits.slang $(COMMON)\particles.slang $(COMMON)\chains.slang $(COMMON)\sounds.slang $(MYHITS)\backdrop.slang $(MYHITS_HEADER)
-GAME_SHADERS = $(BUILD)\myhits_game_develop.spv $(BUILD)\myhits_game_chart.spv $(BUILD)\myhits_game_census.spv $(BUILD)\myhits_game_begin.spv \
+GAME_SHADERS = $(BUILD)\myhits_game_develop.spv $(BUILD)\myhits_game_chart.spv $(BUILD)\myhits_game_census.spv $(BUILD)\myhits_game_settle.spv $(BUILD)\myhits_game_begin.spv \
 	$(BUILD)\myhits_game_direct.spv $(BUILD)\myhits_game_update.spv $(BUILD)\myhits_game_collide.spv $(BUILD)\myhits_game_resolve.spv \
 	$(BUILD)\myhits_game_drift.spv $(BUILD)\myhits_game_report.spv $(BUILD)\myhits_game_render.spv $(BUILD)\myhits_game_scene_vertex.spv \
 	$(BUILD)\myhits_game_scene_fragment.spv $(BUILD)\myhits_game_particle_vertex.spv $(BUILD)\myhits_game_particle_fragment.spv \
@@ -523,6 +523,10 @@ $(BUILD)\myhits_game_census.spv: $(GAME_SOURCES)
 	$(MYHITS_SLANG) -entry census -stage compute -o $@ $(GAME_SLANG)
 	$(MYHITS_VALIDATE) $@
 
+$(BUILD)\myhits_game_settle.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry settle -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
 $(BUILD)\myhits_game_begin.spv: $(GAME_SOURCES)
 	$(MYHITS_SLANG) -entry begin -stage compute -o $@ $(GAME_SLANG)
 	$(MYHITS_VALIDATE) $@
@@ -591,6 +595,11 @@ $(BUILD)\myhits.obj: $(MYHITS)\myhits.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $
 	$(ASSEMBLE) -Source $(MYHITS)\myhits.asm -Output $@
 
 $(BUILD)\myhits.exe: $(BUILD)\myhits.obj $(DEBUG_LOGGER_OBJ)
+	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib
+
+# The same program under another name, for trying things out: the one someone
+# may be playing is not replaced by an experiment.
+$(BUILD)\myhits_try.exe: $(BUILD)\myhits.obj $(DEBUG_LOGGER_OBJ)
 	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib
 
 

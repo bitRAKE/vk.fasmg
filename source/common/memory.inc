@@ -29,6 +29,7 @@ struct GpuBuffer
 	memory dq 0
 	mapped dq 0			; none for MEMORY_DEVICE
 	bytes dq 0			; as asked for
+	allocated dq 0			; as the device gave
 	address dq 0
 	coherent dd 0			; mapped, and needs no flush or invalidate
 	domain dd 0
@@ -120,6 +121,7 @@ proc create_buffer uses rbx rsi,owner,bytes,usage,domain
 	mov eax,[rbx+GpuBuffer.domain]
 	lea rdx,[memory_held]
 	mov rcx,[memory_allocate.allocationSize]
+	mov [rbx+GpuBuffer.allocated],rcx
 	add [rdx+rax*8],rcx
 	inc [memory_allocations]
 	vkBindBufferMemory [device],[rbx+GpuBuffer.handle],[rbx+GpuBuffer.memory],0
@@ -193,6 +195,10 @@ proc destroy_buffer uses rbx rdi,owner
 	cmp [rbx+GpuBuffer.memory],0
 	je .clear
 	vkFreeMemory [device],[rbx+GpuBuffer.memory],0
+	mov eax,[rbx+GpuBuffer.domain]
+	lea rdx,[memory_held]
+	mov rcx,[rbx+GpuBuffer.allocated]
+	sub [rdx+rax*8],rcx
 .clear:
 	mov rdi,rbx
 	mov ecx,sizeof.GpuBuffer/8
@@ -265,7 +271,7 @@ proc collect_gpu_deletes
 endp
 
 section '.data$memory' data readable writeable align 8
-memory_held rq MEMORY_DOMAINS		; bytes allocated, by domain
+memory_held rq MEMORY_DOMAINS		; bytes held now, by domain (an image's stay counted)
 memory_allocations dd 0
 	dd 0
 ; A domain's choices, best first: what a type must have, and must not.

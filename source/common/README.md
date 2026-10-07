@@ -24,7 +24,7 @@ addresses.
 
 | File | What it is |
 | --- | --- |
-| [machine.inc](machine.inc) | The window, the device under the contract, pipelines from SPIR-V whose only interface is the root, and the frame: real time paid out in fixed ticks, the root down, a block of events back a frame later. The window's manners: pause, the whole monitor and back, and for a program that asks, no caption, a held pointer, and a place it remembers |
+| [machine.inc](machine.inc) | The window, the device under the contract, pipelines from SPIR-V whose only interface is the root, and the frame: real time paid out in fixed ticks, the root down, a block of events back a frame later. What a frame costs: the device's clock stamped wherever the program asks, and a file of the means. The window's manners: pause, the whole monitor and back, and for a program that asks, no caption, a held pointer, and a place it remembers |
 | [memory.inc](memory.inc) | Buffers, asked for by who touches them: `MEMORY_DEVICE`, `MEMORY_UPLOAD`, `MEMORY_READBACK`. Each is its own allocation; nothing pools or defers. An image, for the snapshots |
 | [state.inc](state.inc) | What a program remembers between runs: values by name in the registry, under `HKEY_CURRENT_USER\Software\vk.fasmg\<program>` |
 | [input.inc](input.inc) | A pad by XInput, over the keys and the mouse; rumble |

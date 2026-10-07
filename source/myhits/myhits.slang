@@ -150,6 +150,8 @@ struct Game
     uint refused_shots;     // what there was no room for, by pool: nothing alive is written over to make room
     uint refused_pellets;
     uint refused_hostiles;
+    uint near_hostile;      // the companion's nearest of each, as near_key, from the last tick's passes
+    uint near_pellet;
 };
 struct Request { uint kind; float2 at; float angle; uint seed; float2 mark; uint marking; };
 // The header the CPU writes once: GameWorld in myhits.asm.
@@ -157,7 +159,18 @@ struct World
 {
     Pictures pictures; Tables tables; Body* bodies; Game* game; uint* damage; Particle* particles; ParticlePool* pool;
     float2* trails; Request* queue; float* bank; float2* ship_trail; uint capacity; uint particle_capacity;
+    uint* staged; uint* home; uint words; uint spare;
+    uint* asking;           // a bit for each hostile that has asked the director for something
 };
+
+// A lone thread on the device is slow: a quarter of a microsecond for every
+// step of a loop that reads memory. So the director walks no pool. What a
+// pool has to say to it, each of the pool's own threads says for itself: a
+// bit raised (`asking`), or the least of something kept by an atomic minimum.
+// A key for that: how far, and who, so that the nearest wins and of two as
+// near the lower slot does, whichever thread came first.
+static const uint NOBODY = 0xffffffffu;
+uint near_key(float2 from, float2 to, uint who) { return (uint(min(distance(from, to), 4000.0) * 256.0) << 10) | who; }
 
 #include "hits.slang"
 #include "particles.slang"
@@ -202,7 +215,21 @@ void new_game(Game* game)
     fresh.dash_tick = 0; fresh.slip_until = 0; fresh.dash_way = float2(1.0, 0.0); fresh.dashes = 0; fresh.slipped = 0; fresh.empties = 0;
     fresh.blasts = 0; fresh.blast_hits = 0; fresh.blast_at = float2(0.0, 0.0); fresh.raider = 0; fresh.heavy = 0;
     fresh.refused_shots = 0; fresh.refused_pellets = 0; fresh.refused_hostiles = 0;
+    fresh.near_hostile = NOBODY; fresh.near_pellet = NOBODY;
     *game = fresh;
+}
+
+// First of all, once: the header and the tables, word for word, from the
+// memory the CPU wrote them into to memory only the device touches. Every
+// pass reads them, the director a hundred times a tick, and memory the CPU
+// can see is slow for the device to read. Root.world is the CPU's copy for
+// this pass alone.
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void settle(uint3 id : SV_DispatchThreadID)
+{
+    World* written = root.world;
+    if (id.x < written.words) written.home[id.x] = written.staged[id.x];
 }
 
 // Once, at start, alone: nothing on the device is as the game needs it yet.
@@ -231,6 +258,7 @@ void begin()
     for (uint body = 0; body < 2 * BODIES; ++body) { world.bodies[body].kind = 0; world.bodies[body].born = 0; }
     for (uint slot = 0; slot < BODIES; ++slot) world.damage[slot] = 0;
     for (uint cell = 0; cell < REQUESTS; ++cell) world.queue[cell].kind = 0;
+    for (uint word = 0; word < HOSTILES / 32; ++word) world.asking[word] = 0;
     for (uint particle = 0; particle < PARTICLES; ++particle) world.particles[particle].life = 0;
     world.pool.asked = 0;
     open_particles(world);
@@ -347,6 +375,7 @@ void direct()
             new_game(game);
             for (uint body = 0; body < 2 * BODIES; ++body) world.bodies[body].kind = 0;
             for (uint cell = 0; cell < REQUESTS; ++cell) world.queue[cell].kind = 0;
+            for (uint word = 0; word < HOSTILES / 32; ++word) world.asking[word] = 0;
         }
     }
     bool playing = game.state == STATE_PLAY;
@@ -579,24 +608,13 @@ void direct()
         game.mate += (place_at - game.mate) * 0.2;
         uint latest = (tick & 1) * BODIES;
         float gun = 0.0;
-        if (game.companion == 2)
+        if (game.companion == 2 && game.near_hostile != NOBODY)
         {
-            // What is nearest, of what can be hit and is on the playfield.
-            float nearest = 1e12;
-            for (uint slot = HOSTILE_FIRST; slot < HOSTILE_FIRST + HOSTILES; ++slot)
-            {
-                uint kind = world.bodies[latest + slot].kind;
-                if (kind == 0 || world.tables.kinds[kind].health <= 0.0) continue;
-                float2 at = world.bodies[latest + slot].position;
-                if (at.x < 0.0 || at.x > PLAYFIELD_WIDTH || at.y < 0.0 || at.y > PLAYFIELD_HEIGHT) continue;
-                float2 apart = at - game.mate;
-                if (dot(apart, apart) < nearest)
-                {
-                    nearest = dot(apart, apart);
-                    gun = atan2(apart.y, apart.x);
-                    mate_fires = true;
-                }
-            }
+            // What was nearest, of what can be hit and is on the playfield:
+            // every hostile said how near it was, and the least was kept.
+            float2 apart = world.bodies[latest + HOSTILE_FIRST + (game.near_hostile & 1023)].position - game.mate;
+            gun = atan2(apart.y, apart.x);
+            mate_fires = true;
         }
         if (game.companion == 3)
         {
@@ -605,17 +623,12 @@ void direct()
             mate_fires = (root.held & BUTTON_FIRE) != 0;
         }
         game.mate_gun = turn_to(game.mate_gun + turn_to(gun - game.mate_gun) * 0.25);
-        // Its guard faces the nearest hostile shot, or behind its gun.
-        float guard = game.mate_gun + 3.14159265, closest = 600.0 * 600.0;
-        for (uint slot = SHOTS; slot < SHOTS + PELLETS; ++slot)
+        // Its guard faces the nearest hostile shot within 600, or behind its gun.
+        float guard = game.mate_gun + 3.14159265;
+        if ((game.near_pellet >> 10) < 600 * 256)
         {
-            if (world.bodies[latest + slot].kind == 0) continue;
-            float2 apart = world.bodies[latest + slot].position - game.mate;
-            if (dot(apart, apart) < closest)
-            {
-                closest = dot(apart, apart);
-                guard = atan2(apart.y, apart.x);
-            }
+            float2 apart = world.bodies[latest + SHOTS + (game.near_pellet & 1023)].position - game.mate;
+            guard = atan2(apart.y, apart.x);
         }
         game.mate_guard = turn_to(game.mate_guard + turn_to(guard - game.mate_guard) * 0.3);
         if (game.mate_cooldown > 0) game.mate_cooldown -= 1;
@@ -626,6 +639,10 @@ void direct()
             game.mate_fired += 1;
         }
     }
+
+    // What this tick's passes find nearest the companion is for the next.
+    game.near_hostile = NOBODY;
+    game.near_pellet = NOBODY;
 
     // Rank looks at the shooting once a second: of the shots that have come
     // to anything since it last looked, the share that struck moves it up or
@@ -695,14 +712,24 @@ void direct()
 
     // What last tick's bodies asked for: only the director makes a body. A
     // hostile asks in cells that are its own, so nothing is contended for and
-    // nothing is lost; and the director reads them in order, so what is made
-    // and where does not depend on which thread came first.
-    for (uint cell = 0; cell < REQUESTS; ++cell)
+    // nothing is lost, and raises its bit; the director reads the cells of
+    // those whose bit is up, in order, so what is made and where does not
+    // depend on which thread came first.
+    for (uint word = 0; word < HOSTILES / 32; ++word)
     {
-        if (world.queue[cell].kind == 0) continue;
-        Request request = world.queue[cell];
-        world.queue[cell].kind = 0;
-        game.requested += 1;
+        uint asking = world.asking[word];
+        if (asking == 0) continue;
+        world.asking[word] = 0;
+        for (uint cell = word * 32 * REQUEST_CELLS; asking != 0; ++cell)
+        {
+            // The cells of the lowest bit still up; then that bit comes down.
+            uint first = (word * 32 + firstbitlow(asking)) * REQUEST_CELLS;
+            if (cell < first) cell = first;
+            if (cell == first + REQUEST_CELLS - 1) asking &= asking - 1;
+            if (world.queue[cell].kind == 0) continue;
+            Request request = world.queue[cell];
+            world.queue[cell].kind = 0;
+            game.requested += 1;
         // A bonus someone dropped goes among the hostiles, where the ship can touch it.
         if ((world.tables.kinds[request.kind].flags & KIND_PICKUP) != 0)
         {
@@ -717,6 +744,7 @@ void direct()
         if (into == NO_SLOT) continue;
         if (request.kind == KIND_HEAVY) game.heavy = into + 1;
         trigger(request.kind == KIND_HEAVY ? SOUND_HEAVY : SOUND_SHOT, request.at.x);
+        }
     }
 
     // The player's own.
@@ -819,6 +847,7 @@ void update(uint3 id : SV_DispatchThreadID)
                         request.marking = marked ? MARK_LOCKED : 0;
                         world.queue[place_in + each] = request;
                     }
+                    if (count != 0) InterlockedOr(world.asking[(slot - HOSTILE_FIRST) >> 5], 1u << ((slot - HOSTILE_FIRST) & 31));
                 }
                 body.marking = 0;
             }
@@ -875,6 +904,7 @@ void collide(uint3 id : SV_DispatchThreadID)
     if (slot >= SHOTS)
     {
         if (game.state != STATE_PLAY) return;
+        if (game.companion != 0) InterlockedMin(world.game.near_pellet, near_key(to, game.mate, slot - SHOTS));
         // The companion's guard stops what passes close on the side it faces.
         if (game.companion >= 2)
         {
@@ -1036,6 +1066,7 @@ void resolve(uint3 id : SV_DispatchThreadID)
                         request.mark = mark;
                         request.marking = MARK_LOCKED;
                         world.queue[place_in] = request;
+                        InterlockedOr(world.asking[(slot - HOSTILE_FIRST) >> 5], 1u << ((slot - HOSTILE_FIRST) & 31));
                         trigger(SOUND_LOCK, mark.x);
                     }
                     break;
@@ -1063,6 +1094,7 @@ void resolve(uint3 id : SV_DispatchThreadID)
                     request.mark = body.position;
                     request.marking = 0;
                     world.queue[place_in] = request;
+                    InterlockedOr(world.asking[(slot - HOSTILE_FIRST) >> 5], 1u << ((slot - HOSTILE_FIRST) & 31));
                 }
             }
             body.kind = 0;
@@ -1071,6 +1103,8 @@ void resolve(uint3 id : SV_DispatchThreadID)
         if (body.kind == 0) return;
     }
     InterlockedAdd(world.game.alive, 1);
+    if (game.companion == 2 && kind.health > 0.0 && body.position.x >= 0.0 && body.position.x <= PLAYFIELD_WIDTH && body.position.y >= 0.0 && body.position.y <= PLAYFIELD_HEIGHT)
+        InterlockedMin(world.game.near_hostile, near_key(body.position, game.mate, id.x));
     if (game.state == STATE_PLAY && kind.health > 0.0 && touches(world.pictures, ship_pose(game.ship), pose_of(body))) InterlockedAdd(world.game.ship_hits, 1);
 }
 
@@ -1098,8 +1132,11 @@ void report()
         open_events(events);
     }
     uint now = (game.tick & 1) * BODIES, before = ((game.tick & 1) ^ 1) * BODIES;
+    // What follows walks pools, on one thread: it is what a scripted run is
+    // held to, and only a scripted run pays for it.
+    bool scripted = (root.flags & ROOT_SCRIPTED) != 0;
     uint flying = 0, pellets = 0;
-    for (uint slot = 0; slot < SHOTS + PELLETS; ++slot)
+    for (uint slot = 0; scripted && slot < SHOTS + PELLETS; ++slot)
     {
         Body shot = world.bodies[now + slot];
         if (shot.kind == 0) continue;
@@ -1156,7 +1193,7 @@ void report()
     // A sum over everything that is simulated: two runs of one script are to
     // agree on it, whatever order their threads ran in.
     uint sum = hash(game.score ^ hash(game.tick ^ hash(asuint(game.rank) ^ hash(asuint(game.ship.x) ^ hash(asuint(game.ship.y) ^ hash(asuint(game.mate.x) ^ asuint(game.mate.y)))))));
-    for (uint slot = 0; slot < BODIES; ++slot)
+    for (uint slot = 0; scripted && slot < BODIES; ++slot)
     {
         Body body = world.bodies[now + slot];
         if (body.kind == 0) continue;

@@ -43,17 +43,25 @@ float reach_of(Sprite pose, Picture frame)
 // Something small went from one point to another, each already in a
 // picture's texels. Did it pass through anything solid? It is walked a texel
 // at a time, so a shot too fast to ever land inside a thin wall still strikes
-// it. How far along it struck, 0..1, or less than none.
+// it; and where one step takes it to a texel that is diagonal to the last,
+// the two texels it passed between are looked at as well, so it cannot slip
+// through the corner where two texels of a wall one texel thick only touch.
+// How far along it struck, 0..1, or less than none.
 float sweep(Pictures pictures, Picture frame, float2 from, float2 to)
 {
     float2 low = min(from, to), high = max(from, to);
     if (high.x < 0.0 || high.y < 0.0 || low.x >= float(frame.width) || low.y >= float(frame.height)) return -1.0;
     float2 span = to - from;
-    uint steps = uint(clamp(ceil(max(abs(span.x), abs(span.y))), 1.0, 96.0));
+    uint steps = uint(clamp(ceil(max(abs(span.x), abs(span.y))), 1.0, 192.0));
+    float2 before = floor(from);
     for (uint step = 0; step <= steps; ++step)
     {
         float along = float(step) / float(steps);
-        if (solid_at(pictures, frame, from + span * along)) return along;
+        float2 at = from + span * along, now = floor(at);
+        if (solid_at(pictures, frame, at)) return along;
+        if (now.x != before.x && now.y != before.y
+            && (solid_at(pictures, frame, float2(now.x, before.y) + 0.5) || solid_at(pictures, frame, float2(before.x, now.y) + 0.5))) return along;
+        before = now;
     }
     return -1.0;
 }

@@ -64,6 +64,11 @@ drawn	crosshair	64 64				symmetric
 	line	52 32 61 32 1.5 ffe0f0ff
 	disc	32 32 2 ff4060ff
 
+; For proof 05: a wall one texel thick lying across the texels' diagonal, so
+; that its texels touch only at their corners.
+drawn	wire		64 64
+	line	8.5 8.5 55.5 55.5 0.5 ffffffff
+
 ; What something that means to strike shows where it means to: brackets
 ; while it is fixing on the place, and crosshairs once it has. The ring of the
 ; crosshairs is 84 texels out: the game draws it as wide as the strike reaches.
