@@ -5,9 +5,14 @@
 ;						if there is none, or more than room, or not all of it came
 ;	file_put	name, place, bytes	the whole of it from memory, in place of what was
 ;						there: nonzero if all of it went
-;	file_more	place, bytes		more, to the file file_put left open when it was
-;						asked for none: nonzero if all of it went
-;	file_done				and that file closed: nonzero if it closed
+;
+; And a file written a piece at a time, each piece gone to Windows before the
+; next line of the program runs: so that what a program was doing is in the
+; file even if the program then falls over.
+;
+;	file_begin	name			in place of what was there: the file, or 0
+;	file_more	file, place, bytes	a piece: nonzero if all of it went
+;	file_done	file			closed: nonzero if it closed
 ;
 ; A program includes this after machine.inc. A file that could not be written
 ; is the program's to answer for: these only say so.
@@ -62,41 +67,41 @@ proc file_take uses rbx rsi rdi,name,place,room
 	ret
 endp
 
-; With bytes it is all of the file, and the file is closed. With none, the
-; file is left open for file_more to fill, and file_done closes it: for a
-; file made of more than one piece of memory.
-proc file_put uses rbx rsi,name,place,bytes
+proc file_put uses rbx rsi rdi,name,place,bytes
 	mov rsi,rdx
-	mov ebx,r8d
-	fastcall CreateFileW,rcx,GENERIC_WRITE,FILE_SHARE_READ,0,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,0
-	cmp rax,-1
-	je .none
-	mov [file_open],rax
-	mov eax,1
-	test ebx,ebx
+	mov edi,r8d
+	fastcall file_begin,rcx
+	test rax,rax
 	jz .done
-	fastcall file_more,rsi,rbx
-	mov ebx,eax
-	fastcall file_done
-	and eax,ebx
+	mov rbx,rax
+	fastcall file_more,rbx,rsi,rdi
+	mov esi,eax
+	fastcall file_done,rbx
+	and eax,esi
 .done:
 	ret
-.none:
-	mov [file_open],0
+endp
+
+proc file_begin name
+	fastcall CreateFileW,rcx,GENERIC_WRITE,FILE_SHARE_READ,0,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,0
+	cmp rax,-1
+	jne .done
 	xor eax,eax
+.done:
 	ret
 endp
 
 ; (WriteFile may take less than it is given.)
-proc file_more uses rbx rsi,place,bytes
-	mov rsi,rcx
-	mov ebx,edx
-	cmp [file_open],0
-	je .failed
+proc file_more uses rbx rsi rdi,file,place,bytes
+	mov rdi,rcx
+	mov rsi,rdx
+	mov ebx,r8d
+	test rdi,rdi
+	jz .failed
 .more:
 	test ebx,ebx
 	jz .all
-	fastcall WriteFile,[file_open],rsi,rbx,addr file_moved,0
+	fastcall WriteFile,rdi,rsi,rbx,addr file_moved,0
 	test eax,eax
 	jz .failed
 	mov eax,[file_moved]
@@ -113,12 +118,11 @@ proc file_more uses rbx rsi,place,bytes
 	ret
 endp
 
-proc file_done
+proc file_done file
 	xor eax,eax
-	cmp [file_open],0
-	je .done
-	fastcall CloseHandle,[file_open]
-	mov [file_open],0
+	test rcx,rcx
+	jz .done
+	fastcall CloseHandle,rcx
 	test eax,eax
 	setnz al
 	movzx eax,al
@@ -127,7 +131,6 @@ proc file_done
 endp
 
 section '.data$files' data readable writeable align 8
-file_open dq 0
 file_size dq 0
 file_moved dd 0
 file_attributes rb 36			; WIN32_FILE_ATTRIBUTE_DATA

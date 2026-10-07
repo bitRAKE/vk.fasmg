@@ -49,7 +49,7 @@ is now the first rule of every choreography here.
 - The game runs: squads from a table, chains, a boss the level waits for,
   rank that reads the shooting, bonuses, a companion in three stages, a
   backdrop that is the level's, music that listens; and now charge, a dash,
-  the near miss, and the first choreographed attack. Thirty-three numbered
+  the near miss, and the first choreographed attack. Thirty-four numbered
   claims hold on a scripted run of four games, under validation too.
 - Milestone 8, the ground, is built: each of its problems below is done, or
   was measured and found not to need doing. Its list for a hand is untried.
@@ -97,6 +97,7 @@ is now the first rule of every choreography here.
 - **Reloading the tables.** `--watch`, `build\myhits_tables.bin` and
   `source\myhits\tools\watch.ps1`; `reload.inc` in the layer. Claim 32.
   The first of milestone 9's tools, and the one the others stand on.
+- **Runs kept.** `--record` and `--replay`. Claim 34.
 - **The mix and the loudness report.** The scripted run, as it sounded, in
   `build\myhits_run.wav`, and every sound's level in a table. Claim 33. It
   found the mix a decibel over full scale in five samples.
@@ -294,7 +295,11 @@ shaders know by number. An image carries a print made of those names, and a
 game takes no image whose print is not its own: it says TABLES REFUSED, goes
 on with what it had, and waits for a build. The tables may grow to twice
 what the game was built with and the sounds to twice and two seconds more;
-past that is a build too.
+past that is a build too. And an image is looked through before it is laid
+down: one in which anything points outside it, a kind at a move there is
+not, a squad at a kind there is not, is refused like one of other names.
+The tools do not make such an image; a mistake might, and the device would
+read what is not there.
 
 **A watched game goes on when it is left.** An ordinary game pauses when
 another program comes in front, and someone changing a table is in an
@@ -397,9 +402,12 @@ two seconds into one wide image with the squads' names: a level on a page,
 to be read, compared before and after an edit, and looked at by someone who
 cannot play it.
 
-**Runs kept.** `--record` writes what the controls were, tick for tick;
-`--replay` plays it back. With problem 3 solved, a replay is the same run.
-A bug is a file. And every run appends a line to `build\myhits_runs.csv`:
+**Runs kept.** Built: `--record` writes what the device was given in every
+frame, as it is played, and the tables taken on the way; `--replay` plays
+it back and then hands the ship over where the record stopped. With problem
+3 solved, a replay is the same run: claim 34 holds the scripted run to that,
+frame for frame. A bug is a file, and its last frame is in it. Still to
+come: every run appends a line to `build\myhits_runs.csv`:
 how long, the score, rank over time, accuracy, hurts and what did each,
 bonuses taken by kind, kills by kind, charge spent on what. Tuning then has
 numbers to start from, and they are this game's.

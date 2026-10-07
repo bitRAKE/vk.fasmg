@@ -14,6 +14,18 @@
 ;				tables: TABLES_FIT, TABLES_BROKEN (not a whole image:
 ;				perhaps still being written) or TABLES_OTHER (a whole
 ;				image of other names, or too large: one for a build)
+;	tables_sound	image, own, pictures
+;				whether everything in the image that points at
+;				something points inside it: a kind's moves, its
+;				picture, what follows it; what a move fires, and how
+;				far one goes back; a squad's kind; where each sound
+;				is in the bank; how long a thing said is. And that
+;				the moves end as a program ends, and no table is
+;				empty that the program's own image (`own`) has lines
+;				in. An image the tools assembled is all of that. One
+;				that is not would have the device read what is not
+;				there, and a device that does that can take the
+;				display down with it: so it is asked first, here.
 ;	tables_place	image, address, block	fills a Tables: where each table of the
 ;				image is, if the first is at `address`, and how many
 ;				lines it has
@@ -69,6 +81,122 @@ proc tables_fit uses rbx rsi,image,bytes,print,room
 	ret
 endp
 
+proc tables_sound uses rbx rsi rdi r12,image,own,pictures
+	mov rbx,rcx
+	mov r12d,r8d
+	xor eax,eax
+.sort:
+	cmp dword [rdx+TableImage.counts+rax*4],0
+	je .had_none
+	cmp dword [rbx+TableImage.counts+rax*4],0
+	je .unsound
+.had_none:
+	inc eax
+	cmp eax,TABLE_SORTS
+	jb .sort
+	lea rdx,[rbx+sizeof.TableImage]
+	fastcall tables_place,rbx,rdx,addr sound_tables
+	; What a move fires is a kind; one that goes back does not go back past the first.
+	mov rsi,qword [sound_tables+Tables.moves]
+	mov edi,dword [sound_tables+Tables.move_count]
+	xor ecx,ecx
+.move:
+	cmp ecx,edi
+	jae .moved
+	mov eax,[rsi+Move.action]
+	cmp eax,MOVE_FIRE
+	jne .not_fire
+	mov eax,[rsi+Move.target]
+	cmp eax,dword [sound_tables+Tables.kind_count]
+	jae .unsound
+	jmp .next_move
+.not_fire:
+	cmp eax,MOVE_AGAIN
+	jne .next_move
+	cmp [rsi+Move.target],ecx
+	ja .unsound
+.next_move:
+	add rsi,sizeof.Move
+	inc ecx
+	jmp .move
+.moved:
+	; The last move ends a program, so that none runs off the table.
+	test edi,edi
+	jz .kinds
+	cmp dword [rsi-sizeof.Move+Move.action],MOVE_HOLD
+	jne .unsound
+	cmp dword [rsi-sizeof.Move+Move.ticks],0
+	jne .unsound
+.kinds:
+	mov rsi,qword [sound_tables+Tables.kinds]
+	mov ecx,dword [sound_tables+Tables.kind_count]
+.kind:
+	test ecx,ecx
+	jz .waves
+	cmp [rsi+Kind.first],edi
+	jae .unsound
+	cmp [rsi+Kind.wounded_first],edi
+	jae .unsound
+	cmp [rsi+Kind.picture],r12d
+	jae .unsound
+	mov eax,dword [sound_tables+Tables.kind_count]
+	cmp [rsi+Kind.link_kind],eax
+	jae .unsound
+	cmp [rsi+Kind.tail_kind],eax
+	jae .unsound
+	add rsi,sizeof.Kind
+	dec ecx
+	jmp .kind
+.waves:
+	mov rsi,qword [sound_tables+Tables.waves]
+	mov ecx,dword [sound_tables+Tables.wave_count]
+	mov eax,dword [sound_tables+Tables.kind_count]
+.wave:
+	test ecx,ecx
+	jz .sounds
+	cmp [rsi+Wave.kind],eax
+	jae .unsound
+	add rsi,sizeof.Wave
+	dec ecx
+	jmp .wave
+.sounds:
+	; Each sound begins where the ones before it end, and all of them come to what the image says.
+	mov rsi,qword [sound_tables+Tables.sounds]
+	mov ecx,dword [sound_tables+Tables.sound_count]
+	xor eax,eax
+.sound:
+	test ecx,ecx
+	jz .sounded
+	cmp [rsi+Recipe.first],eax
+	jne .unsound
+	cmp dword [rsi+Recipe.samples],0
+	je .unsound
+	add eax,[rsi+Recipe.samples]
+	jc .unsound
+	add rsi,sizeof.Recipe
+	dec ecx
+	jmp .sound
+.sounded:
+	cmp eax,[rbx+TableImage.samples]
+	jne .unsound
+	mov rsi,qword [sound_tables+Tables.says]
+	mov ecx,dword [sound_tables+Tables.say_count]
+.say:
+	test ecx,ecx
+	jz .all_sound
+	cmp dword [rsi+Say.count],SAY_LETTERS
+	ja .unsound
+	add rsi,sizeof.Say
+	dec ecx
+	jmp .say
+.all_sound:
+	mov eax,1
+	ret
+.unsound:
+	xor eax,eax
+	ret
+endp
+
 proc tables_place image,address,block
 	xor eax,eax
 	lea r10,[tables_sizes]
@@ -118,4 +246,6 @@ proc tables_counted image
 endp
 
 section '.data$reload' data readable writeable align 8
+sound_tables:
+	rb sizeof.Tables
 tables_sizes dd sizeof.Move,sizeof.Kind,sizeof.Style,sizeof.Recipe,sizeof.Wave,sizeof.Stem,sizeof.Say

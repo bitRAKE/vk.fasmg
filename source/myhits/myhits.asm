@@ -16,6 +16,10 @@
 ;					program, and takes its tables again whenever
 ;					build\myhits_tables.bin changes: tools\watch.ps1
 ;					makes that file anew when tables.inc is saved
+;	build\myhits.exe --record	the same, and every frame's controls go to
+;					build\myhits_last.run as it is played
+;	build\myhits.exe --replay	that run again, from the record, and then on from
+;					where it ended, in the player's hands
 ;	build\myhits.exe --self-test	a scripted run of four games, every claim checked
 ;
 ; Its window has no caption. While it plays the pointer is the crosshair and
@@ -258,6 +262,10 @@ proc reload_tables uses rbx rsi rdi,name
 	add eax,TABLE_STEMS*MUSIC_SAMPLES
 	cmp eax,BANK_ROOM
 	ja .other
+	; And nothing in it points outside it: the device would read what is not there.
+	fastcall tables_sound,addr taken_image,addr game_image,ART_FRAMES
+	test eax,eax
+	jz .other
 	; The same as is in force, byte for byte, is no change.
 	mov rsi,[live_image]
 	mov eax,[rsi+TableImage.bytes]
@@ -271,28 +279,11 @@ proc reload_tables uses rbx rsi rdi,name
 	mov eax,TABLES_SAME
 	ret
 .take:
-	fastcall audio_hush
-	lea rsi,[taken_image]
-	lea rdi,[kept_image]
-	mov ecx,ebx
-	rep movsb
-	mov esi,[dispatch_count]
-	fastcall lay_tables,addr kept_image
+	fastcall take_tables,addr taken_image,rbx
 	test eax,eax
 	jz .lost
-	fastcall machine_serial_open
-	test eax,eax
-	jz .lost
-	fastcall machine_dispatch,[render_pipeline],[bank_groups]
-	fastcall machine_serial_close
-	test eax,eax
-	jz .lost
-	fastcall invalidate_buffer,addr bank_buffer
-	mov eax,[dispatch_count]
-	sub eax,esi
-	add [reload_dispatches],eax
-	mov [dispatch_count],esi
-	fastcall play_music
+	; A run that is being recorded has them in its record, whole.
+	fastcall record_image,addr kept_image,rbx
 	or [reload_owed],ROOT_RELOADED
 	inc [reloads_taken]
 	add [reload_bytes],ebx
@@ -312,6 +303,193 @@ proc reload_tables uses rbx rsi rdi,name
 	mov [app_io_failed],1
 	fastcall PostQuitMessage,0
 	mov eax,TABLES_BROKEN
+	ret
+endp
+
+; An image that fits, in place of the one in force: kept, laid down and
+; settled, the bank rendered again from it, and the music begun again.
+; Returns zero if the device would not.
+proc take_tables uses rbx rsi rdi,image,bytes
+	mov rsi,rcx
+	mov ebx,edx
+	fastcall audio_hush
+	lea rdi,[kept_image]
+	mov ecx,ebx
+	rep movsb
+	mov esi,[dispatch_count]
+	fastcall lay_tables,addr kept_image
+	test eax,eax
+	jz .done
+	fastcall machine_serial_open
+	test eax,eax
+	jz .done
+	fastcall machine_dispatch,[render_pipeline],[bank_groups]
+	fastcall machine_serial_close
+	test eax,eax
+	jz .done
+	fastcall invalidate_buffer,addr bank_buffer
+	mov eax,[dispatch_count]
+	sub eax,esi
+	add [reload_dispatches],eax
+	mov [dispatch_count],esi
+	fastcall play_music
+	mov eax,1
+.done:
+	ret
+endp
+
+; A run, kept: what the device was given in every frame, as it was given it,
+; and whatever tables were taken on the way. A world that is the same for
+; the same controls needs nothing else to be the same run again. Each frame
+; goes to the file as it is played, so that the record of a run that ended
+; badly has its last frame in it.
+;
+;	a head: 'MRUN', a version, the print of the tables' names, ticks a second
+;	a frame: its ticks, where it was steered, where it aimed, what was held
+;		and pressed, and its flags
+;	tables: RUN_IMAGE, how many bytes, and the image
+RUN_VERSION := 1
+RUN_HEAD := 16
+RUN_FRAME := 32
+RUN_IMAGE := 0FFFFFFFFh
+RUN_ROOM := 16*1024*1024		; the longest record that is played back: some hours
+
+proc record_start name
+	fastcall file_begin,rcx
+	mov [run_file],rax
+	test rax,rax
+	jz .done
+	fastcall file_more,rax,addr run_head,RUN_HEAD
+.done:
+	ret
+endp
+
+proc record_frame
+	cmp [run_file],0
+	je .done
+	mov eax,[root+Root.ticks]
+	mov [run_record],eax
+	mov rax,qword [root+Root.move]
+	mov qword [run_record+4],rax
+	mov rax,qword [root+Root.aim]
+	mov qword [run_record+12],rax
+	mov eax,[root+Root.held]
+	mov [run_record+20],eax
+	mov eax,[root+Root.pressed]
+	mov [run_record+24],eax
+	mov eax,[root+Root.flags]
+	mov [run_record+28],eax
+	fastcall file_more,[run_file],addr run_record,RUN_FRAME
+.done:
+	ret
+endp
+
+proc record_image uses rbx,image,bytes
+	cmp [run_file],0
+	je .done
+	mov rbx,rcx
+	mov [run_mark+4],edx
+	fastcall file_more,[run_file],addr run_mark,8
+	mov r8d,[run_mark+4]
+	add r8d,3
+	and r8d,not 3
+	fastcall file_more,[run_file],rbx,r8
+.done:
+	ret
+endp
+
+proc record_stop
+	cmp [run_file],0
+	je .done
+	fastcall file_done,[run_file]
+	mov [run_file],0
+.done:
+	ret
+endp
+
+; A record to play back: nonzero if there is one, and it is of this game's names.
+proc replay_start name
+	fastcall file_take,rcx,addr run_taken,RUN_ROOM
+	cmp eax,RUN_HEAD
+	jb .none
+	mov [run_end],eax
+	lea rdx,[run_taken]
+	cmp dword [rdx],'MRUN'
+	jne .none
+	cmp dword [rdx+4],RUN_VERSION
+	jne .none
+	mov eax,[rdx+8]
+	cmp eax,[run_head+8]
+	jne .none
+	mov [run_at],RUN_HEAD
+	mov [replaying],1
+	mov [replayed],1
+	mov eax,1
+	ret
+.none:
+	xor eax,eax
+	ret
+endp
+
+; The record's next frame into Root, tables that were taken before it taken
+; again first. Returns zero when the record is over, or cannot be gone on with.
+proc replay_frame uses rbx rsi
+.next:
+	mov eax,[run_at]
+	lea rsi,[run_taken]
+	add rsi,rax
+	add eax,8
+	cmp eax,[run_end]
+	ja .over
+	cmp dword [rsi],RUN_IMAGE
+	jne .frame
+	mov ebx,[rsi+4]
+	lea eax,[rbx+3]
+	and eax,not 3
+	add eax,8
+	add eax,[run_at]
+	cmp eax,[run_end]
+	ja .over
+	mov [run_at],eax
+	add rsi,8
+	; (Whatever the record says, nothing is laid down that would not be taken from a file.)
+	fastcall tables_fit,rsi,rbx,TABLE_PRINT,TABLE_ROOM
+	cmp eax,TABLES_FIT
+	jne .over
+	mov eax,[rsi+TableImage.samples]
+	add eax,TABLE_STEMS*MUSIC_SAMPLES
+	cmp eax,BANK_ROOM
+	ja .over
+	fastcall tables_sound,rsi,addr game_image,ART_FRAMES
+	test eax,eax
+	jz .over
+	fastcall take_tables,rsi,rbx
+	test eax,eax
+	jz .over
+	jmp .next
+.frame:
+	mov eax,[run_at]
+	add eax,RUN_FRAME
+	cmp eax,[run_end]
+	ja .over
+	mov [run_at],eax
+	mov rax,[rsi+4]
+	mov qword [root+Root.move],rax
+	mov rax,[rsi+12]
+	mov qword [root+Root.aim],rax
+	mov eax,[rsi+20]
+	mov [root+Root.held],eax
+	mov eax,[rsi+24]
+	mov [root+Root.pressed],eax
+	mov eax,[rsi+28]
+	mov [root+Root.flags],eax
+	mov ecx,[rsi]
+	fastcall machine_given,rcx
+	mov eax,1
+	ret
+.over:
+	mov [replaying],0
+	xor eax,eax
 	ret
 endp
 
@@ -379,6 +557,22 @@ proc play_frame uses rbx
 	fastcall machine_await
 	test eax,eax
 	jz .stopped
+	; A run being played back: the frame is as the record has it.
+	cmp [replaying],0
+	je .live
+	fastcall replay_frame
+	test eax,eax
+	jnz .given
+	; The record is over. A check ends there; a game goes on from there, in
+	; the player's hands.
+	cmp [test_mode],0
+	je .handed
+	mov eax,3
+	ret
+.handed:
+	mov dword [root+Root.flags],0
+	fastcall QueryPerformanceCounter,addr clock_last
+.live:
 	test dword [root+Root.flags],ROOT_SCRIPTED
 	jz .sample
 	; The script, in frames of eight ticks. The first game: up out of the way,
@@ -457,6 +651,7 @@ proc play_frame uses rbx
 .sample:
 	fastcall machine_sample
 	fastcall reload_flags
+	fastcall record_frame
 	; The beat goes down with the controls: how lately the music struck one,
 	; so the picture can strike with it. A scripted run hears none.
 	mov dword [root+Root.beat],0
@@ -472,6 +667,9 @@ proc play_frame uses rbx
 	mulss xmm0,xmm1
 	mulss xmm0,xmm1
 	movss dword [root+Root.beat],xmm0
+	jmp .open
+.given:
+	mov dword [root+Root.beat],0
 .open:
 	fastcall machine_open
 	cmp eax,1
@@ -587,6 +785,13 @@ proc consume_events uses rbx rsi rdi,events
 .counted:
 	cmp [test_mode],0
 	je .done
+	; Every frame's sum of the world, folded into one: what a run played back
+	; from its record is held to, and held to nothing else.
+	imul eax,[frames_sum],16777619
+	xor eax,[rbx+Events.debug+12]
+	mov [frames_sum],eax
+	cmp [replayed],0
+	jne .done
 	; What this frame asked of the voices, and of the music: kept, for the
 	; run to be played back from.
 	cmp esi,SCRIPT_FRAMES
@@ -1288,6 +1493,20 @@ proc check_fit expected
 	ret
 endp
 
+; And whether tables_sound says of the image in taken_image, as it has just
+; been spoiled, what it should: ECX nonzero if it is still sound.
+proc check_sound expected
+	mov [fit_expected],ecx
+	fastcall tables_sound,addr taken_image,addr game_image,ART_FRAMES
+	cmp eax,[fit_expected]
+	je .right
+	xor esi,esi
+	fail 32
+.right:
+	fastcall take_own
+	ret
+endp
+
 proc take_own uses rsi rdi
 	lea rsi,[game_image]
 	lea rdi,[taken_image]
@@ -1298,7 +1517,7 @@ endp
 
 ; 32, in part, before the run: an image that is not whole is not taken for
 ; one, and a whole one that is not this game's is told from one that is.
-proc check_fits uses rsi
+proc check_fits uses rsi rdi
 	fastcall take_own
 	fastcall check_fit,TABLES_FIT
 	; Not an image at all; one whose tables do not come to what it says; and
@@ -1316,7 +1535,41 @@ proc check_fits uses rsi
 	; And a whole one of these names is too much when there is less room than it needs.
 	fastcall tables_fit,addr taken_image,sizeof.TableImage+TABLE_IMAGE_BYTES,TABLE_PRINT,TABLE_IMAGE_BYTES-4
 	cmp eax,TABLES_OTHER
-	je .right
+	jne .mistaken
+	; And a whole image of these names is still not taken if anything in it
+	; points outside it. The game's own does not. Then: a kind whose moves
+	; begin past the last move; one whose picture is no picture; a squad of
+	; a kind there is not; a move that goes back past the first; a move that
+	; fires a kind there is not; a sound that does not begin where the ones
+	; before it end; moves that do not end as a program ends; and squads,
+	; which the game has, gone altogether.
+	fastcall check_sound,1
+	mov dword [taken_image+IMAGE_KINDS+sizeof.Kind+Kind.first],TABLE_MOVES
+	fastcall check_sound,0
+	mov dword [taken_image+IMAGE_KINDS+sizeof.Kind+Kind.picture],ART_FRAMES
+	fastcall check_sound,0
+	mov dword [taken_image+IMAGE_WAVES+Wave.kind],TABLE_KINDS
+	fastcall check_sound,0
+	mov dword [taken_image+sizeof.TableImage+Move.action],MOVE_AGAIN
+	mov dword [taken_image+sizeof.TableImage+Move.target],1
+	fastcall check_sound,0
+	mov dword [taken_image+sizeof.TableImage+Move.action],MOVE_FIRE
+	mov dword [taken_image+sizeof.TableImage+Move.target],TABLE_KINDS
+	fastcall check_sound,0
+	inc dword [taken_image+IMAGE_SOUNDS+Recipe.first]
+	fastcall check_sound,0
+	mov dword [taken_image+IMAGE_KINDS-sizeof.Move+Move.ticks],1
+	fastcall check_sound,0
+	; (The image with its squads taken out of it, and otherwise well made:
+	; what follows them moved up, and its counts and its length to match.)
+	lea rsi,[taken_image+IMAGE_WAVES+TABLE_WAVES*sizeof.Wave]
+	lea rdi,[taken_image+IMAGE_WAVES]
+	mov ecx,TABLE_STEMS*sizeof.Stem+TABLE_SAYS*sizeof.Say
+	rep movsb
+	mov dword [taken_image+TableImage.counts+4*4],0
+	sub dword [taken_image+TableImage.bytes],TABLE_WAVES*sizeof.Wave
+	fastcall check_sound,0
+	jmp .right
 .mistaken:
 	xor esi,esi
 	fail 32
@@ -1598,14 +1851,14 @@ endp
 
 ; What every frame of the run asked of the voices and of the music, for the
 ; proof runner to play back into a file (tools\mix.cs).
-proc write_heard uses rbx
-	fastcall file_put,<W,'build\myhits_game.heard.bin'>,0,0
+proc write_heard uses rbx rsi
+	fastcall file_begin,<W,'build\myhits_game.heard.bin'>
+	mov rsi,rax
+	fastcall file_more,rsi,addr heard_head,HEARD_HEAD
 	mov ebx,eax
-	fastcall file_more,addr heard_head,HEARD_HEAD
+	fastcall file_more,rsi,addr heard_log,SCRIPT_FRAMES*HEARD_BYTES
 	and ebx,eax
-	fastcall file_more,addr heard_log,SCRIPT_FRAMES*HEARD_BYTES
-	and ebx,eax
-	fastcall file_done
+	fastcall file_done,rsi
 	test eax,ebx
 	jnz .done
 	mov [app_io_failed],1
@@ -1615,6 +1868,7 @@ endp
 
 ; A thousand frames by the script, then the totals no frame could show alone.
 proc scripted_run uses rbx rsi
+	fastcall record_start,addr run_test_name
 	fastcall write_bank
 	fastcall check_fits
 	mov rcx,[live_image]
@@ -1638,6 +1892,7 @@ proc scripted_run uses rbx rsi
 	jz .broken
 	fastcall machine_write_measure
 	fastcall write_heard
+	fastcall record_stop
 	mov esi,SCRIPT_FRAMES
 	; 4 and 9, in part: the rises and falls of rank were seen, and the head did die.
 	cmp [rise_checked],0
@@ -1789,11 +2044,36 @@ proc scripted_run uses rbx rsi
 	mov ebx,eax
 	lea rcx,[report_text]
 	lea rcx,[rcx+rbx*2]
-	fastcall wsprintfW,rcx,<W,'offers=%u,%u,%u,%u,%u,%u,%u,%u',13,10,'played=%u,%u,%u,%u,%u,%u,%u,%u',13,10,'banks=%08X,%08X,%08X,%08X,%08X,%08X,%08X,%08X,%08X',13,10>, \
+	fastcall wsprintfW,rcx,<W,'offers=%u,%u,%u,%u,%u,%u,%u,%u',13,10,'played=%u,%u,%u,%u,%u,%u,%u,%u',13,10,'banks=%08X,%08X,%08X,%08X,%08X,%08X,%08X,%08X,%08X',13,10,'frames_sum=%08X',13,10>, \
 		[reload_results],[reload_results+4],[reload_results+8],[reload_results+12],[reload_results+16],[reload_results+20],[reload_results+24],[reload_results+28], \
 		[reload_played],[reload_played+4],[reload_played+8],[reload_played+12],[reload_played+16],[reload_played+20],[reload_played+24],[reload_played+28], \
-		[bank_at_start],[reload_banks],[reload_banks+4],[reload_banks+8],[reload_banks+12],[reload_banks+16],[reload_banks+20],[reload_banks+24],[reload_banks+28]
+		[bank_at_start],[reload_banks],[reload_banks+4],[reload_banks+8],[reload_banks+12],[reload_banks+16],[reload_banks+20],[reload_banks+24],[reload_banks+28],[frames_sum]
 	add eax,ebx
+	fastcall machine_write_report,rax
+	ret
+endp
+
+; The scripted run again, from its record and not from its script: every
+; frame as the record has it, until the record is over. What it comes to is
+; one number, made of every frame's sum of the world; the proof runner holds
+; it to the scripted run's own.
+proc replayed_run
+.frame:
+	fastcall play_frame
+	cmp eax,3
+	je .over
+	test eax,eax
+	jnz .frame
+	mov [app_io_failed],1
+.over:
+	fastcall machine_drain
+	test eax,eax
+	jnz .report
+	mov [app_io_failed],1
+.report:
+	fastcall wsprintfW,addr report_text,<W,'proof=game_replay',13,10,'failure=%u',13,10,'frames=%u',13,10,'events=%u',13,10,'frames_sum=%08X',13,10, \
+		'caps=%u',13,10,'required=%u',13,10,'gpu_error=%d',13,10,'failure_stage=%u',13,10>, \
+		[proof_failure],[root+Root.frame],[events_seen],[frames_sum],[active_caps],CAP_REQUIRED,[gpu_error],[failure_stage]
 	fastcall machine_write_report,rax
 	ret
 endp
@@ -1973,6 +2253,17 @@ proc mainCRTStartup
 .unmeasured:
 	cmp [test_mode],0
 	je .show
+	; A check is the scripted run; or, asked to, that run again from the
+	; record the scripted run left.
+	fastcall command_option,<W,'--replay'>
+	test eax,eax
+	jz .scripted
+	fastcall replay_start,addr run_test_name
+	test eax,eax
+	jz .failed
+	fastcall replayed_run
+	jmp .finish
+.scripted:
 	fastcall snapshot_start
 	fastcall scripted_run
 	jmp .finish
@@ -1995,6 +2286,18 @@ proc mainCRTStartup
 	fastcall command_option,<W,'--watch'>
 	mov [watching],eax
 	mov [machine_stays],eax
+	; Played back from the last record, if there is one; or recorded.
+	fastcall command_option,<W,'--replay'>
+	test eax,eax
+	jz .not_replayed
+	fastcall replay_start,addr run_name
+	jmp .unrecorded
+.not_replayed:
+	fastcall command_option,<W,'--record'>
+	test eax,eax
+	jz .unrecorded
+	fastcall record_start,addr run_name
+.unrecorded:
 	cmp [start_whole],0
 	je .placed
 	fastcall machine_fullscreen
@@ -2046,6 +2349,7 @@ proc mainCRTStartup
 .failed:
 	mov [app_io_failed],1
 .finish:
+	fastcall record_stop
 	cmp [test_mode],0
 	jne .measured
 	cmp [device],0
@@ -2123,11 +2427,17 @@ iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,l
 	fired_mark,nova_frame,nova_score,nova_kills,score_before,kills_before,struck_mark,last_music_faults, \
 	start_whole,last_counts,stage_ship_y,stage_phase,stage_round,stage_followed,stage_hurts,stage_recoiled,room_occupied,room_refused, \
 	sum_first,sum_second,sum_third,sum_fourth,stage_score,stage_kills,stage_rank, \
-	watching,watch_result,reload_owed,reloads_taken,reloads_refused,reload_bytes,reload_dispatches,home_groups,bank_groups,fit_expected,sum_at_start,bank_at_start,music_at_start, \
+	replaying,replayed,frames_sum,run_at,run_end,watching,watch_result,reload_owed,reloads_taken,reloads_refused,reload_bytes,reload_dispatches,home_groups,bank_groups,fit_expected,sum_at_start,bank_at_start,music_at_start, \
 	lock_x,lock_y,fire_x,fire_y
 	name dd 0
 end iterate
 
+run_file dq 0				; the record being written, if one is
+run_head dd 'MRUN',RUN_VERSION,TABLE_PRINT,TICK_RATE
+run_mark dd RUN_IMAGE,0
+run_record rd 8
+run_name GLOBWSTR 'build\myhits_last.run',0
+run_test_name GLOBWSTR 'build\myhits_game.run',0
 reload_results rd 8			; what each of the script's offers of tables came to,
 reload_sums rd 8			; the sum of the image then in force,
 reload_counts rd 8			; what its tables' lengths come to,
@@ -2159,6 +2469,10 @@ TABLE_ROOM := 2 * TABLE_IMAGE_BYTES + 4096
 HOME_ROOM := sizeof.GameWorld + TABLE_ROOM	; the header and the tables, in whole words
 assert HOME_ROOM and 3 = 0
 TAKEN_ROOM := 2 * (sizeof.TableImage + TABLE_ROOM)	; a file up to this is looked at; a larger one is not there
+; Where three of the tables are in the game's own image, for the checks that spoil one.
+IMAGE_KINDS := sizeof.TableImage + TABLE_MOVES * sizeof.Move
+IMAGE_SOUNDS := IMAGE_KINDS + TABLE_KINDS * sizeof.Kind + TABLE_STYLES * sizeof.Style
+IMAGE_WAVES := IMAGE_SOUNDS + TABLE_SOUNDS * sizeof.Recipe
 BANK_ROOM := 2 * BANK_SAMPLES + 2 * SOUND_RATE + TABLE_STEMS * MUSIC_SAMPLES	; the sounds, then the stems
 
 section '.bss$game_tables' readable writeable align 16
@@ -2166,6 +2480,7 @@ live_tables rb sizeof.Tables		; where the CPU reads each table of the image in f
 taken_image rb TAKEN_ROOM		; what a file held
 kept_image rb TAKEN_ROOM		; and what was taken from one, which is then the image in force
 heard_log rb SCRIPT_FRAMES*HEARD_BYTES
+run_taken rb RUN_ROOM			; a record being played back
 
 section '.rdata$game_spirv' data readable align 4
 iterate <name,module>, develop_code,develop, chart_code,chart, census_code,census, settle_code,settle, begin_code,begin, direct_code,direct, update_code,update, \

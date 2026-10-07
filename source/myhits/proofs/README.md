@@ -526,6 +526,9 @@ build\myhits.exe --fullscreen
 build\myhits.exe --self-test
 rem Change the tables under a running game (see "Reloading", below):
 powershell -File source\myhits\tools\watch.ps1 -Play
+rem Keep a run as it is played; play it back, and go on from where it ended:
+build\myhits.exe --record
+build\myhits.exe --replay
 rem The scripted run as it sounded, and how loud everything in it is:
 build\myhits_run.wav
 build\myhits_checks\default\game\run.md
@@ -698,11 +701,12 @@ short fourth, like the first, for the tables to be changed under.
 | 29 | A tick is within its budget | Held by the proof runner, from what the game measured of itself: the device's own clock, stamped after every pass, and its mean over the run for each of a tick's five passes held to a budget several times what it was when the budget was written. Under validation the numbers are shown and not held |
 | 30 | The level's distance is exact however far it has come | Asked by the device at start, of the functions the backdrop is drawn by, with the level three thousand million units on: five months at full pace. The layers that repeat are, to the bit, what they are at the start. The layers that do not still move as the level does: twenty-five units more of travel is the far layer one unit to the left, and ten is the ridge three. Every speck is where it would be |
 | 31 | A pause is in words | Held on the pictures, by the proof runner: where the line that says what the keys do is drawn, the frame drawn as a paused one has letters, pale on the dimmed picture, and a frame that is not paused has none |
-| 32 | The tables are taken again while the game runs | Images of the tables are offered from files, between frames, as a watched game is offered them. One with the game's names and a few things changed (`07_game\tables_alt.asm`: a first squad of five and not three, a squad more, a shot's sound twice as long) is taken: the frame after says so; the device's own sum of the tables it holds is the file's, and what it makes of how many lines each table has is the file's too; the bank is another bank, in which the music is sample for sample what it was, further in; and the music is playing from there. One with a kind the game was not built with (`07_game\tables_bad.asm`) is refused, which is said, and nothing changes. The game's own, by the watcher: the device holds it and the bank is to the bit the bank made at start. The watcher again: the file is as it was and is not looked into. The game's own outright: no change. All of that is in the first game's first frames, before anything has come, and the three games after it sum to what they always did. The fourth game is where there is something to let go of. The changed image is taken in the very tick the first squad is due: the squad loses none to that. With two of its five out, the game's own: within the frame the two are gone and the squad has begun again, as three. With those three out and their squad done, the changed image again: the three are gone, the squad has begun again, and five come. Before the run, images spoiled five ways are each told for what they are: not an image, tables that do not come to what it says, a file shorter than it says, other names, too large. And on the pictures: the frame after a taking has words along its top, and a frame long before has none |
+| 32 | The tables are taken again while the game runs | Images of the tables are offered from files, between frames, as a watched game is offered them. One with the game's names and a few things changed (`07_game\tables_alt.asm`: a first squad of five and not three, a squad more, a shot's sound twice as long) is taken: the frame after says so; the device's own sum of the tables it holds is the file's, and what it makes of how many lines each table has is the file's too; the bank is another bank, in which the music is sample for sample what it was, further in; and the music is playing from there. One with a kind the game was not built with (`07_game\tables_bad.asm`) is refused, which is said, and nothing changes. The game's own, by the watcher: the device holds it and the bank is to the bit the bank made at start. The watcher again: the file is as it was and is not looked into. The game's own outright: no change. All of that is in the first game's first frames, before anything has come, and the three games after it sum to what they always did. The fourth game is where there is something to let go of. The changed image is taken in the very tick the first squad is due: the squad loses none to that. With two of its five out, the game's own: within the frame the two are gone and the squad has begun again, as three. With those three out and their squad done, the changed image again: the three are gone, the squad has begun again, and five come. Before the run, images spoiled five ways are each told for what they are: not an image, tables that do not come to what it says, a file shorter than it says, other names, too large. And a whole image of the game's names is still refused if anything in it points outside it: the game's own does not, and eight spoiled ones do, by a kind whose moves begin past the last, a picture that is none, a squad of no kind, a move that goes back past the first, a move that fires no kind, a sound that does not begin where the ones before it end, moves that do not end as a program ends, and a table gone altogether. And on the pictures: the frame after a taking has words along its top, and a frame long before has none |
 | 33 | The run can be listened to, and nothing in it is out of line | Held by the proof runner. The scripted run keeps what every frame asked of the voices and of the music, and writes out the sounds as the device rendered them. [mix.cs](../tools/mix.cs) plays the first three games back into `build\myhits_run.wav` the way `audio.inc` would: sixteen voices in turn, a sound's level by how many asked, its place by where it happened, its pitch a little off, the stems coming and going with how much is happening. Every sound the run asked for is in what was kept; the mix's level is between 40 and 6 decibels under all a speaker goes to; fewer than one sample in ten thousand is louder than that, and none by three decibels; and no sound's level is more than twelve decibels from the middle of them. `run.md`, beside the run's pictures, is the table |
+| 34 | A run that was recorded is the same run played back | Held by the proof runner. As the scripted run goes, every frame's ticks, steering, aim, buttons and flags go to a file, and so do the tables it takes on the way, whole: 70 KB for 1,330 frames and five takings. The game is then run from that file and not from its script. Every frame's sum of the world is folded into one number in each run, and the two numbers are the same |
 
 Last result here, GTX 1080 Ti, default and validation alike: all
-thirty-three hold. A tick costs the device 62 microseconds: 15 for the director, 8 for
+thirty-four hold. A tick costs the device 62 microseconds: 15 for the director, 8 for
 the bodies, 31 for the shots, 4 for the struck, 4 for the particles. A
 picture, at the unseen window's 960 by 540, costs 103, nearly all of it the
 backdrop. (Of a device left idle. One just played on is a third quicker in
@@ -723,12 +727,28 @@ watcher that forgets what it saw (9); a bank not rendered again, music not
 begun again, voices not stopped first, and the same tables taken for a
 change (11). In the fourth: squads asked for in the tick the tables are
 taken, which costs the squad its first (1272); bodies not let go, and a
-squad not brought again (1273).
+squad not brought again (1273). And eight more before the run, one for each
+way an image can point outside itself: with any one of those questions not
+asked, a spoiled image passes for a sound one.
 
 **Claim 33's checks bite.** A blast four times as loud stands 15.9 dB from
 the rest and cuts off 2,672 samples; a bass four times as loud cuts off
 52,368; and a run that keeps only every other frame has 95 of its 186
 sounds. Each fails it.
+
+**Claim 34's checks bite.** Presses not played back, tables in the record
+not taken again, an aim not recorded, and one frame of 1,330 not recorded:
+each comes to another number, the last to another count of frames too.
+
+**What 34 cannot hold.** That a run somebody played comes back: the script's
+frames are all of eight ticks and none of them paused, and a played run's
+are of none, one, two or more as the clock has it. The record keeps every
+frame, the empty ones too, so that nothing has to be argued; but it has not
+been seen.
+
+- [ ] `build\myhits.exe --record`, play a minute, be hurt, end it with Esc.
+  `build\myhits.exe --replay`: the same minute, the same hurt, and then the
+  ship is yours again where the record stopped.
 
 **What 33 cannot hold.** That the mix is what XAudio2 plays: `mix.cs` is
 `audio.inc`'s rules told a second time, and nothing holds the one to the
@@ -756,7 +776,9 @@ of what that left behind. So, since then: a change that would leave the
 device with garbage is reasoned about and not run, and the counts' check is
 bitten instead by counts that are valid and wrong; the harness deletes the
 last report before it runs anything; and a program that dies on the device
-is not run again to see.
+is not run again to see. And the game itself now asks first: no image is
+laid down, from a file or from a record, until `tables_sound` has found
+that nothing in it points outside it.
 
 **Finding: a voice is emptied when the engine comes round to it.** Stopped,
 emptied, given the music again and started, each stem's voice was asked at

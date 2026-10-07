@@ -15,7 +15,9 @@
 ;
 ; machine_sample pays real time out in ticks, TICK_RATE a second: a program
 ; that simulates runs its passes Root.ticks times in the frame, which may be
-; none, and draws its world Root.blend of the way between the last two.
+; none, and draws its world Root.blend of the way between the last two. A
+; program that has a frame's ticks and controls from somewhere else, a record
+; of a run, fills Root with them and calls machine_given in its place.
 ;
 ; What a frame costs can be measured: machine_measure before the first frame,
 ; machine_stamp with a number of the program's choosing after each thing to
@@ -831,7 +833,15 @@ proc machine_sample uses rbx
 	fastcall merge_presses,rbx
 	ret
 .scripted:
-	mov eax,[script_ticks]
+	fastcall machine_given,[script_ticks]
+	ret
+endp
+
+; A frame whose clock is given and not read: ECX the ticks it runs. The
+; picture shows the last of them. For a scripted run, and for a run played
+; back from a record of its controls, which a program fills Root with itself.
+proc machine_given ticks
+	mov eax,ecx
 	mov [root+Root.ticks],eax
 	mov dword [root+Root.blend],1.0
 	add [ticks_run],rax
