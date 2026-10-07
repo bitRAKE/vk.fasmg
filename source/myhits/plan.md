@@ -365,6 +365,11 @@ buttons. Rumble goes back out from the events.
 
 ## Files
 
+What is not the game's alone moved to [source\common](../common/README.md)
+when plan 2 began: of the files below, everything but the proofs, the art
+and its tools, `tables.asm`, `backdrop.slang` and the game itself. The table
+words are there too; the game's `tables.inc` keeps its tables.
+
 | File | Owns | State |
 | --- | --- | --- |
 | `shared.inc`, `shared.asm` | The boundary blocks; the generated shader header | Built |
@@ -384,9 +389,10 @@ buttons. Rumble goes back out from the events.
 | `audio.inc`, `sounds.slang` | XAudio2's engine and voices; the sounds and the music rendered on the device | Built; proved by 06 and 07 |
 | `myhits.asm`, `myhits.slang` | The game | Playable: squads, chains, hostile fire, rank, lives. No HUD yet |
 
-One addition went into `examples\common`: device-local buffers in the pools,
-for the world. One is still to come: a present-mode choice in
-`vulkan_wsi.inc` for a `--low-latency` switch. The programs link `xinput.lib`.
+Nothing of this is in `examples\common`: for a while device-local buffers
+were added to its pools, and they are taken out again. The machine has its
+own memory, in `source\common\memory.inc`, and plan 2 gives it its own
+device and presentation. The programs link `xinput.lib`.
 
 Build order: assemble `shared.asm` to write the header, compile and validate
 the shaders against it, assemble the program with the SPIR-V embedded.
@@ -452,8 +458,10 @@ they change a rule, into this plan.
    generous, how loud.
 
 After these the window was given its manners (no caption, the pointer kept
-inside while it plays, a pause, the whole monitor on F11), and what comes
-next is [plan2.md](plan2.md): milestones 8 to 13.
+inside while it plays, a pause, the whole monitor by default and as it was
+left after that), the layer moved to `source\common`, and charge, a dash and
+the first choreographed attack went in. What comes next is
+[plan2.md](plan2.md): milestones 8 to 13.
 
 ## Milestone 5 in detail
 
@@ -547,15 +555,12 @@ before, and event latency is measured rather than assumed; draws use Vulkan's
 raw indices and need no extra feature; the programs are assembly throughout,
 with no C++ bridge; and each proof fails by a numbered claim.
 
-Both branches changed `examples\common\vulkan_pools.inc`, differently, and
-the other also `vulkan_context.inc`. That is settled: this branch now carries
-the other's `create_buffer_domain` and both of its context switches, and the
-three shared files are the same in both. What still collides is the
-directory: both keep their work in `source\myhits\`.
-
-Read a second time the same day, after its seventh proof, for
-[plan2.md](plan2.md): what its playtests record, what is taken from it
-differently, and what is declined and why, are there.
+That reading was at the start. Since then it has been said plainly that the
+two are separate explorations, not candidates for one place: neither is to
+be chosen and neither need take anything from the other. This branch keeps
+to its own ideas, puts what it shares in `source\common`, and leaves
+`examples\common` as main has it. The ideas listed above were taken early
+and are this branch's now, in its own form.
 
 ## Risks
 

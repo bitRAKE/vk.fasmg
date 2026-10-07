@@ -270,6 +270,7 @@ shared KIND_RIDES,2			; it belongs to the level, and is carried at its pace
 shared KIND_FOLLOWS,4			; a segment: it goes where its head went (chains.slang)
 shared KIND_PICKUP,8			; a bonus: nothing hits it, and the ship takes it by touch
 shared KIND_KEEPS_UP,16			; going the other way it is mirrored, not turned on its head
+shared KIND_LOBBED,32			; a shot thrown over the field: it touches nothing on its way
 boundary Kind
 	u32 first			; its first move
 	u32 picture			; FRAME_

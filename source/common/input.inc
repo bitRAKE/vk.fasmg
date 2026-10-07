@@ -1,6 +1,7 @@
 ; The pad, when there is one: XInput's first. Its left stick and d-pad are
 ; Root.move, its right stick carries the crosshair, its buttons are the
-; BUTTON_ bits. machine_sample calls pad_sample after the keys and the mouse,
+; BUTTON_ bits: A or the right trigger fires, B or X is the second, the right
+; shoulder the third, Start is start. machine_sample calls pad_sample after the keys and the mouse,
 ; so a pad in use has the last word. (Rumble comes with the hits that earn it.)
 
 PAD_BUTTONS := 4			; XINPUT_STATE, by offset
@@ -14,6 +15,7 @@ PAD_DOWN := 2
 PAD_LEFT := 4
 PAD_RIGHT := 8
 PAD_START := 10h
+PAD_RIGHT_SHOULDER := 200h
 PAD_A := 1000h
 PAD_B := 2000h
 PAD_X := 4000h
@@ -104,7 +106,7 @@ proc pad_apply uses rbx,state
 		mov dword [root+Root.move+offset],value
 	.not_#bit:
 	end iterate
-	iterate <bit,button>, PAD_A,BUTTON_FIRE, PAD_B or PAD_X,BUTTON_SECOND, PAD_START,BUTTON_START
+	iterate <bit,button>, PAD_A,BUTTON_FIRE, PAD_B or PAD_X,BUTTON_SECOND, PAD_RIGHT_SHOULDER,BUTTON_THIRD, PAD_START,BUTTON_START
 		test eax,bit
 		jz .off_#button
 		or dword [root+Root.held],button

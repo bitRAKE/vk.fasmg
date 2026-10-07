@@ -4,15 +4,21 @@
 ;
 ;	build\myhits.exe		play: arrows or WASD or a pad move, Space or the
 ;					left button fires, Shift or the right button
-;					launches a pair of missiles at the crosshair,
-;					Enter begins again when a run is over; P pauses,
-;					F11 or Alt+Enter takes the whole monitor, Esc ends
-;	build\myhits.exe --fullscreen	the same, beginning with the whole monitor
-;	build\myhits.exe --self-test	a scripted run of two games, every claim checked
+;					launches a pair of missiles at the crosshair
+;					for a quarter of the charge, Ctrl or the
+;					middle button dashes for a fifth of it, Enter
+;					begins again when a run is over; P pauses, F11
+;					or Alt+Enter takes or gives back the whole
+;					monitor, Esc ends
+;	build\myhits.exe --windowed	the same, as a window whatever it was last
+;	build\myhits.exe --fullscreen	the same, over the whole monitor whatever it was last
+;	build\myhits.exe --self-test	a scripted run of three games, every claim checked
 ;
 ; Its window has no caption. While it plays the pointer is the crosshair and
 ; cannot leave; paused, or left for another program (which pauses it), the
 ; pointer is free and the window moves by a press and hold anywhere on it.
+; The first time it has the whole of its monitor; after that it is as it was
+; left, which the registry keeps.
 ;
 ; What the scripted run holds the game to is in proofs\README.md, under 07.
 MACHINE_NAME equ 'myhits'
@@ -32,15 +38,17 @@ HOSTILES := 384
 PARTICLES := 16384
 TRAILS := 32
 REQUESTS := 256
-INSTANCES := 160 + BODIES + 16 + 21 + 5 * 9
+INSTANCES := 160 + BODIES + 16 + PELLETS + HOSTILES + 21 + 8 + 5 * 9
 GAME_BYTES := 512
 POOL_BYTES := 8 + STYLE_LIMIT * 4
 WORLD_BYTES := GAME_BYTES + POOL_BYTES + 2 * BODIES * BODY_BYTES + BODIES * 4 + (TRAILS + 1) * TRAIL_POINTS * 8 + REQUESTS * REQUEST_BYTES + PARTICLES * PARTICLE_BYTES
 TICK_DISPATCHES := 5			; the director, the bodies, the shots, the struck, the particles
 STARTUP_DISPATCHES := PICTURES_PASSES + 2
 GAME_TICKS := 8				; a scripted frame of the game runs this many: it has far to go
-SCRIPT_FRAMES := 1000
+SCRIPT_FRAMES := 1250
 RESTART_FRAME := 400			; the script presses Enter here; the first game is over by then
+STAGE_FRAME := 1000			; and here: the second is over, and the third is on a bare stage
+assert STAGE_FRAME = 1000		; the script's frames of the third are written out from it too
 PAUSED_FRAME := 950			; and this frame's picture is a paused one's
 assert RESTART_FRAME = 400		; the script's later frames are written out from it
 public mainCRTStartup
@@ -189,7 +197,12 @@ proc play_frame uses rbx
 	; row; three frames of fire with RAPID in force, and three with SPREAD
 	; too; fire at the worm's head as it comes, which brings the companion;
 	; then four frames to the right, for it to follow. The crosshair stays
-	; where the companion's gun will be asked to point.
+	; where the companion's gun will be asked to point. The third, on a bare
+	; stage: a pair of missiles; a dash upward, through a shot set down in its
+	; way; down a little while the first diver fixes on the ship, and then
+	; still, to be caught; a dash downward once the second has locked, to
+	; get clear; and when the charge is nearly gone, a launch it can pay for
+	; and then a launch and a dash it cannot.
 	mov dword [root+Root.aim],1500.0
 	mov dword [root+Root.aim+4],300.0
 	mov dword [root+Root.move],0
@@ -197,7 +210,7 @@ proc play_frame uses rbx
 	mov dword [root+Root.held],0
 	mov dword [root+Root.pressed],0
 	mov eax,[root+Root.frame]
-	iterate <from,to,way>, 0,10,-1.0, 250,255,1.0, 401,403,-1.0
+	iterate <from,to,way>, 0,10,-1.0, 250,255,1.0, 401,403,-1.0, 1010,1010,-1.0, 1050,1053,1.0, 1125,1125,1.0
 		cmp eax,from
 		jb .still_#from
 		cmp eax,to
@@ -225,9 +238,13 @@ proc play_frame uses rbx
 	jne .unpaused
 	or dword [root+Root.flags],ROOT_PAUSED
 .unpaused:
-	cmp eax,RESTART_FRAME
-	jne .sample
-	mov dword [root+Root.pressed],BUTTON_START
+	iterate <when,button>, 400,BUTTON_START, 1000,BUTTON_START, 1003,BUTTON_SECOND, 1010,BUTTON_THIRD, \
+		1125,BUTTON_THIRD, 1200,BUTTON_SECOND, 1206,BUTTON_SECOND, 1212,BUTTON_THIRD
+		cmp eax,when
+		jne .unpressed_#when
+		mov dword [root+Root.pressed],button
+	.unpressed_#when:
+	end iterate
 .sample:
 	fastcall machine_sample
 	; The beat goes down with the controls: how lately the music struck one,
@@ -274,7 +291,11 @@ proc play_frame uses rbx
 	; over; and of the second game three volleys with RAPID and SPREAD, the
 	; nova going off, the shield about to take a rammer, and the worm's head
 	; under fire.
-	iterate when, 37,110,165,235,300,320,395,444,468,500,555,568,596,625,900,PAUSED_FRAME
+	; And of the third: the dash, through a shot; a diver's fix on the ship,
+	; shaking; its lock; its heavy shot on the way and the crosshairs fading;
+	; the burst; and the second's shot coming for where the ship no longer is.
+	iterate when, 37,110,165,235,300,320,395,444,468,500,555,568,596,625,900,PAUSED_FRAME, \
+		1011,1056,1066,1082,1091,1136
 		cmp dword [root+Root.frame],when
 		jne .no_#when
 		fastcall snapshot_take,when
@@ -743,12 +764,203 @@ proc consume_events uses rbx rsi rdi,events
 	mov [last_stopped],eax
 	mov eax,[rbx+Events.report+72]
 	mov [last_music_faults],eax
-	iterate <name,offset>, hurts_before,Events.reserved+24, rank_before,Events.rank, scroll_before,Events.reserved+40
+	cmp esi,STAGE_FRAME
+	jb .staged
+	fastcall check_stage,rbx,rsi
+.staged:
+	iterate <name,offset>, hurts_before,Events.reserved+24, rank_before,Events.rank, scroll_before,Events.reserved+40, \
+		last_asked,Events.reserved+44, last_counts,Events.report+80, stage_ship_y,Events.report+92
 		mov eax,[rbx+offset]
 		mov [name],eax
 	end iterate
 .done:
 	inc [events_seen]
+	ret
+endp
+
+; The third game's frames: RCX a frame's events, EDX which frame.
+proc check_stage uses rbx rsi rdi,events,which
+	mov rbx,rcx
+	mov esi,edx
+	; 24: charge is earned and spent. A new game has all of it. A pair of
+	; missiles costs a quarter. A dash costs a fifth, takes the ship exactly
+	; 320 the way it was going, and a shot it crosses on the way passes
+	; through it: nothing is lost. A shot that passes close and does not
+	; strike pays three hundredths, once. A kill pays six. With a quarter
+	; left a launch is paid for; with less, a launch and a dash are each
+	; refused, and nothing leaves and nothing moves.
+	at_frame STAGE_FRAME+2,Events.state,0,.charge_wrong
+	at_frame STAGE_FRAME+2,Events.lives,3,.charge_wrong
+	iterate <when,amount,fired,dashes,slipped,grazes,empties>, 2,charge_all,0,0,0,0,0, 6,charge_launched,2,0,0,0,0, 14,charge_dashed,2,1,1,0,0, \
+		36,charge_grazed,2,1,1,1,0, 204,charge_last,4,2,1,1,0, 210,charge_last,4,2,1,1,1, 216,charge_last,4,2,1,1,2
+		cmp esi,STAGE_FRAME+when
+		jne .not_#when
+		unless_near dword [rbx+Events.report+76],amount,charge_slack,.charge_wrong
+		cmp dword [rbx+Events.reserved+4],fired
+		jne .charge_wrong
+		mov eax,[rbx+Events.report+80]
+		and eax,0FFFFFFh
+		cmp eax,(dashes)+((slipped) shl 8)+((grazes) shl 16)
+		jne .charge_wrong
+		cmp byte [rbx+Events.report+85],empties
+		jne .charge_wrong
+	.not_#when:
+	end iterate
+	iterate <when,high>, 14,dash_up, 216,dash_down
+		cmp esi,STAGE_FRAME+when
+		jne .elsewhere_#when
+		unless_near dword [rbx+Events.report+88],ship_column,stage_slack,.charge_wrong
+		unless_near dword [rbx+Events.report+92],high,stage_slack,.charge_wrong
+	.elsewhere_#when:
+	end iterate
+	at_frame STAGE_FRAME+14,Events.lives,3,.charge_wrong
+	jmp .charged
+.charge_wrong:
+	fail 24
+.charged:
+	; 25: the hail-mary. A diver hurt to half fixes on the ship, and the fix
+	; is where the ship is though the ship moves. It locks where the ship
+	; then was, and stays there. A heavy shot comes for the lock: its mark is
+	; the lock, and fades every frame it comes nearer; what loosed it goes the
+	; other way. It bursts at the lock. The first time the ship has stayed,
+	; and the burst costs it a life; the second it has dashed away, and it
+	; costs nothing. The third diver is struck dead while it is still fixing:
+	; no shot comes of it.
+	mov edi,[rbx+Events.report+96]
+	mov eax,edi
+	mov ecx,[stage_phase]
+	cmp ecx,1
+	je .fixing
+	cmp ecx,2
+	je .locked
+	cmp ecx,3
+	je .flying
+	cmp ecx,4
+	je .landed
+	cmp ecx,5
+	je .after
+	cmp ecx,6
+	je .staged_done
+	cmp al,MARK_FOCUS
+	jne .staged_done
+	mov [stage_phase],1
+.fixing:
+	cmp al,MARK_FOCUS
+	jne .fixed
+	unless_near dword [rbx+Events.report+100],rbx+Events.report+88,stage_slack,.stage_wrong
+	unless_near dword [rbx+Events.report+104],rbx+Events.report+92,stage_slack,.stage_wrong
+	mov eax,[rbx+Events.report+92]
+	cmp eax,[stage_ship_y]
+	je .staged_done
+	mov [stage_followed],1
+	jmp .staged_done
+.fixed:
+	test edi,256
+	jnz .fixed_alive
+	; Dead while it was fixing: that is the third's part, and nobody else's.
+	cmp [stage_round],2
+	jne .stage_wrong
+	mov [stage_phase],5
+	jmp .staged_done
+.after:
+	; A frame on, whatever its death asked for has been made: nothing more may be.
+	mov eax,[rbx+Events.reserved+44]
+	mov [stage_asked],eax
+	mov [stage_phase],6
+	jmp .staged_done
+.fixed_alive:
+	cmp al,MARK_LOCKED
+	jne .stage_wrong
+	cmp [stage_round],2
+	je .stage_wrong
+	mov eax,[rbx+Events.report+100]
+	mov [lock_x],eax
+	mov eax,[rbx+Events.report+104]
+	mov [lock_y],eax
+	unless_near dword [lock_x],rbx+Events.report+88,stage_slack,.stage_wrong
+	unless_near dword [lock_y],rbx+Events.report+92,stage_slack,.stage_wrong
+	mov [stage_phase],2
+	jmp .staged_done
+.locked:
+	test edi,1024
+	jnz .loosed
+	test edi,256
+	jz .stage_wrong
+	; (Between its mark going with the shot and the shot being made there is a tick.)
+	test al,al
+	jz .staged_done
+	unless_near dword [rbx+Events.report+100],lock_x,stage_slack,.stage_wrong
+	unless_near dword [rbx+Events.report+104],lock_y,stage_slack,.stage_wrong
+	jmp .staged_done
+.loosed:
+	mov eax,[rbx+Events.report+108]
+	mov [fire_x],eax
+	mov eax,[rbx+Events.report+112]
+	mov [fire_y],eax
+	mov eax,[rbx+Events.reserved+24]
+	mov [stage_hurts],eax
+	mov [fade_before],2.0
+	mov [stage_recoiled],0
+	mov [stage_phase],3
+.flying:
+	test edi,1024
+	jz .burst
+	unless_near dword [rbx+Events.report+100],lock_x,stage_slack,.stage_wrong
+	unless_near dword [rbx+Events.report+104],lock_y,stage_slack,.stage_wrong
+	movss xmm0,dword [rbx+Events.report+124]
+	ucomiss xmm0,[fade_before]
+	jae .stage_wrong
+	movss [fade_before],xmm0
+	test edi,256
+	jz .staged_done
+	; How far it has gone since, along the way the shot went: never forward.
+	movss xmm0,dword [rbx+Events.report+108]
+	subss xmm0,[fire_x]
+	movss xmm1,[lock_x]
+	subss xmm1,[fire_x]
+	mulss xmm0,xmm1
+	movss xmm2,dword [rbx+Events.report+112]
+	subss xmm2,[fire_y]
+	movss xmm1,[lock_y]
+	subss xmm1,[fire_y]
+	mulss xmm2,xmm1
+	addss xmm0,xmm2
+	xorps xmm1,xmm1
+	ucomiss xmm0,xmm1
+	ja .stage_wrong
+	jae .staged_done
+	mov [stage_recoiled],1
+	jmp .staged_done
+.burst:
+	movzx eax,byte [rbx+Events.report+83]
+	mov ecx,[stage_round]
+	inc ecx
+	cmp eax,ecx
+	jne .stage_wrong
+	unless_near dword [rbx+Events.report+116],lock_x,stage_near,.stage_wrong
+	unless_near dword [rbx+Events.report+120],lock_y,stage_near,.stage_wrong
+	movss xmm0,[fade_before]
+	ucomiss xmm0,[stage_little]
+	ja .stage_wrong
+	cmp [stage_recoiled],1
+	jne .stage_wrong
+	mov [stage_phase],4
+	jmp .staged_done
+.landed:
+	cmp byte [rbx+Events.report+84],1
+	jne .stage_wrong
+	mov eax,[rbx+Events.reserved+24]
+	sub eax,[stage_hurts]
+	mov ecx,[stage_round]
+	xor ecx,1
+	cmp eax,ecx
+	jne .stage_wrong
+	inc [stage_round]
+	mov [stage_phase],0
+	jmp .staged_done
+.stage_wrong:
+	fail 25
+.staged_done:
 	ret
 endp
 
@@ -895,6 +1107,23 @@ proc scripted_run uses rbx rsi
 .commands:
 	fail 12
 .manners:
+	; 25, in part: all three divers had their turn; the fix was seen to follow
+	; the ship; and nothing more was ever asked of the director after the
+	; third died, nor did anything more burst.
+	cmp [stage_round],2
+	jne .stage_short
+	cmp [stage_phase],6
+	jne .stage_short
+	cmp [stage_followed],1
+	jne .stage_short
+	mov eax,[last_asked]
+	cmp eax,[stage_asked]
+	jne .stage_short
+	cmp byte [last_counts+3],2
+	je .staged
+.stage_short:
+	fail 25
+.staged:
 	fastcall check_manners
 	jmp .report
 .broken:
@@ -1011,11 +1240,60 @@ proc check_manners uses rbx rsi
 	jne .wrong
 	fastcall machine_pause,0
 	cmp [confined],0
-	je .done
+	je .remembers
 .wrong:
 	fail 23
+.remembers:
+	; 26: the window is remembered. Under a name of the check's own, so that
+	; what a player left is not disturbed: with nothing remembered it is to
+	; have the whole monitor; left as a window somewhere, it comes back there
+	; as a window; left over the whole monitor, it comes back so, and to the
+	; same place when that is given up.
+	lea rax,[manners_value]
+	mov [window_state_name],rax
+	fastcall state_drop,[window_state_name]
+	fastcall window_recall
+	cmp eax,1
+	jne .forgets
+	fastcall SetWindowPos,[window],0,137,91,800,450,SWP_NOZORDER or SWP_NOACTIVATE
+	fastcall window_remember
+	fastcall SetWindowPos,[window],0,0,0,640,360,SWP_NOZORDER or SWP_NOACTIVATE
+	fastcall window_recall
+	test eax,eax
+	jnz .forgets
+	fastcall check_place
+	test eax,eax
+	jz .forgets
+	fastcall machine_fullscreen
+	fastcall window_remember
+	fastcall machine_fullscreen
+	fastcall SetWindowPos,[window],0,0,0,640,360,SWP_NOZORDER or SWP_NOACTIVATE
+	fastcall window_recall
+	cmp eax,1
+	jne .forgets
+	fastcall check_place
+	test eax,eax
+	jnz .done
+.forgets:
+	fail 26
 .done:
+	fastcall state_drop,[window_state_name]
+	lea rax,[window_state_value]
+	mov [window_state_name],rax
 	or dword [root+Root.flags],ROOT_SCRIPTED
+	ret
+endp
+
+; Whether the window is at 137, 91 and 800 by 450.
+proc check_place
+	fastcall GetWindowRect,[window],addr window_rect
+	xor eax,eax
+	iterate <side,value>, left,137, top,91, right,937, bottom,541
+		cmp [window_rect.side],value
+		jne .elsewhere
+	end iterate
+	mov eax,1
+.elsewhere:
 	ret
 endp
 
@@ -1042,14 +1320,26 @@ proc mainCRTStartup
 	fastcall scripted_run
 	jmp .finish
 .show:
-	fastcall fit_window
-	fastcall ShowWindow,[window],SW_SHOWNORMAL
-	fastcall UpdateWindow,[window]
+	; As it was left; the first time, over the whole monitor; and either way
+	; as the command line says, if it says.
+	fastcall window_recall
+	mov [start_whole],eax
+	fastcall command_option,<W,'--windowed'>
+	test eax,eax
+	jz .as_asked
+	mov [start_whole],0
+.as_asked:
 	fastcall command_option,<W,'--fullscreen'>
 	test eax,eax
-	jz .placed
+	jz .as_left
+	mov [start_whole],1
+.as_left:
+	cmp [start_whole],0
+	je .placed
 	fastcall machine_fullscreen
 .placed:
+	fastcall ShowWindow,[window],SW_SHOWNORMAL
+	fastcall UpdateWindow,[window]
 	; Shown behind another program, or as an icon, it waits to be come to.
 	fastcall GetForegroundWindow
 	cmp rax,[window]
@@ -1131,6 +1421,20 @@ manners_rect RECT
 manners_middle dq 0
 manners_side dq 0
 manners_corner dq 0
+manners_value GLOBWSTR 'window.check',0
+charge_all dd 1.0
+charge_launched dd 0.75
+charge_dashed dd 0.55
+charge_grazed dd 0.58
+charge_last dd 0.19
+charge_slack dd 0.0005
+ship_column dd 300.0
+dash_up dd 220.0
+dash_down dd 700.0
+stage_slack dd 0.05
+stage_near dd 1.0
+stage_little dd 0.1
+fade_before dd 2.0
 world_buffer GpuBuffer
 header_buffer GpuBuffer
 bank_buffer GpuBuffer
@@ -1140,7 +1444,9 @@ end iterate
 iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,last_latency,worst_latency,title_rank,sounds_asked,heard_hurts, \
 	last_score,last_lives,last_wave,last_state,last_rank,last_fired,last_struck,last_kills,last_hurts,last_alive, \
 	hurts_before,rank_before,scroll_before,hurt_frame,hurts_total,rise_checked,falls_checked,chain_seen,head_died,alive_before,last_shown,last_stopped, \
-	fired_mark,nova_frame,nova_score,nova_kills,score_before,kills_before,struck_mark,last_music_faults
+	fired_mark,nova_frame,nova_score,nova_kills,score_before,kills_before,struck_mark,last_music_faults, \
+	start_whole,last_asked,last_counts,stage_ship_y,stage_phase,stage_round,stage_followed,stage_asked,stage_hurts,stage_recoiled, \
+	lock_x,lock_y,fire_x,fire_y
 	name dd 0
 end iterate
 

@@ -22,7 +22,9 @@
 ; whole of its monitor and takes it back. A program that defines MACHINE_BARE
 ; has a window with no caption: while it plays, the pointer is hidden and kept
 ; inside it; leaving it pauses it; and while it is paused it moves by a press
-; and hold anywhere on it, and sizes by its edges.
+; and hold anywhere on it, and sizes by its edges. It remembers, from one run
+; to the next, where it was and whether it had the whole monitor; the first
+; time, it takes the whole monitor.
 include 'newcoff.inc'
 struc? TCHAR args:?&
 	. du args
@@ -77,7 +79,7 @@ iterate function,GetModuleHandleW,GetCommandLineW,OutputDebugStringW,ExitProcess
 	RegisterClassExW,CreateWindowExW,DefWindowProcW,DestroyWindow,ShowWindow,UpdateWindow,PeekMessageW,TranslateMessage,DispatchMessageW, \
 	WaitMessage,PostQuitMessage,BeginPaint,EndPaint,GetClientRect,LoadCursorW,MessageBoxW,SetWindowPos,AdjustWindowRectEx, \
 	SetWindowTextW,wsprintfW,QueryPerformanceCounter,QueryPerformanceFrequency,GetAsyncKeyState,GetCursorPos,ScreenToClient,GetForegroundWindow, \
-	XInputGetState,SetCursor,ClipCursor,ClientToScreen,GetWindowRect,GetWindowLongPtrW,SetWindowLongPtrW,MonitorFromWindow,GetMonitorInfoW
+	XInputGetState,SetCursor,ClipCursor,ClientToScreen,GetWindowRect,GetWindowLongPtrW,SetWindowLongPtrW,MonitorFromWindow,GetMonitorInfoW,MonitorFromRect
 	extrn function:qword
 end iterate
 if definite MACHINE_BARE
@@ -194,7 +196,7 @@ proc window_proc hwnd,message,wparam,lparam
 	mov [message],rdx
 	mov [wparam],r8
 	mov [lparam],r9
-	iterate <code,target>, WM_PAINT,.paint,WM_SIZE,.size,WM_KEYDOWN,.key,WM_SYSKEYDOWN,.system_key,WM_SYSCHAR,.system_character,WM_LBUTTONDOWN,.left,WM_RBUTTONDOWN,.right, \
+	iterate <code,target>, WM_PAINT,.paint,WM_SIZE,.size,WM_KEYDOWN,.key,WM_SYSKEYDOWN,.system_key,WM_SYSCHAR,.system_character,WM_LBUTTONDOWN,.left,WM_RBUTTONDOWN,.right,WM_MBUTTONDOWN,.middle, \
 		WM_GETMINMAXINFO,.minimum,WM_ACTIVATEAPP,.active,WM_SETCURSOR,.pointer,WM_NCHITTEST,.where,WM_CLOSE,.close,WM_DESTROY,.close
 		cmp edx,code
 		je target
@@ -231,7 +233,7 @@ proc window_proc hwnd,message,wparam,lparam
 	je .whole
 	cmp r8d,50h			; P
 	je .pause
-	iterate <key,bit>, VK_SPACE,BUTTON_FIRE, VK_SHIFT,BUTTON_SECOND, VK_RETURN,BUTTON_START
+	iterate <key,bit>, VK_SPACE,BUTTON_FIRE, VK_SHIFT,BUTTON_SECOND, VK_CONTROL,BUTTON_THIRD, VK_RETURN,BUTTON_START
 		cmp r8d,key
 		jne .not_#key
 		or [pressed_pending],bit
@@ -243,6 +245,9 @@ proc window_proc hwnd,message,wparam,lparam
 	jmp .default
 .right:
 	or [pressed_pending],BUTTON_SECOND
+	jmp .default
+.middle:
+	or [pressed_pending],BUTTON_THIRD
 	jmp .default
 .pause:
 	mov ecx,[paused]
@@ -376,6 +381,68 @@ proc fit_window
 	ret
 .small:
 	fastcall resize_window,PLAYFIELD_WIDTH*2/3,PLAYFIELD_HEIGHT*2/3
+	ret
+endp
+
+; Put the window where it was left, if that was ever remembered and is still
+; on a monitor, and otherwise where fit_window puts it. Returns whether it
+; then had the whole monitor, which the first time it is to have.
+proc window_recall
+	fastcall state_get,[window_state_name],addr window_loaded,WINDOW_STATE_BYTES
+	test eax,eax
+	jz .fresh
+	cmp [window_loaded.version],WINDOW_STATE_VERSION
+	jne .fresh
+	iterate <side,least,most>, width,320,16384, height,200,16384
+		cmp [window_loaded.side],least
+		jl .fresh
+		cmp [window_loaded.side],most
+		jg .fresh
+	end iterate
+	mov eax,[window_loaded.left]
+	mov [window_rect.left],eax
+	add eax,[window_loaded.width]
+	mov [window_rect.right],eax
+	mov eax,[window_loaded.top]
+	mov [window_rect.top],eax
+	add eax,[window_loaded.height]
+	mov [window_rect.bottom],eax
+	fastcall MonitorFromRect,addr window_rect,0
+	test rax,rax
+	jz .fresh
+	fastcall SetWindowPos,[window],0,[window_loaded.left],[window_loaded.top],[window_loaded.width],[window_loaded.height],SWP_NOZORDER or SWP_NOACTIVATE
+	mov eax,[window_loaded.whole]
+	ret
+.fresh:
+	fastcall fit_window
+	mov eax,1
+	ret
+endp
+
+; Remember how the window stands: whether it has the whole monitor, and where
+; it is, or was before it took it. As an icon it has no place worth keeping,
+; and the last one known is kept.
+proc window_remember
+	mov eax,[fullscreen]
+	mov [window_state.whole],eax
+	cmp [minimized],0
+	jne .write
+	test eax,eax
+	jnz .before
+	fastcall GetWindowRect,[window],addr saved_rect
+.before:
+	mov eax,[saved_rect.left]
+	mov [window_state.left],eax
+	mov edx,[saved_rect.right]
+	sub edx,eax
+	mov [window_state.width],edx
+	mov eax,[saved_rect.top]
+	mov [window_state.top],eax
+	mov edx,[saved_rect.bottom]
+	sub edx,eax
+	mov [window_state.height],edx
+.write:
+	fastcall state_put,[window_state_name],addr window_state,WINDOW_STATE_BYTES
 	ret
 endp
 
@@ -819,7 +886,8 @@ proc machine_sample uses rbx
 		mov dword [root+Root.move+offset],value
 	.up_#key:
 	end iterate
-	iterate <key,bit>, VK_SPACE,BUTTON_FIRE, VK_LBUTTON,BUTTON_FIRE, VK_SHIFT,BUTTON_SECOND, VK_RBUTTON,BUTTON_SECOND, VK_RETURN,BUTTON_START
+	iterate <key,bit>, VK_SPACE,BUTTON_FIRE, VK_LBUTTON,BUTTON_FIRE, VK_SHIFT,BUTTON_SECOND, VK_RBUTTON,BUTTON_SECOND, \
+		VK_CONTROL,BUTTON_THIRD, VK_MBUTTON,BUTTON_THIRD, VK_RETURN,BUTTON_START
 		fastcall GetAsyncKeyState,key
 		test ax,ax
 		jns .off_#key
@@ -1051,6 +1119,15 @@ proc machine_drain
 endp
 
 proc machine_stop
+	if definite MACHINE_BARE
+		; A window that someone was at is remembered as they left it.
+		cmp [test_mode],0
+		jne .forgotten
+		cmp [window],0
+		je .forgotten
+		fastcall window_remember
+	.forgotten:
+	end if
 	; Whatever else happens, the pointer is given back.
 	mov [paused],1
 	fastcall machine_confine
@@ -1204,6 +1281,25 @@ saved_rect RECT				; where the window was before it took the whole monitor
 clip_rect RECT
 saved_style dq 0
 whole_style dq 0
+; What is remembered of the window, as one value.
+WINDOW_STATE_VERSION := 1
+WINDOW_STATE_BYTES := 24
+window_state_name dq window_state_value
+window_state:
+	.version dd WINDOW_STATE_VERSION
+	.whole dd 1
+	.left dd 0
+	.top dd 0
+	.width dd 0
+	.height dd 0
+window_loaded:
+	.version dd 0
+	.whole dd 0
+	.left dd 0
+	.top dd 0
+	.width dd 0
+	.height dd 0
+window_state_value GLOBWSTR 'window',0
 monitor_info MONITORINFO cbSize: sizeof.MONITORINFO
 ; By what is near: 1 the left edge, 2 the right, 4 the top, 8 the bottom.
 window_parts db HTCAPTION,HTLEFT,HTRIGHT,HTCAPTION,HTTOP,HTTOPLEFT,HTTOPRIGHT,HTCAPTION,HTBOTTOM,HTBOTTOMLEFT,HTBOTTOMRIGHT,HTCAPTION,HTCAPTION,HTCAPTION,HTCAPTION,HTCAPTION

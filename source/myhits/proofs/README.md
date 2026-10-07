@@ -5,6 +5,10 @@ built on it, and the proof stays: a small program or script, the claims it
 checks, and what to look at when you run it yourself. When a proof surprised
 us, the surprise is written down under it.
 
+Most of what 02 to 06 prove is no longer the game's alone: it lives in
+[source\common](../../common/README.md), the layer the game is built on, and
+these are that layer's proofs as much as the game's.
+
 ```bat
 rem Build every proof and run its checks:
 build.cmd myhits-proofs
@@ -19,14 +23,17 @@ build.cmd myhits-survey
 
 So do pictures. A scripted run draws to a window nobody sees, so proofs 04
 to 07 each leave `frame_NNN.png` there: the whole playfield at 1920×1080, at
-the frames of the script worth looking at. The game's sixteen are its swoopers,
+the frames of the script worth looking at. The game's twenty-two are its swoopers,
 its weavers, the worm coming and then turned back on itself, the turrets
 firing with the level stopped, the run over; and of the second game three
 volleys with RAPID and SPREAD in force, the nova going off, the shield about
 to take a rammer, the worm's head under fire, and the companion: where the
 ship was, acting for itself, and taking the player's aim; the dragon, in the
-second place's inks; and one frame drawn as a paused one is, dimmed under
-its two bars.
+second place's inks; one frame drawn as a paused one is, dimmed under its
+two bars; and of the third game, on its bare stage, the dash through a shot,
+a diver's fix shaking round the ship, its lock, its heavy shot on the way
+with the crosshairs fading, the burst, and the second's shot coming for
+where the ship no longer is.
 
 | # | Proof | Claim | State |
 | --- | --- | --- | --- |
@@ -202,7 +209,7 @@ memory only shaders touch: `develop` writes every texel (copying the cut
 ones, computing the rest), `chart` derives every mask word from the texels'
 alpha, and `census` counts each frame and compares it with what the packer
 said. Then the packer's block is let go. A frame of the proof is one compute
-pass, which sets down all 101 sprites, and one draw, which pulls sprite, frame,
+pass, which sets down all 105 sprites, and one draw, which pulls sprite, frame,
 texels and normals through the root pointer.
 
 **The checks**, on 120 scripted frames:
@@ -215,19 +222,19 @@ texels and normals through the root pointer.
 | 4 | A frame said to be symmetric is | Its mask equals its mirror, bit for bit |
 | 5 | The masks are what is drawn | At half size the gallery's masks cover a quarter of all solid texels in pixels, and its pictures, by their own filtered alpha, cover the same, each within a sixteenth |
 | 6 | Controls read for frame N move the ship in frame N | As in the spine |
-| 7 | One pass set down every sprite the draw pulls | It reports 101 |
+| 7 | One pass set down every sprite the draw pulls | It reports 105 |
 | 8 | The light stays put while the pictures turn | Summed over the run, at least 85% of the chain's brightened fragments lie on the lit side of their sprite, and at most 70% would have with the light turned with the picture |
 | 9 | The traffic is Root down and Events up | Byte counters, as in the spine |
 | 10 | Three passes make the pictures; a frame is one pass and one draw | Command counters |
 | 11 | The pad maps as designed | Six made-up pad states through `pad_apply`: nothing inside the dead zone, 1 at the rim, a half halfway, up is up, the d-pad and buttons |
 
 Last result here, GTX 1080 Ti, default and validation alike: all eleven hold.
-38 frames (18 cut, 2 made, 18 drawn), 165,201 texels and 5,059 mask words;
-430 KB goes up once and the pictures take 666 KB on the device. The device
+40 frames (18 cut, 2 made, 20 drawn), 238,929 texels and 7,363 mask words;
+430 KB goes up once and the pictures take 964 KB on the device. The device
 counts 52,469 solid texels in the cut frames, as the packer did. The gallery's
-masks cover 15,564 pixels and its pictures 15,589, against a quarter of the
-solid texels at 15,643. Of the chain's brightened fragments 89% lie on the lit
-side; with the light turned with the pictures it would be 50%.
+masks cover 16,879 pixels and its pictures 16,850, against a quarter of the
+solid texels at 16,961. Of the chain's brightened fragments 90% lie on the lit
+side; with the light turned with the pictures it would be 43%.
 
 **Check 2 bites.** Flipping one bit of one texel in the embedded block, in a
 copy of the program, fails check 2 at frame 0.
@@ -442,7 +449,7 @@ and tap Space quickly: no two shots are quite the same pitch. The title shows
 how long the last sound took from its controls being read to being on a
 voice, and what the engine says it adds after that.
 
-The checks write the bank as `build\myhits_sound.bank.wav`: the five sounds
+The checks write the bank as `build\myhits_sound.bank.wav`: every sound,
 end to end, exactly as the device made them, for any player. To change a
 sound, change its line in tables.inc, build, and listen to that file.
 
@@ -475,10 +482,11 @@ thousandth of them may differ by more, since a square or a saw has edges and
 a sample on one can fall either side in single precision.
 
 Last result here, GTX 1080 Ti, default and validation alike: all seven hold.
-7 sounds, 102,240 samples, 2.13 seconds. None differs from the second
-implementation by more than the allowance; the difference is 8.7 × 10⁻⁷ rms.
-25 sounds went to 16 voices and were played out. The engine reports 1,935
-samples of its own latency, 40 ms.
+14 sounds, 213,120 samples, 4.44 seconds. One sample differs from the second
+implementation by more than a five-hundredth, on the edge of a square wave,
+where a thousandth of them may; it is nearly all of the 3.0 × 10⁻⁴ rms
+between the two. 25 sounds went to 16 voices and were played out. The engine
+reports 1,937 samples of its own latency, 40 ms.
 
 **The checks bite.** Swapping left and right fails check 4 at frame 30.
 Summing the sweep over 31 intervals in place of 32 puts 62,005 samples
@@ -507,6 +515,7 @@ one world, and its own scripted run holds it to the rules of play.
 
 ```bat
 build\myhits.exe
+build\myhits.exe --windowed
 build\myhits.exe --fullscreen
 build\myhits.exe --self-test
 build\myhits_music.wav
@@ -514,9 +523,9 @@ build\myhits_music.wav
 
 **To look at, and to play.** Arrows, WASD or a pad move; Space or the left
 mouse button fires; Shift or the right button launches a pair of missiles at
-the crosshair, which follows the mouse. P pauses and resumes; F11 or
-Alt+Enter gives the window the whole of its monitor and takes it back; Esc
-ends. What comes is in the `squad` lines of
+the crosshair, which follows the mouse; Ctrl, the middle button or a pad's
+right shoulder dashes. P pauses and resumes; F11 or Alt+Enter gives the
+window the whole of its monitor and takes it back; Esc ends. What comes is in the `squad` lines of
 [tables.inc](../tables.inc): three swoopers, four weavers, then the worm, a
 head and nine segments that uncoil from where it came in and follow it
 through every turn. Shoot the head ten times and the worm goes segment after
@@ -568,10 +577,39 @@ third gives its gun to you: it points from wherever the companion is to the
 crosshair, and fires while you do. Its shots are its own: they do not count
 for or against your accuracy.
 
-**The window.** It has no caption and no frame. It opens in the middle of
-its monitor at the playfield's own 1920 by 1080 where there is room to spare
-for that, and at 1280 by 720 where there is not; a pixel of it is a pixel of
-the monitor whatever Windows scales other programs by. While the game plays,
+**Charge.** Under rank's pips are eight more: charge, full when a run
+begins. A pair of missiles costs a quarter of it and a dash a fifth; with
+too little there is a click and nothing happens. It comes back by killing (6
+hundredths a kill), by taking a bonus (12), and by flying close: a hostile
+shot that passes within 95 of the ship's middle and does not strike pays 3,
+once, and flashes as it does.
+
+**The dash** is 320 units in an eighth of a second, the way the ship is
+going, or ahead if it is going nowhere. While it lasts and for a moment
+after, the ship is half there and hostile shots pass through it. Bodies do
+not, and bursts do not.
+
+**The hail-mary.** Hurt a diver past half and leave it alive, and it does
+one last thing. It stops, trailing embers, and fixes on the ship: brackets
+appear round the ship, shaking, closing in, and following wherever the ship
+goes. After a second they stop where the ship is and become crosshairs, as
+wide as what is coming will reach. A third of a second later the diver
+looses one heavy shot at the crosshairs and is thrown back the other way by
+it, and goes. The shot leaves slowly and gathers speed; the crosshairs fade
+as it comes, all there at its launch and gone as it lands; and where they
+were, it bursts. Kill the diver before it fires and there is no shot. Be
+outside the crosshairs when it lands and there is no harm. A nova, which
+strikes everything for three, leaves every diver on the field at exactly
+half.
+
+**The window.** It has no caption and no frame. The first time, it takes the
+whole of its monitor; after that it comes back as it was left, a window
+where it was or the whole monitor, which the registry keeps under
+`HKEY_CURRENT_USER\Software\vk.fasmg\myhits`. `--windowed` and
+`--fullscreen` say otherwise for one run. As a window it is the playfield's
+own 1920 by 1080 where there is room to spare for that, and 1280 by 720
+where there is not, until it is sized; a pixel of it is a pixel of the
+monitor whatever Windows scales other programs by. While the game plays,
 the pointer is the crosshair: the arrow is hidden and cannot leave the
 window, so a press cannot land on another program. P pauses, and so does
 leaving for another program (Alt+Tab, the Windows key) or making it an icon;
@@ -590,9 +628,10 @@ atomic count. A chain's head lays its path into a ring of points eight units
 apart; a segment reads its head as the head stood last tick and takes the
 point its own distance back.
 
-**The checks**, on 1,000 scripted frames of eight ticks: a first game played
-badly to its end, and a second that is given every bonus, earns the
-companion, and is left to run until the dragon has come and gone.
+**The checks**, on 1,250 scripted frames of eight ticks: a first game played
+badly to its end; a second that is given every bonus, earns the companion,
+and is left to run until the dragon has come and gone; and a third on a bare
+stage, with no squads, where the script sets down what it wants seen.
 
 | # | Claim | How it is held |
 | --- | --- | --- |
@@ -619,11 +658,16 @@ companion, and is left to run until the dragon has come and gone.
 | 21 | The backdrop is the level's | Held on the pictures themselves, by the proof runner: along the top rail, frames 300 and 320 are the same to the pixel, the level having stood still between them; frames 235 and 300 are not |
 | 22 | The music is its notes, and follows the play | The device finds every stem it rendered loud enough and no louder than its gain. With nothing happening only the bass is wanted, with everything all three, each at its own level. Where there is an audio device the stems are playing, and say where in the beat they are. And the proof runner holds the device's stems to a second synthesis of the same notes, as it does the sounds |
 | 23 | The window has its manners | Asked of the window by its own messages, with no one at it. P pauses: the next frame is paid no ticks and carries `ROOT_PAUSED`. Paused, the window says its middle is a handle, its left edge an edge and its corner a corner; playing, or over the whole monitor, that all of it is the game's. F11 gives it exactly its monitor's rectangle and then exactly the one it had. Leaving it pauses it and coming back does not resume it. And the pointer was never taken |
+| 24 | Charge is earned and spent | On the stage. A new run has all of it. A pair of missiles takes a quarter. A dash takes a fifth and carries the ship exactly 320, through a shot set down in its way: the shot is counted as passed through, once, and no life is lost. A shot sent by 85 above the ship pays three hundredths, once. A kill pays six. With 19 hundredths left a launch and then a dash are each refused: two clicks counted, nothing fired, nothing moved |
+| 25 | The hail-mary is its beats | On the stage, three divers, each hurt to half by the script. The fix is where the ship is, frame after frame, while the ship is moved. It locks where the ship then was. The heavy shot's mark is the lock, and how much of its way is left grows less every frame; what loosed it is never nearer the lock than when it fired, and is seen to go. It bursts within a unit of the lock. The first time the ship has stayed: one life, by the burst. The second it has dashed 320 away after the lock: nothing. The third diver is struck dead while fixing: nothing is ever asked of the director again, and nothing more bursts |
+| 26 | The window is remembered | Under a name of the check's own, so what a player left is not disturbed. With nothing remembered it is to have the whole monitor. Left as a window at a place, it comes back to that place as a window. Left over the whole monitor, it comes back so, and to the same place when the monitor is given up |
 
-Last result here, GTX 1080 Ti, default and validation alike: all twenty-three
-hold. The run is 8,000 ticks, 41,000 passes and 4,000 draws, and takes seven
-seconds. The world is 764 KB on the device. The nova went off in frame 468
-and the head died in frame 557; 136 sounds went to voices.
+Last result here, GTX 1080 Ti, default and validation alike: all twenty-six
+hold. The run is 10,000 ticks, 51,250 passes and 5,000 draws, and takes nine
+seconds. The world is 791 KB on the device. The nova went off in frame 468
+and the head died in frame 557; 176 sounds went to voices. In the third
+game the first diver's shot burst in frame 1090 and cost a life; the
+second's burst in 1145 with the ship 320 away.
 
 **The checks bite.** Each of these was made and seen to fail the check it
 should: segments a tenth too far apart (5, at frame 150); the director
@@ -635,8 +679,20 @@ that changes nothing (17, at 432); a DOUBLE that changes nothing (18, at
 469); a companion 100 behind and not 150 (19, at 568); a guard that stops
 nothing (19, at 600); a gun that ignores the aim (19, at 630); a squad that
 holds nothing (20, at 900); and a drum's thump a semitone sharp puts 24,140
-of the music's 576,000 samples outside the allowance. And nine ways of
-getting the window wrong each fail 23: a pause that does not say so, or
+of the music's 576,000 samples outside the allowance. Seven ways of getting
+charge wrong each fail 24: missiles that are free (at frame 1006); a dash a
+tick short, or one that slips nothing (1014); a near miss that pays every
+tick it is near (1036); a kill that pays nothing (1204); a launch, and a
+dash, with no charge to pay for it (1210, 1216). Ten of getting the
+hail-mary wrong each fail 25: a fix that does not follow the ship (1050), or
+never locks (1067); a diver thrown forward and not back, and crosshairs that
+do not fade (1068); a shot that follows the ship after the lock (1125); a
+burst sixty to one side of the lock (1090), one that hurts nobody (1091),
+one that reaches 400 (1146); a third diver left alive to fire (1172); and a
+diver that being hurt to half changes nothing in (at the end, where the
+turns are counted). Three ways of forgetting the window each fail 26: its
+place, whether it had the monitor, and that the first time it is to. And
+nine ways of getting the window wrong each fail 23: a pause that does not say so, or
 still pays ticks; a paused window that is not a handle, or has no edges; one
 over the whole monitor that still is a handle; a whole monitor a pixel
 short; a window that comes back a pixel off; leaving that does not pause;
@@ -661,6 +717,22 @@ These want trying, once, by whoever plays:
   the monitor's mode, or jump in front.
 - [ ] On a monitor Windows scales (125%, 150%), the picture is sharp, not
   stretched.
+- [ ] The first run of all takes the whole monitor. Left as a window
+  somewhere, the next run is a window there; left over the monitor, the next
+  run is over it, on the same monitor.
+
+**What 24 and 25 cannot hold, and play must.** The checks hold that these
+things happen as written. Whether they are any good is not a thing a check
+can say:
+
+- [ ] The dash: is 320 far enough to matter and near enough to aim? Does it
+  go when asked? Is the click of an empty meter understood?
+- [ ] Charge: does it run out, and does flying close and killing bring it
+  back fast enough to want to?
+- [ ] The hail-mary: is the fix seen in time, among everything else? Is the
+  lock heard? Is the second and a half enough, too much? Does a hurt diver
+  now get finished first, which is the point of it?
+- [ ] The sounds of all of it, which the checks play to nobody.
 
 **Finding: a run that is over is still a world.** The first script meant to
 stop the squads when the last life went. But then the level, stopped for the

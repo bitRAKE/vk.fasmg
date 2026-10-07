@@ -1,139 +1,218 @@
 # myhits: plan 2
 
 [plan.md](plan.md) built the game: seven milestones, each proved and kept.
-This plan is what comes after. Its aim is a game that is worth playing and
-quick to change, in that order of dependence: the tools come before the
-content they make cheap. Nothing settled in plan.md is reopened here except
+This plan is what comes after. Nothing settled there is reopened here except
 where a line says so.
 
-Written 2026-10-06, on `worktree-legacy-vulkan`.
+First written 2026-10-06; rewritten 2026-10-07 around the decisions below.
+
+## What this is for
+
+The game is the occasion, not the whole of the purpose. The work is a modern,
+performant application on the Vulkan projection, and three things come of
+making one:
+
+- **It finds what is wanting** in the projection, the examples and the tools,
+  by leaning on them. What it has found so far is listed in
+  [source\common\README.md](../common/README.md).
+- **It leaves a layer**: what any such application needs on top of Vulkan.
+  That is [source\common](../common/README.md) now, and it is this branch's
+  own design.
+- **It leaves libraries beside the layer**: pictures, motion, hits, particles,
+  chains, sound, input, the words tables are written in.
+
+So a thing is done well here when the next application could use it, and the
+game is how it is known to work.
+
+## Decisions
+
+Given on 2026-10-07, in answer to the six this plan first asked.
+
+| # | Decided | What follows |
+| --- | --- | --- |
+| 1 | There is no branch to choose. This one champions its own ideas; common code belongs in `source\common`; nothing need be adopted from another worktree | `examples\common` is as main has it. The layer has its own home and its own memory. The other branch's designs are no longer a reference here |
+| 2 | Different mechanics want different tuning | Nothing is tuned to another build's numbers. This game is tuned by playing this game, with tools that make a change quick to try |
+| 3 | The whole monitor by default; what is remembered between runs is in the registry | Built: the first run takes the monitor, and after that the window comes back as it was left. Bindings, volumes and scores will be kept the same way |
+| 4 | A third button for the dash, and missiles that cost charge: test it | Built, to be played: Ctrl, the middle button or a pad's right shoulder |
+| 5 | There is plenty of GPU memory at present | Read here as: the finished picture may be kept and worked on. It will be, and without a descriptor: see "The picture as memory" |
+| 6 | Lives stay | Nothing to do |
+
+And one thing given as an example of what is wanted: the hail-mary shot. It
+is built, and it is what "Choreography" below is written from.
 
 ## Where it stands
 
 - The game runs: squads from a table, chains, a boss the level waits for,
   rank that reads the shooting, bonuses, a companion in three stages, a
-  backdrop that is the level's, music that listens. Twenty-three numbered
-  claims hold on a scripted run, under validation too.
-- Its content is thin: 23 kinds, 6 squads in one loop, 7 sounds, 3 stems of
-  two bars, 2 particle styles, one place in three inks.
-- It has never been tuned. Nobody has judged its difficulty, its pace, how
-  generous it is or how loud. The author of its code has not heard it or
-  played it.
+  backdrop that is the level's, music that listens; and now charge, a dash,
+  the near miss, and the first choreographed attack. Twenty-six numbered
+  claims hold on a scripted run of three games, under validation too.
+- Its content is thin: 24 kinds, 6 squads in one loop, 14 sounds, 3 stems of
+  two bars, 4 particle styles, 40 pictures, one place in three inks.
+- It has never been tuned. The author of its code has not heard it or played
+  it.
 - Changing anything costs a rebuild and a restart, and seeing the result
   means playing to it.
 
-The last two are what this plan is about.
+## Done since plan 1
 
-## Done on the way in
-
-These were asked for with this plan, and are built and checked.
-
-- **One design for the shared memory pools.** The two branches had each added
-  device-local buffers to `examples\common\vulkan_pools.inc`, differently.
-  This branch now carries the other's: `create_buffer_domain(owner, bytes,
-  usage, addressable, domain)` with `BUFFER_DEVICE`, `BUFFER_UPLOAD` and
-  `BUFFER_READBACK`. It is the more general of the two, it maps a block by
-  what its memory type is rather than by which call made it, and
-  `create_buffer` behaves as before for the examples. Every buffer myhits
-  makes now names its domain. That fixed one thing in passing: the sound
-  bank, which the audio voices read continuously, was in whatever
-  host-visible memory came first, and is now in cached memory like the events.
-- **Both of the other branch's switches in `vulkan_context.inc`.** Yes, both.
-  `GPU_REQUIRE_COMPUTE` is a correction: these programs dispatch compute on
-  the queue they draw with, and nothing checked that the queue could.
-  `GPU_DISCRETE_ONLY` is the plan's own hardware rule made true: the context
-  takes the first adapter with a graphics queue that can present and fails
-  if that one lacks the contract, so where Windows lists an integrated
-  adapter first the game would have run on it or refused to start. Both are
-  compile-time, off for the examples, and cost nothing. The three shared
-  files are now the same in both working trees.
 - **The window.** No caption; the pointer hidden and held inside while the
-  game plays; P to pause, and leaving the window pauses it; paused, a press
-  and hold anywhere moves it and its edges size it; F11 or Alt+Enter for the
-  whole monitor, as an ordinary window and not an exclusive one. Claim 23,
-  and a list of what only a hand can check, in
-  [proofs\README.md](proofs/README.md).
+  game plays; P pauses, and so does leaving; paused, a press and hold moves
+  it and its edges size it; F11 or Alt+Enter for the whole monitor, as an
+  ordinary window. It opens over the whole monitor the first time and as it
+  was left after that. Claims 23 and 26.
+- **The layer has a home.** `source\common` holds the machine, memory,
+  state, input, audio, snapshots, pictures, the boundary blocks, the table
+  words and the Slang libraries. The game keeps its tables, backdrop and art.
+- **Its own memory.** A buffer is asked for by who touches it and is its own
+  allocation. It replaces the examples' pools here.
+- **Charge, the dash, the near miss.** Claim 24.
+- **The hail-mary.** Claim 25.
 
-## The other branch, read again
+## Choreography
 
-`myhits-codex` has no commits yet; its work is in the main checkout. It was
-read there on 2026-10-06, after its seventh proof.
+What a fight was made of: things come from the right on programs, some fire
+at where the ship is, and the ship fires right. A hit or a miss, and nothing
+in between to read or to answer.
 
-### What its playtests say
+What is wanted instead is choreography: a thing that happens in beats, each
+of which the player can see and hear, with time between them in which what
+the player does changes how it ends. An enemy with a choreography has a
+character, and the player answers the character rather than the sprite.
 
-Its notes record what was said after playing it. That is evidence about
-taste, and worth more than anything in either branch's code.
+### The reference: the hail-mary
 
-| Said of that build | What it did | What it means here |
-| --- | --- | --- |
-| Controls responsive; star layers give depth | Nothing | Keep the one-frame latency and the layered backdrop |
-| Fire and pickups too dense | Fire at 5 a second (8.3 in overdrive). A pickup at most every 2.8 s falling to 1.25 s with rank, 5 to 10 alive at once, each gone in 10 s | This game fires 20 a second, 40 with RAPID, and a kill leaves a bonus 22% to 62% of the time, with no limit on how many are out and each segment shot off a chain counting as a kill. It is very likely too dense in the same way |
-| Standing still and firing is too easy | After 2 s within a ship's width, a telegraphed aimed shot every 1.65 s | Here every row is crossed by something, but nothing hunts a ship that does not move |
-| Chains had gaps | Segments 48 apart with aligned phases | Here neighbors overlap, by a fifth of their width on the worm and a third on the dragon; to be looked at in play all the same |
-| Art flat; sound like a piano | Cutouts from the creature atlas; shorter sounds made of noise bursts, sweeps and blast tails | The art here is from the same atlas, with normals. The sounds here are single oscillators with one envelope, and the lead is a square wave: likely the same complaint |
-| The arrow, the window, clicks outside it | Borderless, pointer clipped, F11 | Done here now, as above |
-| Wanted: tough heads, bodies that die in cascade, guns on the body that can be shot off, a level that slows or stops | All four | The first, second and fourth are here. Guns on a chain's body are not |
-| "That seems the right amount of difficulty" | Kept as its baseline | Its numbers are the best starting point there is for tuning this one |
+A diver hurt past half and left alive throws one.
 
-### What it does that this plan takes, differently
+| Beat | What happens | What is seen and heard | How long |
+| --- | --- | --- | --- |
+| Hurt | It stops whatever it was doing | Embers; an alarm; it trails sparks from here on | 0.3 s to stop |
+| Fix | It fixes on the ship, and the fix follows the ship | Brackets round the ship, shaking, closing in as the fix tightens; the diver turns to face it | 1.1 s |
+| Lock | The fix stops where the ship is | The brackets become crosshairs, as wide as the burst will reach; a hard blip | 0.3 s |
+| Shot | One heavy shot, at the lock. The diver is thrown back the other way, and goes | The shot leaves slowly and gathers speed; the crosshairs fade as it comes: all there at its launch, gone as it lands | 1.5 s |
+| Burst | It bursts at the lock. What is within 140 is hurt | The burst; a low boom | |
 
-| Idea | There | Here |
-| --- | --- | --- |
-| Nothing alive is overwritten | Complete admission or rejection, counted | The same rule. The director looks for free slots instead of advancing a ring, and counts what it turns away |
-| A link cannot follow a stranger | Handles of index and generation in separate banks | A segment already carries its head's birth tick as its seed. It checks it. No new field |
-| An attack is announced | A windup marker; a barrel that locks for 480 ms | A move that aims and shows it, in the tables, usable by any kind |
-| Guns mounted on a body | Assemblies of 21 nodes and 4 guns, with leases | A kind that rides a segment, with its own health and program |
-| Numbers before opinions | GPU time by pass, ages of input and events, memory by domain | A measuring run, and budgets set from what it reports |
-| A checklist beside each proof | Its own files | A "what a hand must check" list under each proof that needs one, as under 23 |
+What the player can do about it, and so what it changes:
 
-### What it does that this plan declines, and why
+- **Kill it before it fires.** There are 1.7 seconds and it has half its
+  health. A hurt enemy is now something to finish, not to leave.
+- **Leave the lock.** After the lock there are 1.8 seconds to be 140 away:
+  a quarter of a second's flying, or one dash. The crosshairs show exactly
+  how far is far enough.
+- **Not shrug it off.** A dash slips shots; it does not slip a burst.
 
-| Idea | Why not here |
+The scripted run holds every beat: the fix is where the ship is while the
+ship moves; the lock is where the ship then was and does not move again; the
+shot's mark is the lock and fades every frame; the diver goes the other way;
+the burst is at the lock; a ship that stayed loses a life and one that dashed
+away loses nothing; and a diver struck dead while fixing looses nothing.
+Ten ways of breaking it each fail that claim.
+
+### What it took
+
+Five words in the tables, each a few lines in the shaders, each now there
+for any kind to use:
+
+| Word | Says |
 | --- | --- |
-| 240 ticks a second | 120 with drawing between the last two ticks shows the same motion for half the passes. A shot is swept against masks, so nothing is missed at 120 |
-| Seven passes a tick, a snapshot, compaction and indirect draws a frame | Five passes and a report do the same work here. A segment reads its head as it stood a tick ago, which saves the chain pass. Dead instances cost a vertex shader's early return; at 1,266 sprites and 16,384 particles that is less than compaction would be |
-| A grid for the broad phase from the start | Only the player's shots are tested against hostiles: 256 against 384 is at most 98,000 circle tests a tick, nearly all rejected, over 34 KB that stays in cache. A grid adds a pass and atomics every tick. It is measured first; and if something is needed, rows suit a horizontal shooter better than cells (below) |
-| Chains that split and rejoin through request queues and leases | Nobody asked for it, and that branch's own encounters do not use it. A cheaper form is listed under action, uncommitted |
-| A machine that fails by parts: gun, drive, power | It is that branch's own idea, not from the brief. It may be fun; it is not known to be, and it multiplies what must be balanced |
-| A C++ bridge for sound; Python for art | This branch calls XAudio2 from assembly and has no runtime or build dependency beyond the SDKs |
-| Opening over the whole monitor by default | Here the window opens as a window, and `--fullscreen` or F11 changes that. One word to change if the other is wanted |
+| `wounded share` | From here on is what this kind does once it is hurt down to that share of its health. It leaves whatever move it was in |
+| a `MARK` move | Fix on the target: the body's mark follows it and the body turns to face it. When the move ends the mark is locked |
+| `fire` with a locked mark | What is fired is sent at the mark and carries it; the firer shows it no longer |
+| `blast reach` | The program ends here in a burst that hurts what is within reach |
+| a lobbed kind | A shot thrown over the field: it touches nothing on its way |
 
-### A collision to settle before either merges
+The diver's whole hail-mary is the word `wounded` and six lines of
+[tables.inc](tables.inc), and the heavy shot two. That is the measure to keep: a choreography costs words,
+not code, and a word once made is everyone's.
 
-Both branches keep their work in `source\myhits\`, and both have a `plan.md`
-and a `proofs\README.md` there, a `myhits` build target and a `check-myhits`.
-The shared modules no longer conflict; these do, completely. One of the two
-has to move, or one has to be chosen. That is not this plan's to decide.
+### The words still wanted
+
+| Word | For |
+| --- | --- |
+| `alone`, `near distance`, `struck`, `after seconds` | More ways into a second part than being hurt: the last of a squad; the ship come close; a hit taken; time run out |
+| `cue SOUND` | A beat that is heard without a body having to be made or hurt |
+| Marks with a shape | A line for a dive or a beam, a cone for a spray: the picture of the mark is the reach of the harm, as the crosshairs are |
+| `fire` any kind | A carrier looses drones; a thing dies into two smaller |
+| A kind that rides a segment | Guns on a chain's body, each with its own health and program |
+| A beam | A segment swept against masks for as long as it lasts, as a shot is swept for a tick |
+| Who is in my squad | A leader, and what the rest do when it dies |
+| `slow share, seconds` | A beat that takes the whole world's tempo down for a moment |
+
+### What to choreograph next
+
+Each is a few beats and an answer it should teach. None is built.
+
+| Name | Beats | What it changes |
+| --- | --- | --- |
+| The last launch | A carrier hurt to half opens, shows what is in it, and looses all of it at once | Kill the carrier first, or deal with the swarm |
+| The gather | A turret draws light to itself; the line of its beam appears; the beam holds and sweeps. A hit while it gathers staggers it | Fire at the thing that is about to fire |
+| The broken rank | A formation's leader dies; the rest scatter, and then come back as rammers | Which one to shoot first |
+| The last one | The last of a squad turns, marks the ship, and comes faster than any of them did | A fight's end is not its easiest moment |
+| The chain | A volatile thing bursts when killed, a moment after showing how far; others near it go too | Where to kill it, and when |
+| The feint | A diver shows its line, and at high rank the line snaps to another at the last | A tell is read to its end |
+| The thief | Something takes a bonus and runs for the edge | A chase the other way |
+| The rear | A dragon draws its head back before it sweeps; where its head will pass is shown | A boss is read, not memorised |
+
+And one rule over all of them: **every harm has a tell, and a floor under how
+short the tell may be.** Rank hurries everything hostile, so a tell at full
+rank is two thirds of what the table says. A floor is a number in the tables;
+the stage's claims measure the time from tell to harm and hold it.
+
+### How a choreography is proved
+
+The scripted run's third game is a bare stage: no squads, only what the
+script sets down. It sets down an actor, provokes it, and the claims follow
+the beats frame by frame, by what the device reports of the actor, its mark
+and its shot. A new choreography is a new scene on that stage, a few
+pictures of it, and the ways of breaking it that were tried.
+
+## Charge, the dash, the near miss
+
+Built to be tried. Every number here is a first guess.
+
+| | |
+| --- | --- |
+| Charge | One meter, full at the start of a run. Eight pips under rank's |
+| It is earned by | A kill, 6 hundredths. A hostile shot that passes within 95 of the ship's middle and does not strike, 3, once a shot. A bonus, 12 |
+| Missiles | A pair costs 25. Without it there is a click, and nothing leaves |
+| The dash | Ctrl, the middle button, a pad's right shoulder. Costs 20. 320 units in 16 ticks, the way the ship is going, or ahead if it is going nowhere |
+| What a dash slips | Hostile shots, while it lasts and 6 ticks after. Not bodies, not bursts |
+
+To be found out by playing: whether charge should start full; whether 320 is
+far enough to matter and near enough to aim; whether the slip is too kind;
+whether the near miss pays enough to fly for.
 
 ## Open problems
 
-What plan.md left open, and what reading the code again for this plan found.
-Each has an answer, a milestone, and the check that will hold it.
+What plan.md left open and what reading the code again found. Each has an
+answer, a milestone, and the check that will hold it.
 
 | # | Problem | Answer | When | Held by |
 | --- | --- | --- | --- | --- |
-| 1 | A new body can overwrite a living one. Shots, pellets and hostiles each take the next slot of a ring; a bonus dropped while the hostile ring wraps can land on a segment of the dragon | The director looks for free slots, bounded, from its cursor; a chain needs a free run. What cannot be placed is refused and counted, per pool | 8 | A flood script: nothing alive is ever replaced; refusals equal what did not fit |
-| 2 | A segment trusts its head's slot | It compares its seed with the head's birth tick and checks that the slot holds a head | 8 | A head's slot reused in the tick it died: the old segments die; none follows the newcomer |
-| 3 | The order of requests in a tick depends on which thread won | A body's requests go in cells that are its own; the director reads them in slot order. No atomic, no overflow | 8 | The game's two scripted runs, default and validation, report the same hash of the world |
-| 4 | Nothing is timed. Pool sizes and pass costs are guesses | A measuring run: timestamps round every kind of pass, the CPU's time to record and submit, memory by domain. Budgets are written from its first report | 8 | The report is checked against the budgets, so a regression fails |
-| 5 | Shots are tested against every hostile | Measured first (4), at the full pools. If it must be cut: rows. Shots fly along the playfield, so a shot stays in one or two bands of height; hostiles are listed by band and a shot tests its bands only | 8, if at all | The same hits as the whole scan, on every frame of the script |
+| 1 | The layer still borrows the examples' context, commands, barriers and presentation: modules written to negotiate what this layer requires, reaching each other by name | This layer's own, for the modern contract only: a device, a timeline, a swapchain. What the examples' do that an application needs is kept; the negotiation is not | 8 | Every proof as now; the machine includes nothing from `examples` |
+| 2 | A new body can overwrite a living one. Shots, pellets and hostiles each take the next slot of a ring; a bonus dropped while the hostile ring wraps can land on a segment of the dragon | The director looks for free slots, bounded, from its cursor; a chain needs a free run. What cannot be placed is refused and counted, per pool | 8 | A flood on the stage: nothing alive is ever replaced; refusals equal what did not fit |
+| 3 | The order of requests in a tick depends on which thread won | A body's requests go in cells that are its own; the director reads them in slot order. No atomic, no overflow | 8 | The run's two modes, default and validation, report the same hash of the world |
+| 4 | Nothing is timed. Pool sizes and pass costs are guesses | A measuring run: timestamps round every kind of pass, the CPU's time to record and submit, memory by domain (which `memory.inc` already counts). Budgets are written from its first report | 8 | The report is checked against the budgets, so a regression fails |
+| 5 | The player's shots are tested against every hostile: 256 by 384 a tick at most | Measured first, at the full pools. If it must be cut: rows. Shots fly along the playfield, so a shot stays in one or two bands of height; hostiles are listed by band | 8, if at all | The same hits as the whole scan, on every frame of the script |
 | 6 | A shot's sweep takes one sample a texel on its longer side, and could pass a diagonal wall one texel thick | The walk visits both texels at each crossing | 8 | Proof 05: a one-texel diagonal stops a lance at every offset |
-| 7 | Bodies read their tables from host-visible memory every tick | A pass copies the tables to the device at start, as the pictures are; the staging is then free for the tools (below) | 8 | The measuring run shows the difference; steady state reads no host memory |
+| 7 | Bodies read their tables from host-visible memory every tick | A pass copies the tables to device memory at start, as the pictures are; the upload buffer is then free for reloading | 8 | The measuring run shows the difference |
 | 8 | How far the level has come is a float that only grows | A layer keeps whole periods of its own pattern as an integer and the rest as a float below one period; each lattice adds its share of the periods to its cell number in integers, where wrapping is harmless | 8 | With a billion periods added, the periodic layers are the same to the pixel and the others as sharp |
-| 9 | The thread between the ship and its companion is a row of sparks | It becomes a thing: drawn as one shape, and swept against masks like a shot. See "the pair" | 13 | Its own claims |
-| 10 | There are no letters. A pause, a run that is over, a stage's name and every tool's readout need them | Sixteen-segment letters: a table of forty words in the shader and no texels, sharp at any size. Strings live in the tables | 8 | Pictures; and the pause says what P, F11 and Esc do |
-| 11 | Missiles are free and unlimited | They cost charge. See "action" | 10 | Its own claims |
-| 12 | The pad's layout is provisional and nothing can be rebound. A pad cannot pause | Back pauses. A settings file beside the program holds bindings, the window's place and size, and volumes | 13 | Unit checks on made-up states, as now; a hand for the rest |
-| 13 | The ship is a stand-in from another sheet. No convention for rendered art | Under "art" | 9, 11 | The art report |
-| 14 | A stopped world's sounds and loops cannot be expressed: events carry counts of one-shots | Loops are levels in the events, as the music's intensity is | 11 | Proof 06 |
-| 15 | Nobody has heard it or played it | The tools make listening and looking cheap, and leave numbers the author can check without ears: loudness, clipping, a picture of a whole level | 9 | Their reports |
+| 9 | There are no letters. A pause, a run's end, a stage's name and every tool's readout need them | Sixteen-segment letters: a table of forty words in the shader and no texels, sharp at any size. Strings live in the tables | 8 | Pictures; the pause says what the keys do |
+| 10 | A chain's segment follows the head in its slot. It does compare its seed with the head's birth tick, but no claim holds that | A scene on the stage: a head's slot reused in the tick it died | 8 | The old segments die; none follows the newcomer |
+| 11 | Rank shortens every tell with everything else | A floor in the tables under each tell | 10 | The stage measures tell to harm |
+| 12 | The thread between the ship and its companion is a row of sparks | It becomes a thing. See "The pair" | 13 | Its own claims |
+| 13 | The pad's layout is provisional, nothing can be rebound, a pad cannot pause | Back pauses. Bindings are a value in the registry, as the window's place is | 13 | Unit checks on made-up states; a hand for the rest |
+| 14 | The ship is a stand-in from another sheet. No convention for rendered art | Under "Art" | 9, 11 | The art report |
+| 15 | Sounds that last cannot be expressed: events carry counts of one-shots | Loops are levels in the events, as the music's intensity is | 11 | Proof 06 |
+| 16 | Nobody has heard it or played it | The tools make listening and looking cheap, and leave numbers the author can check without ears | 9 | Their reports |
 
 ## Tools
 
 The rule for all of them: **the proofs are the tools.** The gallery already
 shows every picture over its mask. The range already runs the tables'
-programs. The board already draws and plays every sound. Each becomes the
-place where its kind of asset is made, by one addition they share.
+programs. The board already draws and plays every sound. The game's third
+scripted game is already a stage. Each becomes the place where its kind of
+thing is made, by one addition they share.
 
 ### Reloading
 
@@ -141,7 +220,7 @@ Today the tables are assembled into the program. They will also be written as
 a file, `build\myhits_tables.bin`, with a fingerprint of the names the
 shaders know them by. A running program started with `--watch` looks at that
 file once a second. When it has changed and its fingerprint matches, the CPU
-copies it to the staging buffer and one pass settles it into the device's
+copies it to the upload buffer and one pass settles it into the device's
 tables: movers, squads, styles, recipes, notes. A changed recipe renders
 again; the voices are stopped first. `tools\watch.ps1` reassembles the file
 when `tables.inc` is saved, which takes about a second. The packed art gets
@@ -152,8 +231,8 @@ about a second after it is saved, in the program that was already running.
 A change the fingerprint does not cover, such as a new kind the shaders
 name, says so and waits for a build.
 
-This is startup traffic, not a frame's: the claim that a frame is Root down
-and Events up stays as it is.
+This is startup traffic, not a frame's: the claim that a frame is the root
+down and the events up stays as it is.
 
 ### Art
 
@@ -171,16 +250,15 @@ the rest.
 | Inks | A kind may name an ink: the same picture, tinted. An elite is its ordinary cousin in another ink | A column in `mover` |
 | The art report | Every picture at the game's scale on every backdrop, and a table: texels across, share that is solid, which way its normals say the light comes from, whether its edge is premultiplied clean | `build\myhits_art\report.png`, `report.md`. A picture lit from the wrong side, or half the size of its kin, is a line in a table |
 
-The atlas is modular: heads, bodies, tails, joints, cores, orbs. The mounted
-guns of milestone 10 and the bosses of 12 are assemblies of those parts, so
-the gallery will show a kind with what rides it, not only a frame.
+The atlas is modular: heads, bodies, tails, joints, cores, orbs. Riders and
+bosses are assemblies of those parts, so the gallery will show a kind with
+what rides it, not only a frame.
 
 ### Sound
 
 What hurts now: a sound is one oscillator, a share of noise and one
 envelope; hearing a change means a build and a run; nothing says whether a
-sound is too loud against the rest; the music is one two-bar loop; and the
-description "like a piano" probably fits.
+sound is too loud against the rest; the music is one two-bar loop.
 
 | Tool | What it does | What it leaves |
 | --- | --- | --- |
@@ -189,14 +267,14 @@ description "like a piano" probably fits.
 | Noise with a colour | Noise averaged over a window of samples whose length is eased: bright to dull, or a band. It is a sum of hashes, so every sample is still computed alone | The blast tail and the hiss the first set lacks |
 | Modulation | One oscillator bending another's phase, or multiplying it: metal, growl, bell. A soft clip for weight. Two oscillators a few cents apart for width | Three numbers on a line |
 | Echo | The recipe evaluated again at earlier times and added, quieter: a few taps make a tail | No state: a recipe can be asked for any sample |
-| Loops | `loop` lines: a sound whose length is a whole number of its periods. Events carry a level for each, as they carry the music's intensity: an engine by speed, the thread's hum, a boss's presence, an alarm at the last life | 14 above |
+| Loops | `loop` lines: a sound whose length is a whole number of its periods. Events carry a level for each: an engine by speed, a fix being held on the ship, a boss's presence, an alarm at the last life | Problem 15 |
 | Songs | Patterns of notes and an order to play them in, a section to a stage and one for a boss; a stinger that waits for the next sixteenth, so a bonus rings in time | More than two bars |
 | `tools\notes.ps1` | Reads a MIDI file's track into `notes` lines | Music from any editor |
 | The mix | The scripted run's events played into a file: every sound and stem at the level and time the game asked | `build\myhits_run.wav`: the game can be listened to without playing it |
 | The loudness report | Level and peak of every sound and of the mix; how many samples clip; which sound stands furthest from the rest | A table the author can check without ears; a sound 12 dB hot fails |
 
 The second synthesis in `bank.cs` follows every addition, as it follows the
-recipes now: the bank on the device is still held to a reference.
+recipes now.
 
 ### Levels
 
@@ -221,7 +299,8 @@ see minute three without playing two.
 Two clocks, then: squads by time, scenery by distance. That is the idea of a
 level that can slow or stop, carried through.
 
-**The theatre** is the game started with `--theatre`.
+**The theatre** is the stage, opened to a hand: the game started with
+`--theatre`.
 
 | Control | Does |
 | --- | --- |
@@ -229,8 +308,8 @@ level that can slow or stop, carried through.
 | `[` and `]`, `,` and `.` | Slower and faster; one tick back or on. Back is the replay again, one tick shorter |
 | G | A ghost: nothing hurts |
 | `-` and `=` | Rank down and up a pip |
-| Tab and a click | A kind, by name; one of it where the crosshair is |
-| The overlay | The squad's name, what is alive, the budget, what was refused |
+| Tab and a click | A kind, by name; one of it where the crosshair is. H hurts it to half, which is how a choreography is rehearsed |
+| The overlay | The squad's name, what is alive, the budget, what was refused; for a marked thing, the time from its tell |
 
 **The strip.** `tools\strip.ps1` runs a stage unseen and tiles a picture every
 two seconds into one wide image with the squads' names: a level on a page,
@@ -241,72 +320,68 @@ cannot play it.
 `--replay` plays it back. With problem 3 solved, a replay is the same run.
 A bug is a file. And every run appends a line to `build\myhits_runs.csv`:
 how long, the score, rank over time, accuracy, hurts and what did each,
-bonuses taken by kind, kills by kind. Tuning then has numbers to start from.
+bonuses taken by kind, kills by kind, charge spent on what. Tuning then has
+numbers to start from, and they are this game's.
 
 ## Presentation
 
-What there is: one place in three inks, sprites lit from one side, two styles
-of spark, a HUD of digits and pips. What would make it various, cheapest
-first.
+What there is: one place in three inks, sprites lit from one side, four
+styles of spark, a HUD of digits and pips. What would make it various,
+cheapest first.
 
 | What | How | Cost |
 | --- | --- | --- |
-| Light from what happens | Up to eight lights a frame: the ship's muzzle, each burst, a nova, a boss's mouth. Every picture with normals takes them; so does the ridge of the backdrop | A loop of eight in one fragment shader. The normals are already there |
+| Light from what happens | Up to eight lights a frame: the ship's muzzle, each burst, a nova, a heavy shot on its way. Every picture with normals takes them; so does the ridge of the backdrop | A loop of eight in one fragment shader. The normals are already there |
 | Things break as themselves | A death throws the dead thing's own texels: sparks placed on its mask and coloured from its picture | One flag on a kind and one on a style |
-| Things show damage | Frames by health; a glow through the mask where it has been struck | Frames, from the art tools |
-| Danger has a language | Hostile light is warm and the player's cool, everywhere. An attack shows its line before it comes. A squad shows where it will enter | Inks and one made picture |
-| Words | Letters (problem 10): a pause that explains itself, a stage's name, a boss's name over its bar, what a bonus is as it is taken, a title, a run's end with its numbers, the best scores | The letters; a small file for the scores |
+| Things show damage | Frames by health; a glow through the mask where it has been struck. A wounded thing already trails embers | Frames, from the art tools |
+| Danger has a language | Hostile light is warm and the player's cool, everywhere: the heavy shot is the violet of every hostile shot now, and should not be. A mark is the shape of its harm | Inks and pictures |
+| Words | Letters (problem 9): a pause that explains itself, a stage's name, a boss's name over its bar, what a bonus is as it is taken, a title, a run's end with its numbers, the best scores | The letters; a value in the registry for the scores |
 | Numbers that move | What a kill was worth, rising from where it died. A multiplier that grows and drains | Sprites the HUD already knows how to make |
 | Places | Three to start: the rails that exist; a hive, close and cellular, with pillars that are scenery; open storm, with lightning that is a light. Between two, the level surges and the backdrop streaks | A layer function a place, as now |
 | Time | A boss's death runs slow for a third of a second. Tempo is already a number every hostile obeys | One number for everything |
 | The frame | The picture pushed in a little on a great blow, as it is shaken now | A scale in the vertex shaders |
-| The window's margins | Where the window is not 16:9, the backdrop goes on to its edges and only the play is kept to the playfield | A second scissor |
+| The window's margins | Where the monitor is not 16:9, the backdrop goes on to its edges and only the play is kept to the playfield | A second scissor |
 
-**Not planned, and why.** Bloom and a shockwave that bends the picture both
-need the finished picture as an image a shader can sample, and an image
-needs a descriptor: the one thing every pipeline here does without. Glow is
-done in the scene, by sprites that add, and reads well. This is listed under
-decisions.
+### The picture as memory
 
-## Action
+Bloom, and a shockwave that bends what is behind it, need the finished
+picture as something a shader can read. The usual way is to sample it as an
+image, and an image needs a descriptor, which nothing here has.
 
-What a fight is made of now: things come from the right on programs, some
-fire at where the ship is, and the ship fires right. It is all there is of
-it. These are what would make it a game of decisions. Each is mostly lines
-in the tables; where it needs the shaders, the last column says how much.
+There is memory to spare, so the picture can be read the way everything else
+is: as memory, through an address.
 
-### The grammar of a fight (milestone 10)
+1. The frame is drawn to an image of the playfield's own size, 1920 by 1080,
+   whatever the window's. That is an attachment, not a descriptor.
+2. The image is copied to a buffer: 8 MB a frame at eight bits, 16 at
+   sixteen. The snapshots already do exactly this, once in a while.
+3. Compute passes make smaller, blurred copies of it in more buffers.
+4. The last pass draws to the window, pulling from those buffers by address
+   and filtering by hand, as the sprites already pull their texels.
 
-| What | Why | Needs |
-| --- | --- | --- |
-| **An attack is announced.** A move that aims: it fixes on where the ship is, shows the line it will take, and holds. A diver shows its dive, a turret its shot | A hit the player saw coming is the player's fault, and that is what makes it fair. Rank may shorten the warning but never below a floor | One move, one made picture |
-| **Fire is a pattern.** `fire` takes a count, a spread, a turn between shots and a rhythm: fans, bursts, spirals, walls with a gap. And it may fire any kind, so a carrier looses drones | Most of an enemy's character is how it fires | The request already carries a kind; the director stops assuming it is a pellet |
-| **Guns ride bodies.** A kind that sits on a chain's segment, with its own health and program. Shoot the guns off the dragon, or go for the head through their fire | Asked for of the other build. It is the first choice a boss offers | One flag; the rider reads its segment as a segment reads its head |
-| **Standing still is hunted.** Two seconds within a ship's width and something aimed and announced comes for that spot, and again | Said of the other build; nothing here answers it | A count in the director |
-| **Charge.** One meter. Kills, near misses and bonuses fill it. Missiles spend it; so does the dash | Missiles are free now, so there is no reason not to hold the button. A meter makes the second button a decision | A float in the game block; a bar |
-| **The dash.** A third button: a short burst the way the ship is going, through shots but not through bodies, at a cost in charge | An answer to a wall of shots that is not "be elsewhere already" | A few lines in the director; a third bit in the buttons |
-| **The near miss.** A hostile shot that passes close without striking pays charge and a tick of sound | It rewards flying where the danger is, which is the opposite of standing still | The pass that tests a shot against the ship already knows how near it came |
-| **The chain of kills.** Kills close together raise a multiplier; a pause drains it; a hurt ends it | Rank reads accuracy. This reads tempo. Together they pay for aggression that is also precise | Two numbers; a meter |
+It costs a copy of the picture every frame and about a third as much again
+in smaller copies. It gives bloom, a shockwave, the picture drawn once at
+one size however large the monitor, and a last pass that can do whatever is
+wanted to the whole of it. The measuring run of milestone 8 comes first, so
+that what it costs is a number.
 
-With these the first tuning pass is made, from the other build's accepted
-numbers: fire near 5 a second, bonuses spaced and capped, each gone in ten
-seconds. They are one line each in the tables, and with reloading each can
-be tried in a second.
+## More action
 
-### More, once that stands (milestones 12 and 13)
+Beyond the choreographies above; each is mostly lines in the tables.
 
 | What | Sketch |
 | --- | --- |
-| Weapons as bonuses | A lance that pierces; a swarm that homes, on the missile's slow start; a shot that rebounds from the rails; cutters that orbit the ship; mines. Each is a mover's program and at most a flag |
+| Fire is a pattern | `fire` takes a count, a spread, a turn between shots and a rhythm: fans, bursts, spirals, walls with a gap |
+| Standing still is hunted | Two seconds within a ship's width and something aimed and announced comes for that spot. It is a choreography with the ship's stillness for its tell |
+| The chain of kills | Kills close together raise a multiplier; a pause drains it; a hurt ends it. Rank reads accuracy; this reads tempo |
+| Weapons as bonuses | A lance that pierces; a swarm that homes, on the missile's slow start; a shot that rebounds from the rails; cutters that orbit the ship; mines |
 | Armour with a facing | A kind that takes hits only from behind or the side: the mask's normals already say which way a struck texel faces |
-| Things that react | A formation that scatters when one of it dies. A thing that dies into two smaller. A dying thing that fires once, at high rank |
-| Scenery that matters | Rocks and gates with masks: they stop shots from both sides and hurt to touch. A gate that opens on the music's beat. The level at double pace through a gap; the level running backwards, and what comes then comes from behind |
-| Bosses in phases | A program that jumps when health crosses a line. Guns that must go before the head can be hurt. A boss that, kept waiting, starts the level creeping again |
+| Scenery that matters | Rocks and gates with masks: they stop shots from both sides and hurt to touch. A gate that opens on the music's beat. The level at double pace through a gap; the level running backwards |
+| Bosses in phases | A program that jumps when health crosses a line: `wounded` is the first of these. Guns that must go before the head can be hurt |
 | Bonuses with a choice | One that changes kind each time it is shot. One that pays triple and raises rank. All of them drawn toward a ship that is not firing |
 | Rank with a face | Higher rank draws elites, in their own ink, from the deck. After a hurt, a breath. The pips say which is happening |
-| A worm that divides | Kill a middle segment and the tail becomes a head with a trail of its own. Cheap here, since every segment follows a trail by distance. Uncommitted: nobody has asked for it |
 
-### The pair (milestone 13)
+### The pair
 
 The brief was a ship and a companion with something between them. The
 companion exists; what is between them is decoration. This is the part of
@@ -317,7 +392,7 @@ the game no other shooter has, so it should be what the game is about.
   cost in charge.
 - **Where the two are is the weapon.** The companion keeps to where the ship
   was, so the thread lies along the ship's own path: fly round a squad and
-  it is caught in the loop. The longer the thread the thinner it cuts.
+  it is caught in the loop. A dash lays 320 of it in an instant.
 - **Its three stages stay,** and each changes the thread as well as the gun.
 - **It is drawn as one shape,** bright where it is cutting, and it lights
   what it passes.
@@ -329,21 +404,21 @@ done when its claims hold and its list has been tried.
 
 | # | Result | For a hand |
 | --- | --- | --- |
-| 8 | **Ground.** Nothing alive overwritten; links checked; requests in order, and two runs the same; the measuring run and its budgets; the sweep that cannot miss; tables on the device; the level's distance exact; letters, and a pause that says what the keys do | Play ten minutes. Is anything different? It should not be, except the pause |
-| 9 | **Tools.** Reloading. The gallery, the board and the theatre watching their files. The slicer and the art report. The mix and the loudness report. The strip. Runs recorded, replayed and logged | Change a squad's count with the theatre open. Change a sound with the board open. Listen to `myhits_run.wav`. Read the strip |
-| 10 | **A fight has a grammar.** Announced attacks, patterns of fire, guns on bodies, the hunt for a still ship, charge, the dash, the near miss, the chain of kills. The first tuning pass | Play. Is a hurt your fault? Is the dash an answer? Is it too much or too little, of what? |
-| 11 | **It looks and sounds like something.** Lights, deaths in a thing's own texels, damage shown, the language of danger, words, moving numbers. Sounds in layers; loops; a song in sections with stingers on the beat | Look at the strip beside the last one. Listen to the mix beside the last one. Then play |
+| 8 | **Ground.** The layer's own device, timeline and swapchain. Nothing alive overwritten; requests in order, and two runs the same; the measuring run and its budgets; the sweep that cannot miss; tables on the device; the level's distance exact; letters, and a pause that says what the keys do | Play ten minutes. Is anything different? It should not be, except the pause |
+| 9 | **Tools.** Reloading. The gallery, the board and the theatre watching their files. The slicer and the art report. The mix and the loudness report. The strip. Runs recorded, replayed and logged | Change a squad's count with the theatre open. Change a sound with the board open. Rehearse the hail-mary with H. Listen to `myhits_run.wav`. Read the strip |
+| 10 | **Choreography.** The words still wanted. Four or five more choreographies on the stage, each with its tell, its floor and its claim. Fire as a pattern; the hunt for a still ship; the chain of kills. The first tuning, by play | Play. Which enemies have a character? Is a hurt your fault? Is it too much or too little, of what? |
+| 11 | **It looks and sounds like something.** Lights, deaths in a thing's own texels, damage shown, the language of danger, words, moving numbers. The picture as memory: bloom and a shockwave. Sounds in layers; loops; a song in sections with stingers on the beat | Look at the strip beside the last one. Listen to the mix beside the last one. Then play |
 | 12 | **Levels.** The language, the deck, three stages with their places, scenery that matters, a boss in phases to each | Play all three. Which minute is dull? The runs file should agree |
-| 13 | **The pair.** The thread as a thing; weapons as bonuses; the pad and the settings file; a title and the best scores; a run of hours with nothing drifting | Play with the companion. Is it the point of the game yet? |
+| 13 | **The pair.** The thread as a thing; weapons as bonuses; the pad, and bindings remembered; a title and the best scores; a run of hours with nothing drifting | Play with the companion. Is it the point of the game yet? |
 
-Milestones 8 and 9 change nothing a player should notice. They are first
+Milestones 8 and 9 change little a player should notice. They are first
 because everything after them is content, and content is cheap or dear
 according to them.
 
 ## Rules that stay
 
-- A frame is 72 bytes down and 512 up. A third button is a bit that exists;
-  a tool's command is a few bits of the flags. What a tool reads beyond the
+- A frame is 72 bytes down and 512 up. A button is a bit that exists; a
+  tool's command is a few bits of the flags. What a tool reads beyond the
   events it reads at the end of a run, or when asked, never every frame.
 - Five passes a tick and a report a frame, until a measurement argues for
   another.
@@ -354,42 +429,25 @@ according to them.
 - No runtime dependency beyond Vulkan, XAudio2 and XInput; no build
   dependency beyond the SDKs, fasm2 and what Windows carries. Blender is
   needed only to render art again, never to build.
-
-## Decisions wanted
-
-1. **Which branch keeps `source\myhits\`.** Above.
-2. **The other build's accepted numbers as this one's starting point.** This
-   plan assumes yes, at milestone 10.
-3. **The window opens as a window.** `--fullscreen` to open over the monitor.
-   The other build does the opposite.
-4. **A third button for the dash**, and missiles that cost charge. Keys
-   Space, Shift, Ctrl; mouse left, right, middle; pad A, X, right bumper.
-5. **One sampled image, for bloom and distortion.** It would be the only
-   descriptor in the program. This plan says no, and does light in the
-   scene. If the look at milestone 11 wants more, it is one push descriptor
-   in one pipeline, and the style proof would name it as the exception.
-6. **Lives stay.** The other build has hull, shield and charge. Here a hurt
-   costs a life and is felt; charge is added for the second and third
-   buttons only.
+- What the next application would want goes in `source\common`.
 
 ## Risks
 
-- **The tools are work that is not the game.** Two milestones show nothing
+- **The tools are work that is not the game.** Two milestones show little
   new on the screen. They are kept small by being the proofs that exist,
   watching a file.
+- **Writing the layer's own presentation is the riskiest thing in milestone
+  8.** The borrowed module handles resizing, retirement and a lost surface,
+  and took time to get right. It is replaced last, behind the proofs that
+  already resize and present, and kept until they pass without it.
 - **Reloading can show a state no fresh start would reach,** such as a body
   half-way through a program that has changed under it. A reload therefore
   clears what is hostile, and the theatre replays to where it was.
-- **Two runs the same is a claim about one device and driver.** It is held
-  for the GTX 1080 Ti. A record made on one machine may not replay on
-  another; the file says what made it.
-- **More kinds of thing per tick may break the five-pass tick.** Riders read
-  a segment that read a head: two ticks behind what they sit on unless the
-  order is arranged. The measuring run and the chain's own exactness check
-  will say.
-- **Tuning by numbers from another build can mislead.** They were right for
-  its speeds and sizes. They are where tuning starts, with reloading to make
-  the next step quick, and the runs file to say what happened.
-- **The author still cannot hear or feel.** The mix, the loudness report and
-  the strip are for that; they check that nothing is broken, not that it is
-  good. That stays with whoever plays.
+- **Two runs the same is a claim about one device and driver.** A record made
+  on one machine may not replay on another; the file says what made it.
+- **A choreography that is fair on the stage may not be in a crowd.** Three
+  hail-marys at once are three locks to leave. The floor under a tell is per
+  thing; whether there should be one across the field is for play to say.
+- **The author still cannot hear or feel.** The mix, the loudness report, the
+  strip and the stage are for that; they check that nothing is broken, not
+  that it is good. That stays with whoever plays.

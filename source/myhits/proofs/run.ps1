@@ -215,7 +215,7 @@ try {
             20='the level did not wait for the dragon, or did not move on when it died'
             22='a stem of the music is too loud or silent, or the stems are not wanted as they should be, or are not playing' } 'myhits.exe'
         $frames = [int]$state.frames
-        Assert-True ($frames -eq 1000 -and [int]$state.events -eq $frames) 'The game did not run its script'
+        Assert-True ($frames -eq 1250 -and [int]$state.events -eq $frames) 'The game did not run its script'
         $voices = if ([int]$state.device) { "$($state.plays) sounds to voices" } else { 'no audio device here' }
         # The music the device rendered is the notes of tables.inc, by a second synthesis; and it is written out to be listened to.
         $stems = (Resolve-Path -LiteralPath (Join-Path $BuildDir 'myhits_game.music.bin')).Path
@@ -233,7 +233,7 @@ try {
         }
         Assert-True ($rail[300] -eq $rail[320]) 'The backdrop moved while the level stood still'
         Assert-True ($rail[235] -ne $rail[300]) 'The backdrop stood still while the level moved'
-        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through two games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; the window pauses, moves and takes its monitor as it should; {9} passes and {10} draws a frame" -f `
+        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through three games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks, bursts where it locked, and can be dodged or forestalled; the window pauses, moves, takes its monitor and is remembered; {9} passes and {10} draws a frame" -f `
             $frames, $state.ticks_a_frame, ([int]$state.kinds - 1), $state.moves, $state.squads, [int]([int]$state.world_bytes / 1024), $state.head_died_frame, $state.hurts_heard, $voices,
             ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
     }

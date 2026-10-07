@@ -152,7 +152,7 @@ macro game_tables
 	; What a hail-mary looses: slow away, to give whoever it is meant for
 	; time, and gathering speed, to where the lock was. There it bursts, and
 	; what is within its reach is hurt.
-	mover HEAVY,FRAME_NOVA,1.5
+	mover HEAVY,FRAME_NOVA,1.5,KIND_LOBBED
 		move 1.5,IN_QUAD,TO,0,0,MARK
 		blast HEAVY_REACH
 	end mover

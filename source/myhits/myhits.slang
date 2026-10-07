@@ -19,14 +19,28 @@ static const uint BONUS_SHIELD = 2;             // the next hurt is not one
 static const uint BONUS_NOVA = 3;               // everything on the playfield is struck, now
 static const uint BONUS_DOUBLE = 4;             // kills are worth twice
 static const uint BONUS_TICKS = 960;            // how long one lasts, before rank adds to it
-static const uint HUD = 21 + BONUSES * 9;       // eight digits, three lives, ten pips of rank; an icon and eight pips a bonus
+static const uint CHARGE_PIPS = 8;
+static const uint HUD = 21 + CHARGE_PIPS + BONUSES * 9; // eight digits, three lives, ten pips of rank, eight of charge; an icon and eight pips a bonus
+static const uint MARKS = PELLETS + HOSTILES;   // what a hostile or its shot means to strike, shown
 static const uint TETHER = 8;                   // points of light between the ship and its companion
 static const uint SHIP_PARTS = 8 + TETHER;      // flare, muzzle, ship, shield, crosshair; the companion, its gun, its guard; the tether
 static const float MATE_BACK = 150.0;           // how far behind the ship, along the ship's own path, the companion keeps
 static const float MATE_REACH = 64.0;           // how near its guard stops a shot
 static const uint MATE_TICKS = 10;              // between its shots when it fires for itself
 static const uint MATE_SHOT = 2;                // the seed of a shot that is its and not the player's
-static const uint INSTANCES = STARS + BODIES + SHIP_PARTS + HUD;
+static const uint INSTANCES = STARS + BODIES + SHIP_PARTS + MARKS + HUD;
+static const float MISSILE_COST = 0.25;         // of charge, for a pair
+static const float DASH_COST = 0.2;
+static const float KILL_CHARGE = 0.06;          // what a kill pays,
+static const float GRAZE_CHARGE = 0.03;         // a hostile shot that passes close,
+static const float BONUS_CHARGE = 0.12;         // and a bonus
+static const uint DASH_TICKS = 16;
+static const float DASH_SPEED = 2400.0;         // so a dash is 320 units
+static const uint SLIP_TICKS = 6;               // after a dash, shots still pass through for this long
+static const float GRAZE_REACH = 95.0;          // how close to the ship's middle is close
+static const uint BODY_SLIPPED = 1u << 31;      // a shot's own flag: it has passed through the ship in a dash
+static const uint SPRITE_DIM = 20;              // a sprite's flags from here are how much of it is taken away, of 255
+static const float LOCK_RING = 84.0;            // the ring of the lock picture, in its texels
 static const uint STOP_TICKS = 4;               // a hurt stops the world this long: it is felt
 static const uint SPRITE_INK = 16;              // a sprite's flags from here are which ink it is drawn in
 static const float SHIP_SPEED = 600.0;
@@ -117,8 +131,23 @@ struct Game
     uint stage;             // times the table of squads has been gone through: the backdrop's inks
     uint stage_tick;        // when it last was
     uint music_faults;      // stems of the music that are louder than their gain, or silent
+    float charge;           // 0..1: what missiles and the dash are paid from
+    uint earned;            // kills since the director last looked: each pays charge
+    uint grazes;            // hostile shots that passed close and did not strike
+    uint grazes_seen;       // as the director last saw it
+    uint dash_tick;         // the tick the last dash began in, plus one
+    uint slip_until;        // until this tick hostile shots pass through the ship
+    float2 dash_way;
+    uint dashes;
+    uint slipped;           // shots that passed through the ship in a dash
+    uint empties;           // launches and dashes refused for want of charge
+    uint blasts;            // things that ended in a burst
+    uint blast_hits;        // and caught the ship in it
+    float2 blast_at;        // where the last was
+    uint raider;            // the slot of the last body a script set down, plus one
+    uint heavy;             // the slot of the last heavy shot, plus one
 };
-struct Request { uint kind; float2 at; float angle; uint seed; };
+struct Request { uint kind; float2 at; float angle; uint seed; float2 mark; uint marking; };
 // The header the CPU writes once: GameWorld in myhits.asm.
 struct World
 {
@@ -165,6 +194,9 @@ void new_game(Game* game)
     fresh.mate_gun = 0.0; fresh.mate_guard = 3.14159265; fresh.mate_cooldown = 0; fresh.mate_fired = 0; fresh.mate_struck = 0; fresh.guarded = 0;
     fresh.ship_laid = 0; fresh.ship_carried = 0.0;
     fresh.stage = 0; fresh.stage_tick = game.tick; fresh.music_faults = game.music_faults;
+    fresh.charge = 1.0; fresh.earned = 0; fresh.grazes = 0; fresh.grazes_seen = 0;
+    fresh.dash_tick = 0; fresh.slip_until = 0; fresh.dash_way = float2(1.0, 0.0); fresh.dashes = 0; fresh.slipped = 0; fresh.empties = 0;
+    fresh.blasts = 0; fresh.blast_hits = 0; fresh.blast_at = float2(0.0, 0.0); fresh.raider = 0; fresh.heavy = 0;
     *game = fresh;
 }
 
@@ -207,7 +239,7 @@ void place(World* world, uint slot, Body body)
 // A hostile of a kind, and with it the segments of its chain if it heads one.
 // A chain takes a run of slots with its head in the last, so the head is
 // drawn over its body; and a ring of trail.
-void spawn_hostile(World* world, uint kind, float2 at, float angle, uint seed)
+uint spawn_hostile(World* world, uint kind, float2 at, float angle, uint seed)
 {
     Game* game = world.game;
     Kind made = world.tables.kinds[kind];
@@ -229,6 +261,7 @@ void spawn_hostile(World* world, uint kind, float2 at, float angle, uint seed)
         }
     }
     place(world, head, body);
+    return head;
 }
 
 // The director: alone, first in every tick. Everything that is awkward in
@@ -283,8 +316,41 @@ void direct()
 
     float2 ship = game.ship;
     game.ship_before = ship;
-    if (playing && !frozen) ship = clamp(ship + root.move * (SHIP_SPEED * TICK_SECONDS), float2(80.0, 60.0), float2(PLAYFIELD_WIDTH - 60.0, PLAYFIELD_HEIGHT - 60.0));
+    if (playing && !frozen)
+    {
+        // The dash, on the third button: a burst the way the ship is going,
+        // or ahead if it is going nowhere, paid for in charge. Hostile shots
+        // pass through the ship while it lasts and a moment after; bodies
+        // and bursts do not.
+        if (first && (root.pressed & BUTTON_THIRD) != 0)
+        {
+            if (game.charge >= DASH_COST && tick >= game.slip_until)
+            {
+                game.charge -= DASH_COST;
+                game.dash_tick = tick + 1;
+                game.slip_until = tick + DASH_TICKS + SLIP_TICKS;
+                game.dash_way = dot(root.move, root.move) > 0.0 ? normalize(root.move) : float2(1.0, 0.0);
+                game.dashes += 1;
+                trigger(SOUND_DASH, ship.x);
+            }
+            else
+            {
+                game.empties += 1;
+                trigger(SOUND_EMPTY, ship.x);
+            }
+        }
+        bool dashing = game.dash_tick != 0 && tick + 1 - game.dash_tick < DASH_TICKS;
+        float2 step = dashing ? game.dash_way * (DASH_SPEED * TICK_SECONDS) : root.move * (SHIP_SPEED * TICK_SECONDS);
+        ship = clamp(ship + step, float2(80.0, 60.0), float2(PLAYFIELD_WIDTH - 60.0, PLAYFIELD_HEIGHT - 60.0));
+        if (dashing) emit(world, STYLE_SPARK, ship, -game.dash_way, float2(0.0, 0.0), 3, tick * 5 + 1, tick + 1);
+    }
     game.ship = ship;
+
+    // Charge is earned: by kills and by hostile shots that pass close.
+    uint grazed = game.grazes - game.grazes_seen;
+    game.grazes_seen = game.grazes;
+    game.charge = min(game.charge + KILL_CHARGE * float(game.earned) + GRAZE_CHARGE * float(grazed), 1.0);
+    game.earned = 0;
 
     // The ship lays a trail as a chain's head does: at first the companion
     // is simply where the ship was.
@@ -339,6 +405,7 @@ void direct()
         game.collected[bonus] = 0;
         game.taken[bonus] += count;
         game.got[bonus] = tick + 1;
+        game.charge = min(game.charge + BONUS_CHARGE * float(count), 1.0);
         if (bonus == BONUS_SHIELD) game.shield = min(game.shield + count, 3u);
         else if (bonus == BONUS_NOVA)
         {
@@ -380,6 +447,26 @@ void direct()
             place(world, SHOTS + game.pellet_cursor % PELLETS, new_body(world.tables, KIND_PELLET, float2(-100.0, 420.0), 0.0, 0, game.tick));
             game.pellet_cursor += 1;
         }
+    }
+
+    // A scripted run's third game has no squads: a bare stage, on which the
+    // script sets down what it wants seen. A shot to dash through; a shot to
+    // pass close; and three divers, each hurt to half as soon as it is there,
+    // the third struck dead while it is still fixing on the ship.
+    bool staged = (root.flags & ROOT_SCRIPTED) != 0 && game.runs >= 2;
+    if (staged && !frozen)
+    {
+        uint since = tick - game.began;
+        if (since == 80 || since == 160)
+        {
+            bool through = since == 80;
+            place(world, SHOTS + game.pellet_cursor % PELLETS, new_body(world.tables, KIND_PELLET,
+                ship + (through ? float2(0.0, -150.0) : float2(400.0, -85.0)), through ? 1.5707963 : 3.14159265, 0, game.tick));
+            game.pellet_cursor += 1;
+        }
+        if (since == 320 || since == 760 || since == 1200) game.raider = spawn_hostile(world, KIND_DIVER, float2(1500.0, 620.0), 3.14159265, 0) + 1;
+        if ((since == 336 || since == 776 || since == 1216) && game.raider != 0) world.damage[game.raider - 1] += 3;
+        if (since == 1316 && game.raider != 0) world.damage[game.raider - 1] += 100;
     }
 
     // The companion. It arrives when a chain's head is killed, from where
@@ -484,7 +571,7 @@ void direct()
     // What comes next, by the table; and the table again when it runs out.
     // Rank adds to a squad: one more for every third of it. They come whether
     // or not anyone is playing: a run that is over is still a world.
-    if (!frozen)
+    if (!frozen && !staged)
     {
         Wave next = world.tables.waves[game.wave % world.tables.wave_count];
         // After a squad that holds the level, nothing comes while anything is
@@ -532,9 +619,15 @@ void direct()
             spawn_hostile(world, request.kind, request.at, 3.14159265, request.seed);
             continue;
         }
-        place(world, SHOTS + game.pellet_cursor % PELLETS, new_body(world.tables, request.kind, request.at, request.angle, request.seed, game.tick));
+        // What was fired at a mark takes the mark with it.
+        Body fired = new_body(world.tables, request.kind, request.at, request.angle, request.seed, game.tick);
+        fired.mark = request.mark;
+        fired.marking = request.marking;
+        uint into = SHOTS + game.pellet_cursor % PELLETS;
+        place(world, into, fired);
         game.pellet_cursor += 1;
-        trigger(SOUND_SHOT, request.at.x);
+        if (request.kind == KIND_HEAVY) game.heavy = into + 1;
+        trigger(request.kind == KIND_HEAVY ? SOUND_HEAVY : SOUND_SHOT, request.at.x);
     }
     game.requested += asked;
     game.requests = 0;
@@ -564,13 +657,23 @@ void direct()
     }
     if (playing && first && (root.pressed & BUTTON_SECOND) != 0)
     {
-        for (uint side = 0; side < 2; ++side)
+        // A pair of missiles is paid for; with too little charge there is a click and nothing.
+        if (game.charge >= MISSILE_COST)
         {
-            place(world, game.shot_cursor % SHOTS, new_body(world.tables, KIND_MISSILE, ship + float2(30.0, 0.0), 0.0, side, game.tick));
-            game.shot_cursor += 1;
+            game.charge -= MISSILE_COST;
+            for (uint side = 0; side < 2; ++side)
+            {
+                place(world, game.shot_cursor % SHOTS, new_body(world.tables, KIND_MISSILE, ship + float2(30.0, 0.0), 0.0, side, game.tick));
+                game.shot_cursor += 1;
+            }
+            game.fired += 2;
+            trigger(SOUND_LAUNCH, ship.x);
         }
-        game.fired += 2;
-        trigger(SOUND_LAUNCH, ship.x);
+        else
+        {
+            game.empties += 1;
+            trigger(SOUND_EMPTY, ship.x);
+        }
     }
     if (!frozen) game.alive = 0;
 }
@@ -610,26 +713,55 @@ void update(uint3 id : SV_DispatchThreadID)
             // The higher rank is, the quicker everything hostile goes about its moves.
             scene.tempo = kind.health > 0.0 ? 1.0 + 0.5 * game.rank : 1.0;
             float2 was = body.position;
-            uint fires;
+            uint fires, fixing = body.marking;
             float fan;
             alive = advance_body(body, world.tables, scene, fires, fan);
             if (body.link != 0) lay_trail(body, was, world.trails);
-            if (fires != 0 && game.state == STATE_PLAY)
+            // A fix that has just locked is heard to.
+            if (fixing == MARK_FOCUS && body.marking == MARK_LOCKED && game.state == STATE_PLAY) trigger(SOUND_LOCK, body.mark.x);
+            if (fires != 0)
             {
-                // As many as it asked for, at the player, each a little to one side or the other.
-                uint count = fires >> FIRE_COUNT, place_in;
-                InterlockedAdd(world.game.requests, count, place_in);
-                float2 toward = game.ship - body.position;
-                for (uint each = 0; each < count && place_in + each < REQUESTS; ++each)
+                // As many as it asked for, at the player, each a little to one
+                // side or the other; or, its mark locked, at the mark, which
+                // what it fires then carries and it no longer shows.
+                bool marked = body.marking == MARK_LOCKED;
+                if (game.state == STATE_PLAY)
                 {
-                    Request request;
-                    request.kind = fires & ((1u << FIRE_COUNT) - 1);
-                    request.at = body.position;
-                    request.angle = atan2(toward.y, toward.x) + (unit(hash(slot * 31 + game.tick * 7 + each)) - 0.5) * fan;
-                    request.seed = slot;
-                    world.queue[place_in + each] = request;
+                    uint count = fires >> FIRE_COUNT, place_in;
+                    InterlockedAdd(world.game.requests, count, place_in);
+                    float2 toward = (marked ? body.mark : game.ship) - body.position;
+                    for (uint each = 0; each < count && place_in + each < REQUESTS; ++each)
+                    {
+                        Request request;
+                        request.kind = fires & ((1u << FIRE_COUNT) - 1);
+                        request.at = body.position;
+                        request.angle = atan2(toward.y, toward.x) + (unit(hash(slot * 31 + game.tick * 7 + each)) - 0.5) * fan;
+                        request.seed = slot;
+                        request.mark = body.mark;
+                        request.marking = marked ? MARK_LOCKED : 0;
+                        world.queue[place_in + each] = request;
+                    }
+                }
+                body.marking = 0;
+            }
+            // A program that ends in a burst: what is within its reach of
+            // where it ended is hurt. A dash does not slip a burst.
+            if (!alive && fan > 0.0)
+            {
+                emit(world, STYLE_BLAST, body.position, float2(1.0, 0.0), float2(0.0, 0.0), 160, slot, game.tick);
+                trigger(SOUND_BLAST, body.position.x);
+                InterlockedAdd(world.game.blasts, 1);
+                world.game.blast_at = body.position;
+                float2 apart = game.ship - body.position;
+                if (game.state == STATE_PLAY && dot(apart, apart) < fan * fan)
+                {
+                    InterlockedAdd(world.game.ship_hits, 1);
+                    InterlockedAdd(world.game.blast_hits, 1);
                 }
             }
+            // Something in the second part of its program is on its last legs, and looks it.
+            if (alive && kind.wounded_first != 0 && body.move >= kind.wounded_first && ((game.tick + slot) & 7) == 0)
+                emit(world, STYLE_EMBER, body.position, -heading(body.angle), float2(0.0, 0.0), 1, slot, game.tick);
         }
         if (body.position.x < -260.0 || body.position.x > PLAYFIELD_WIDTH + 260.0 || body.position.y < -260.0 || body.position.y > PLAYFIELD_HEIGHT + 260.0)
         {
@@ -680,9 +812,37 @@ void collide(uint3 id : SV_DispatchThreadID)
                 return;
             }
         }
+        // What is thrown over the field touches nothing on its way: its harm is where it lands.
+        if ((shot.flags & KIND_LOBBED) != 0) return;
         Picture frame = pictures.frames[FRAME_SHIP];
         float along = sweep(pictures, frame, into_picture(ship_pose(game.ship_before), frame, from), into_picture(ship_pose(game.ship), frame, to));
-        if (along < 0.0) return;
+        if (along < 0.0)
+        {
+            // A near miss: it passed close to the ship's middle and did not
+            // strike. It pays once for a shot, and the shot flashes for it. (A
+            // shot the ship is dashing through is not near: it is through.)
+            float2 step = to - from, back = game.ship - from;
+            float closest = dot(step, step) > 0.0 ? saturate(dot(back, step) / dot(step, step)) : 0.0;
+            float2 off = from + step * closest - game.ship;
+            if (shot.struck == 0 && (shot.flags & BODY_SLIPPED) == 0 && game.tick >= game.slip_until && dot(off, off) < GRAZE_REACH * GRAZE_REACH)
+            {
+                world.bodies[now + slot].struck = game.tick;
+                InterlockedAdd(world.game.grazes, 1);
+                trigger(SOUND_GRAZE, game.ship.x);
+                emit(world, STYLE_SPARK, from + step * closest, -heading(shot.angle), float2(0.0, 0.0), 2, slot, game.tick);
+            }
+            return;
+        }
+        // In a dash, and a moment after, it passes through. Counted once.
+        if (game.tick < game.slip_until)
+        {
+            if ((shot.flags & BODY_SLIPPED) == 0)
+            {
+                world.bodies[now + slot].flags = shot.flags | BODY_SLIPPED;
+                InterlockedAdd(world.game.slipped, 1);
+            }
+            return;
+        }
         InterlockedAdd(world.game.ship_hits, 1);
         emit(world, STYLE_SPARK, lerp(from, to, along), -heading(shot.angle), float2(0.0, 0.0), SPARKS, slot, game.tick);
         world.bodies[now + slot].kind = 0;
@@ -752,12 +912,25 @@ void resolve(uint3 id : SV_DispatchThreadID)
     {
         body.health -= float(taken);
         body.struck = game.tick;
+        // Hurt enough and still alive, a kind that has a second part to its
+        // program leaves whatever it was doing for that, from where it is.
+        if (body.health > 0.0 && kind.wounded_first != 0 && body.health <= kind.wounded && body.move < kind.wounded_first)
+        {
+            body.move = kind.wounded_first;
+            body.elapsed = 0;
+            body.origin = body.position;
+            body.from = body.angle;
+            body.from_speed = body.speed;
+            trigger(SOUND_FOCUS, body.position.x);
+            emit(world, STYLE_EMBER, body.position, float2(1.0, 0.0), float2(0.0, 0.0), 12, slot, game.tick);
+        }
         if (body.health <= 0.0)
         {
             emit(world, STYLE_BURST, body.position, float2(1.0, 0.0), heading(body.angle) * (body.speed * 0.3), DEBRIS, slot, game.tick);
             uint worth = uint(float(kind.worth) * (1.0 + game.rank) + 0.5);
             InterlockedAdd(world.game.score, game.until[BONUS_DOUBLE] > game.tick ? 2 * worth : worth);
             InterlockedAdd(world.game.kills, 1);
+            InterlockedAdd(world.game.earned, 1);
             trigger(SOUND_BURST, body.position.x);
             // The head of a chain, killed, is what brings the companion.
             if (kind.links != 0)
@@ -779,6 +952,8 @@ void resolve(uint3 id : SV_DispatchThreadID)
                     request.at = body.position;
                     request.angle = 3.14159265;
                     request.seed = slot;
+                    request.mark = body.position;
+                    request.marking = 0;
                     world.queue[place_in] = request;
                 }
             }
@@ -886,6 +1061,45 @@ void report()
     events.report[16] = game.guarded;
     events.report[17] = game.stage;
     events.report[18] = game.music_faults;
+    events.report[19] = asuint(game.charge);
+    events.report[20] = (game.dashes & 255) | ((game.slipped & 255) << 8) | ((game.grazes & 255) << 16) | ((game.blasts & 255) << 24);
+    events.report[21] = (game.blast_hits & 255) | ((game.empties & 255) << 8);
+    events.report[22] = asuint(game.ship.x);
+    events.report[23] = asuint(game.ship.y);
+    // The body the script last set down, and the last heavy shot: whether
+    // each is there, what is marked, and where everything is.
+    uint seen = 0;
+    float2 mark = float2(0.0, 0.0), raider_at = float2(0.0, 0.0), heavy_at = game.blast_at;
+    float fade = 0.0;
+    if (game.raider != 0)
+    {
+        Body raider = world.bodies[now + game.raider - 1];
+        if (raider.kind == KIND_DIVER)
+        {
+            seen |= raider.marking | 256 | (raider.move >= world.tables.kinds[KIND_DIVER].wounded_first ? 512 : 0);
+            raider_at = raider.position;
+            if (raider.marking != 0) mark = raider.mark;
+        }
+    }
+    if (game.heavy != 0)
+    {
+        Body heavy = world.bodies[now + game.heavy - 1];
+        if (heavy.kind == KIND_HEAVY)
+        {
+            seen |= 1024;
+            heavy_at = heavy.position;
+            mark = heavy.mark;
+            fade = mark_fade(heavy);
+        }
+    }
+    events.report[24] = seen;
+    events.report[25] = asuint(mark.x);
+    events.report[26] = asuint(mark.y);
+    events.report[27] = asuint(raider_at.x);
+    events.report[28] = asuint(raider_at.y);
+    events.report[29] = asuint(heavy_at.x);
+    events.report[30] = asuint(heavy_at.y);
+    events.report[31] = asuint(fade);
     events.multiplier = game.until[BONUS_DOUBLE] > game.tick ? 2 : 1;
     events.shield = float(game.shield);
 }
@@ -939,10 +1153,12 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
         // In its grace the ship blinks.
         uint since = game.tick + 1 - game.hurt_tick;
         if (game.hurt_tick != 0 && since < GRACE_TICKS && (since / 8) % 2 == 0) there = false;
+        // In a dash, and while shots still pass through it, the ship is half there.
+        bool dashing = game.dash_tick != 0 && game.tick + 1 - game.dash_tick < DASH_TICKS, slipping = game.tick < game.slip_until;
         if (index == 0)
         {
             sprite.position = ship - float2(78.0, 0.0);
-            sprite.axis = float2(there && dot(root.move, root.move) > 0.0 ? -0.7 : 0.0, 0.0);
+            sprite.axis = float2(!there ? 0.0 : dashing ? -1.8 : dot(root.move, root.move) > 0.0 ? -0.7 : 0.0, 0.0);
             sprite.frame = FRAME_FLARE;
         }
         else if (index == 1)
@@ -954,6 +1170,7 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
         {
             sprite = ship_pose(ship);
             if (!there) sprite.axis = float2(0.0, 0.0);
+            if (slipping) sprite.flags |= 120 << SPRITE_DIM;
         }
         else if (index == 3)
         {
@@ -1003,7 +1220,38 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
             }
         }
     }
-    else if ((index -= SHIP_PARTS) < 8)
+    else if ((index -= SHIP_PARTS) < MARKS)
+    {
+        // What a hostile, or the shot it loosed, means to strike. While it is
+        // being fixed it is brackets that shake and close in on where the
+        // target is; locked, it is crosshairs as wide as the strike will
+        // reach, which fade as the shot comes: all there at its launch, gone
+        // as it lands.
+        uint now = game.tick & 1, slot = SHOTS + index;
+        Body body = world.bodies[now * BODIES + slot], before = world.bodies[(now ^ 1) * BODIES + slot];
+        if (body.kind != 0 && body.marking != 0 && game.state == STATE_PLAY)
+        {
+            if (before.kind != body.kind || before.born != body.born || before.marking == 0) before = body;
+            float2 at = lerp(before.mark, body.mark, root.blend) + shake;
+            if (body.marking == MARK_FOCUS)
+            {
+                float loose = 1.0 - float(body.elapsed) / float(max(body.span, 1u));
+                uint shaken = hash(game.tick * 31 + slot);
+                sprite.position = at + (float2(unit(shaken), unit(hash(shaken))) - 0.5) * (40.0 * loose + 6.0);
+                sprite.axis = heading((unit(hash(shaken + 7)) - 0.5) * 0.6 * loose) * (1.0 + 0.9 * loose);
+                sprite.frame = FRAME_FOCUS;
+                sprite.flags = 7 << SPRITE_INK;
+            }
+            else
+            {
+                sprite.position = at;
+                sprite.axis = float2(HEAVY_REACH / LOCK_RING, 0.0);
+                sprite.frame = FRAME_LOCK;
+                sprite.flags = (4 << SPRITE_INK) | (uint(255.0 * (1.0 - mark_fade(body))) << SPRITE_DIM);
+            }
+        }
+    }
+    else if ((index -= MARKS) < 8)
     {
         // The score, eight digits, the greatest first. Those before its first
         // are dim; all of them jump when it grows.
@@ -1033,12 +1281,20 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
         sprite.axis = float2(lit ? 0.55 : 0.18, 0.0);
         sprite.flags = (lit ? (index < 4 ? 3 : index < 7 ? 2 : 4) : 5) << SPRITE_INK;
     }
+    else if ((index -= 10) < CHARGE_PIPS)
+    {
+        // Charge, as eight pips under rank's: what the missiles and the dash are paid from.
+        bool lit = float(index) + 0.5 < game.charge * float(CHARGE_PIPS);
+        sprite.position = float2(PLAYFIELD_WIDTH * 0.5 - 126.0 + 36.0 * index, 84.0);
+        sprite.axis = float2(lit ? 0.45 : 0.16, 0.0);
+        sprite.flags = (lit ? 6 : 5) << SPRITE_INK;
+    }
     else
     {
         // The bonuses: a slot each along the bottom. One just taken jumps, each
         // in its own way; one in force is bright, with a pip for every eighth
         // of its time still to run, and blinks when that is nearly gone.
-        index -= 10;
+        index -= CHARGE_PIPS;
         uint bonus = index / 9, part = index % 9;
         static const uint jumps[BONUSES] = { EASE_OUT_BACK, EASE_OUT_ELASTIC, EASE_OUT_BOUNCE, EASE_OUT_EXPO, EASE_INOUT_BACK };
         uint since = game.tick + 1 - game.got[bonus];
@@ -1076,9 +1332,10 @@ float4 scene_fragment(SpriteVertex input) : SV_Target0
     float flash = float((input.flags >> SPRITE_FLASH) & 255) * (1.0 / 255.0);
     color.rgb = lerp(color.rgb, float3(color.a, color.a, color.a), flash);
     // The HUD's pictures are white, and take an ink.
-    static const float3 inks[6] = { float3(1.0, 1.0, 1.0), float3(1.0, 1.0, 1.0), float3(1.0, 0.78, 0.25), float3(0.35, 1.0, 0.45), float3(1.0, 0.25, 0.15), float3(0.2, 0.24, 0.32) };
-    color.rgb *= inks[min((input.flags >> SPRITE_INK) & 15, 5u)];
-    return color;
+    static const float3 inks[8] = { float3(1.0, 1.0, 1.0), float3(1.0, 1.0, 1.0), float3(1.0, 0.78, 0.25), float3(0.35, 1.0, 0.45), float3(1.0, 0.25, 0.15), float3(0.2, 0.24, 0.32),
+        float3(0.2, 0.55, 2.2), float3(1.0, 0.55, 0.12) };
+    color.rgb *= inks[min((input.flags >> SPRITE_INK) & 15, 7u)];
+    return color * (1.0 - float((input.flags >> SPRITE_DIM) & 255) * (1.0 / 255.0));
 }
 
 [shader("vertex")]
