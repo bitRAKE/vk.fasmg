@@ -5,13 +5,20 @@
 ;	build\myhits.exe		play: arrows or WASD or a pad move, Space or the
 ;					left button fires, Shift or the right button
 ;					launches a pair of missiles at the crosshair,
-;					Enter begins again when a run is over
+;					Enter begins again when a run is over; P pauses,
+;					F11 or Alt+Enter takes the whole monitor, Esc ends
+;	build\myhits.exe --fullscreen	the same, beginning with the whole monitor
 ;	build\myhits.exe --self-test	a scripted run of two games, every claim checked
+;
+; Its window has no caption. While it plays the pointer is the crosshair and
+; cannot leave; paused, or left for another program (which pauses it), the
+; pointer is free and the window moves by a press and hold anywhere on it.
 ;
 ; What the scripted run holds the game to is in proofs\README.md, under 07.
 MACHINE_NAME equ 'myhits'
 MACHINE_TAG equ 'game'
 MACHINE_SNAPSHOT := 1
+MACHINE_BARE := 1
 include 'machine.inc'
 include 'pictures.inc'
 include 'tables.inc'
@@ -34,6 +41,7 @@ STARTUP_DISPATCHES := PICTURES_PASSES + 2
 GAME_TICKS := 8				; a scripted frame of the game runs this many: it has far to go
 SCRIPT_FRAMES := 1000
 RESTART_FRAME := 400			; the script presses Enter here; the first game is over by then
+PAUSED_FRAME := 950			; and this frame's picture is a paused one's
 assert RESTART_FRAME = 400		; the script's later frames are written out from it
 public mainCRTStartup
 
@@ -90,11 +98,11 @@ end macro
 proc create_world uses rsi rdi
 	mov [failure_stage],3
 	; Only shaders touch the world: device-local memory, reached by address.
-	require_ok fastcall create_device_buffer,addr world_buffer,WORLD_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
+	require_ok fastcall create_buffer_domain,addr world_buffer,WORLD_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_DEVICE
 	; The CPU writes the header and the tables once, into host-visible memory.
-	require_ok fastcall create_buffer,addr header_buffer,sizeof.GameWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
+	require_ok fastcall create_buffer_domain,addr header_buffer,sizeof.GameWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_UPLOAD
 	; And the device writes the sounds once where the CPU, and so the voices, can read them.
-	require_ok fastcall create_buffer,addr bank_buffer,BANK_TOTAL*4,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
+	require_ok fastcall create_buffer_domain,addr bank_buffer,BANK_TOTAL*4,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_READBACK
 	mov rdi,[header_buffer.mapped]
 	require_ok fastcall pictures_create,rdi
 	mov rax,[header_buffer.address]
@@ -211,6 +219,12 @@ proc play_frame uses rbx
 		mov dword [root+Root.held],BUTTON_FIRE
 	.quiet_#from:
 	end iterate
+	; One frame is drawn as a paused one is, for its picture; the run goes on under it.
+	and dword [root+Root.flags],not ROOT_PAUSED
+	cmp eax,PAUSED_FRAME
+	jne .unpaused
+	or dword [root+Root.flags],ROOT_PAUSED
+.unpaused:
 	cmp eax,RESTART_FRAME
 	jne .sample
 	mov dword [root+Root.pressed],BUTTON_START
@@ -260,7 +274,7 @@ proc play_frame uses rbx
 	; over; and of the second game three volleys with RAPID and SPREAD, the
 	; nova going off, the shield about to take a rammer, and the worm's head
 	; under fire.
-	iterate when, 37,110,165,235,300,320,395,444,468,500,555,568,596,625,900
+	iterate when, 37,110,165,235,300,320,395,444,468,500,555,568,596,625,900,PAUSED_FRAME
 		cmp dword [root+Root.frame],when
 		jne .no_#when
 		fastcall snapshot_take,when
@@ -294,6 +308,12 @@ proc consume_events uses rbx rsi rdi,events
 	; And what should be felt, to the pad.
 	movss xmm0,dword [rbx+Events.rumble_low]
 	movss xmm1,dword [rbx+Events.rumble_high]
+	cmp [paused],0
+	je .felt_now
+	; A hurt does not go on being felt for as long as a pause lasts.
+	xorps xmm0,xmm0
+	xorps xmm1,xmm1
+.felt_now:
 	fastcall pad_rumble
 	; And how much is happening, to the music.
 	movss xmm0,dword [rbx+Events.intensity]
@@ -871,9 +891,11 @@ proc scripted_run uses rbx rsi
 	cmp [dispatch_count],SCRIPT_FRAMES*(GAME_TICKS*TICK_DISPATCHES+1)
 	jne .commands
 	cmp [draw_count],SCRIPT_FRAMES*4
-	je .report
+	je .manners
 .commands:
 	fail 12
+.manners:
+	fastcall check_manners
 	jmp .report
 .broken:
 	mov [app_io_failed],1
@@ -891,6 +913,109 @@ proc scripted_run uses rbx rsi
 		[head_died],[nova_frame],[rise_checked],[falls_checked],[heard_hurts],[sounds_asked],[audio_plays],[audio_failures],[audio_ready],[last_score],[last_kills],[title_rank], \
 		[traffic_down],[traffic_up],[startup_dispatches],[dispatch_count],[draw_count],[worst_latency],[active_caps],CAP_REQUIRED,[gpu_error],[failure_stage]
 	fastcall machine_write_report,rax
+	ret
+endp
+
+; 23: the window's manners, asked of the window itself by its own messages,
+; with no one at it. P pauses: the next frame is paid no ticks and says it is
+; paused. Paused, the window answers that its middle is a handle to move it
+; by and its edges are edges to size it by; playing, or over the whole
+; monitor, that all of it is the game's. F11 takes exactly the monitor and
+; gives back exactly what it had. And through all of it the pointer is never
+; taken: a scripted run has no one to take it from.
+proc check_manners uses rbx rsi
+	mov esi,SCRIPT_FRAMES
+	and dword [root+Root.flags],not ROOT_SCRIPTED
+	fastcall GetWindowRect,[window],addr manners_rect
+	mov eax,[manners_rect.left]
+	add eax,[manners_rect.right]
+	sar eax,1
+	mov edx,[manners_rect.top]
+	add edx,[manners_rect.bottom]
+	sar edx,1
+	shl edx,16
+	movzx eax,ax
+	or eax,edx
+	mov [manners_middle],rax
+	mov eax,[manners_rect.left]
+	add eax,2
+	movzx eax,ax
+	or eax,edx
+	mov [manners_side],rax
+	mov eax,[manners_rect.right]
+	sub eax,2
+	movzx eax,ax
+	mov edx,[manners_rect.bottom]
+	sub edx,2
+	shl edx,16
+	or eax,edx
+	mov [manners_corner],rax
+	; Playing: all of it is the game's.
+	fastcall window_proc,[window],WM_NCHITTEST,0,[manners_middle]
+	cmp eax,HTCLIENT
+	jne .wrong
+	fastcall window_proc,[window],WM_KEYDOWN,50h,0
+	cmp [paused],1
+	jne .wrong
+	mov dword [root+Root.ticks],7
+	fastcall machine_sample
+	cmp dword [root+Root.ticks],0
+	jne .wrong
+	test dword [root+Root.flags],ROOT_PAUSED
+	jz .wrong
+	; Paused: a handle, and edges.
+	iterate <point,part>, manners_middle,HTCAPTION, manners_side,HTLEFT, manners_corner,HTBOTTOMRIGHT
+		fastcall window_proc,[window],WM_NCHITTEST,0,[point]
+		cmp eax,part
+		jne .wrong
+	end iterate
+	; The whole monitor, and nothing of it a handle.
+	fastcall window_proc,[window],WM_KEYDOWN,VK_F11,0
+	cmp [fullscreen],1
+	jne .wrong
+	fastcall GetWindowRect,[window],addr window_rect
+	fastcall window_monitor
+	iterate side, left,top,right,bottom
+		mov eax,[window_rect.side]
+		cmp eax,[monitor_info.rcMonitor.side]
+		jne .wrong
+	end iterate
+	fastcall window_proc,[window],WM_NCHITTEST,0,[manners_middle]
+	cmp eax,HTCLIENT
+	jne .wrong
+	; And back: where it was, as large as it was, and paused still.
+	fastcall window_proc,[window],WM_KEYDOWN,VK_F11,0
+	cmp [fullscreen],0
+	jne .wrong
+	fastcall GetWindowRect,[window],addr window_rect
+	iterate side, left,top,right,bottom
+		mov eax,[window_rect.side]
+		cmp eax,[manners_rect.side]
+		jne .wrong
+	end iterate
+	cmp [paused],1
+	jne .wrong
+	; P again: it plays, and says so.
+	fastcall window_proc,[window],WM_KEYDOWN,50h,0
+	cmp [paused],0
+	jne .wrong
+	fastcall machine_sample
+	test dword [root+Root.flags],ROOT_PAUSED
+	jnz .wrong
+	; Leaving it for another program pauses it; coming back does not resume it.
+	fastcall window_proc,[window],WM_ACTIVATEAPP,0,0
+	cmp [paused],1
+	jne .wrong
+	fastcall window_proc,[window],WM_ACTIVATEAPP,1,0
+	cmp [paused],1
+	jne .wrong
+	fastcall machine_pause,0
+	cmp [confined],0
+	je .done
+.wrong:
+	fail 23
+.done:
+	or dword [root+Root.flags],ROOT_SCRIPTED
 	ret
 endp
 
@@ -917,9 +1042,20 @@ proc mainCRTStartup
 	fastcall scripted_run
 	jmp .finish
 .show:
-	fastcall resize_window,1280,720
+	fastcall fit_window
 	fastcall ShowWindow,[window],SW_SHOWNORMAL
 	fastcall UpdateWindow,[window]
+	fastcall command_option,<W,'--fullscreen'>
+	test eax,eax
+	jz .placed
+	fastcall machine_fullscreen
+.placed:
+	; Shown behind another program, or as an icon, it waits to be come to.
+	fastcall GetForegroundWindow
+	cmp rax,[window]
+	je .begin
+	fastcall machine_pause,1
+.begin:
 	fastcall QueryPerformanceCounter,addr clock_last
 .messages:
 	fastcall PeekMessageW,addr message,0,0,0,PM_REMOVE
@@ -932,11 +1068,14 @@ proc mainCRTStartup
 	jmp .messages
 .idle:
 	; Draw only while there is someone to draw for: not minimized, and either
-	; in front or showing something other than the last frame.
+	; playing in front or showing something other than the last frame. A
+	; paused window draws the one frame that says so, and then waits.
 	cmp [minimized],0
 	jne .wait
 	cmp [stale],0
 	jne .draw
+	cmp [paused],0
+	jne .wait
 	fastcall GetForegroundWindow
 	cmp rax,[window]
 	jne .wait
@@ -945,20 +1084,6 @@ proc mainCRTStartup
 	test eax,eax
 	jz .failed
 	mov [stale],0
-	test dword [root+Root.frame],15
-	jnz .messages
-	cvtss2sd xmm0,[last_rank]
-	mulsd xmm0,[hundred]
-	cvtsd2si eax,xmm0
-	mov [title_rank],eax
-	lea rax,[title_play]
-	cmp [last_state],0
-	je .title
-	lea rax,[title_over]
-.title:
-	mov [title_format],rax
-	fastcall wsprintfW,addr title_text,[title_format],[last_score],[last_lives],[title_rank],[last_wave],[last_fired],[last_struck],[last_kills]
-	fastcall SetWindowTextW,[window],addr title_text
 	jmp .messages
 .wait:
 	fastcall WaitMessage
@@ -977,7 +1102,6 @@ endp
 section '.data$game' data readable writeable align 16
 absolute dd 7FFFFFFFh,7FFFFFFFh,7FFFFFFFh,7FFFFFFFh
 thousand dq 1000.0
-hundred dq 100.0
 tolerance dd 0.05
 rank_slack dd 0.00002
 rank_one dd 0.01
@@ -1003,9 +1127,10 @@ scratch dd 0,0
 felt_all dd 1.0
 felt_half dd 0.5
 full_pace dd 240.0
-title_play GLOBWSTR 'myhits | score %u | lives %u | rank %u%% | squad %u | %u fired, %u struck, %u killed | arrows or WASD move, Space fires, Shift launches, Esc quits',0
-title_over GLOBWSTR 'myhits | score %u | lives %u | rank %u%% | squad %u | %u fired, %u struck, %u killed | this run is over: Enter begins another',0
-title_format dq 0
+manners_rect RECT
+manners_middle dq 0
+manners_side dq 0
+manners_corner dq 0
 world_buffer GpuBuffer
 header_buffer GpuBuffer
 bank_buffer GpuBuffer

@@ -16,6 +16,13 @@
 ; machine_sample pays real time out in ticks, TICK_RATE a second: a program
 ; that simulates runs its passes Root.ticks times in the frame, which may be
 ; none, and draws its world Root.blend of the way between the last two.
+;
+; The window's manners are here too. P pauses and resumes: a paused frame is
+; paid no ticks and carries ROOT_PAUSED. F11 or Alt+Enter gives the window the
+; whole of its monitor and takes it back. A program that defines MACHINE_BARE
+; has a window with no caption: while it plays, the pointer is hidden and kept
+; inside it; leaving it pauses it; and while it is paused it moves by a press
+; and hold anywhere on it, and sizes by its edges.
 include 'newcoff.inc'
 struc? TCHAR args:?&
 	. du args
@@ -56,14 +63,26 @@ BLEND_PREMULTIPLIED := 3		; the pictures': one blend covers and adds alike
 TICKS_LIMIT := 8			; the most one frame runs; past that, lost time stays lost
 SCRIPT_TICKS := 2			; a scripted frame is a sixtieth of a second
 QS_ALLINPUT := 4FFh
+GWL_STYLE = -16
+SWP_FRAMECHANGED = 20h
+SWP_NOOWNERZORDER = 200h
+WINDOW_EDGE := 10			; how near its edge a paused bare window sizes rather than moves
+if definite MACHINE_BARE
+	WINDOW_STYLE := WS_POPUP or WS_SYSMENU or WS_MINIMIZEBOX
+else
+	WINDOW_STYLE := WS_OVERLAPPEDWINDOW
+end if
 
 iterate function,GetModuleHandleW,GetCommandLineW,OutputDebugStringW,ExitProcess,CreateFileW,WriteFile,CloseHandle,VirtualAlloc,VirtualFree, \
 	RegisterClassExW,CreateWindowExW,DefWindowProcW,DestroyWindow,ShowWindow,UpdateWindow,PeekMessageW,TranslateMessage,DispatchMessageW, \
 	WaitMessage,PostQuitMessage,BeginPaint,EndPaint,GetClientRect,LoadCursorW,MessageBoxW,SetWindowPos,AdjustWindowRectEx, \
 	SetWindowTextW,wsprintfW,QueryPerformanceCounter,QueryPerformanceFrequency,GetAsyncKeyState,GetCursorPos,ScreenToClient,GetForegroundWindow, \
-	XInputGetState
+	XInputGetState,SetCursor,ClipCursor,ClientToScreen,GetWindowRect,GetWindowLongPtrW,SetWindowLongPtrW,MonitorFromWindow,GetMonitorInfoW
 	extrn function:qword
 end iterate
+if definite MACHINE_BARE
+	extrn SetProcessDpiAwarenessContext:qword
+end if
 ; For the startup arena behind the shared allocators.
 iterate function,GetLargePageMinimum,GetLastError,SetLastError,OpenProcessToken,LookupPrivilegeValueW,AdjustTokenPrivileges
 	extrn function:qword
@@ -73,6 +92,8 @@ GPU_APP_NAME equ MACHINE_NAME
 GPU_EXTRA_FEATURES := 1
 GPU_EXTRA_FORMATS := 1
 GPU_HARDWARE_ONLY := 1
+GPU_DISCRETE_ONLY := 1			; the contract's hardware: an integrated adapter is passed over
+GPU_REQUIRE_COMPUTE := 1		; the frame's queue runs the compute passes too
 GPU_WSI := 1
 include '..\..\examples\common\cpu_arena.inc'
 include '..\..\examples\common\vulkan_wsi.inc'
@@ -168,7 +189,8 @@ proc window_proc hwnd,message,wparam,lparam
 	mov [message],rdx
 	mov [wparam],r8
 	mov [lparam],r9
-	iterate <code,target>, WM_PAINT,.paint,WM_SIZE,.size,WM_KEYDOWN,.key,WM_LBUTTONDOWN,.left,WM_RBUTTONDOWN,.right,WM_GETMINMAXINFO,.minimum,WM_CLOSE,.close,WM_DESTROY,.close
+	iterate <code,target>, WM_PAINT,.paint,WM_SIZE,.size,WM_KEYDOWN,.key,WM_SYSKEYDOWN,.system_key,WM_SYSCHAR,.system_character,WM_LBUTTONDOWN,.left,WM_RBUTTONDOWN,.right, \
+		WM_GETMINMAXINFO,.minimum,WM_ACTIVATEAPP,.active,WM_SETCURSOR,.pointer,WM_NCHITTEST,.where,WM_CLOSE,.close,WM_DESTROY,.close
 		cmp edx,code
 		je target
 	end iterate
@@ -184,6 +206,9 @@ proc window_proc hwnd,message,wparam,lparam
 	cmp r8d,SIZE_MINIMIZED
 	jne .client_size
 	mov [minimized],1
+	if definite MACHINE_BARE
+		fastcall machine_pause,1
+	end if
 	jmp .handled
 .client_size:
 	cmp [window],0
@@ -197,6 +222,10 @@ proc window_proc hwnd,message,wparam,lparam
 	je .close
 	bt r9,30			; the keyboard repeating a key already down
 	jc .default
+	cmp r8d,VK_F11
+	je .whole
+	cmp r8d,50h			; P
+	je .pause
 	iterate <key,bit>, VK_SPACE,BUTTON_FIRE, VK_SHIFT,BUTTON_SECOND, VK_RETURN,BUTTON_START
 		cmp r8d,key
 		jne .not_#key
@@ -210,6 +239,64 @@ proc window_proc hwnd,message,wparam,lparam
 .right:
 	or [pressed_pending],BUTTON_SECOND
 	jmp .default
+.pause:
+	mov ecx,[paused]
+	xor ecx,1
+	fastcall machine_pause,rcx
+	jmp .handled
+; Alt+Enter is the other way to the whole monitor; any other system key is Windows'.
+.system_key:
+	cmp r8d,VK_RETURN
+	jne .default
+	bt r9,30
+	jc .handled
+.whole:
+	fastcall machine_fullscreen
+	jmp .handled
+; And the character Alt+Enter makes is taken, or Windows sounds its bell for it.
+.system_character:
+	cmp r8d,VK_RETURN
+	jne .default
+	jmp .handled
+.active:
+	mov [stale],1
+	if definite MACHINE_BARE
+		; Left for another program, a bare window pauses: what is come back to
+		; is a held picture and a free pointer, not a fight already going on.
+		test r8d,r8d
+		jnz .default
+		fastcall machine_pause,1
+	end if
+	jmp .default
+.pointer:
+	if definite MACHINE_BARE
+		; Over a bare window that is playing there is no arrow: the crosshair is the pointer.
+		cmp r9w,HTCLIENT
+		jne .default
+		cmp [paused],0
+		jne .default
+		fastcall SetCursor,0
+		mov eax,1
+		ret
+	else
+		jmp .default
+	end if
+.where:
+	if definite MACHINE_BARE
+		; Paused and not over the whole monitor, a bare window is all handle.
+		fastcall DefWindowProcW,[hwnd],[message],[wparam],[lparam]
+		cmp eax,HTCLIENT
+		jne .answered
+		cmp [paused],0
+		je .answered
+		cmp [fullscreen],0
+		jne .answered
+		fastcall window_part,[lparam]
+	.answered:
+		ret
+	else
+		jmp .default
+	end if
 .close:
 	fastcall PostQuitMessage,0
 	jmp .handled
@@ -221,20 +308,193 @@ proc window_proc hwnd,message,wparam,lparam
 	ret
 endp
 
-; Give the client area, and so the swapchain, exactly this size.
+; Give the client area, and so the swapchain, exactly this size. A bare
+; window is also put in the middle of its monitor's work area: nothing else
+; says where it should be.
 proc resize_window width,height
 	mov [window_rect.left],0
 	mov [window_rect.top],0
 	mov [window_rect.right],ecx
 	mov [window_rect.bottom],edx
-	fastcall AdjustWindowRectEx,addr window_rect,WS_OVERLAPPEDWINDOW,0,0
+	fastcall AdjustWindowRectEx,addr window_rect,WINDOW_STYLE,0,0
 	mov r8d,[window_rect.right]
 	sub r8d,[window_rect.left]
 	mov r9d,[window_rect.bottom]
 	sub r9d,[window_rect.top]
 	mov [window_rect.right],r8d
 	mov [window_rect.bottom],r9d
+	if definite MACHINE_BARE
+		fastcall window_monitor
+		test eax,eax
+		jz .where_it_is
+		mov eax,[monitor_info.rcWork.left]
+		add eax,[monitor_info.rcWork.right]
+		sub eax,[window_rect.right]
+		sar eax,1
+		mov [window_rect.left],eax
+		mov eax,[monitor_info.rcWork.top]
+		add eax,[monitor_info.rcWork.bottom]
+		sub eax,[window_rect.bottom]
+		sar eax,1
+		mov [window_rect.top],eax
+		fastcall SetWindowPos,[window],0,[window_rect.left],[window_rect.top],[window_rect.right],[window_rect.bottom],SWP_NOZORDER or SWP_NOACTIVATE
+		ret
+	.where_it_is:
+	end if
 	fastcall SetWindowPos,[window],0,0,0,[window_rect.right],[window_rect.bottom],SWP_NOMOVE or SWP_NOZORDER or SWP_NOACTIVATE
+	ret
+endp
+
+; The monitor the window is on, or is nearest: its whole rectangle, and what
+; of it the taskbar leaves. Returns zero if Windows will not say.
+proc window_monitor
+	fastcall MonitorFromWindow,[window],MONITOR_DEFAULTTONEAREST
+	fastcall GetMonitorInfoW,rax,addr monitor_info
+	ret
+endp
+
+; The playfield's own size where the monitor has room to spare for it, which
+; shows the pictures a texel to a pixel; two thirds of it where it has not.
+proc fit_window
+	fastcall window_monitor
+	test eax,eax
+	jz .small
+	mov eax,[monitor_info.rcWork.right]
+	sub eax,[monitor_info.rcWork.left]
+	cmp eax,PLAYFIELD_WIDTH
+	jbe .small
+	mov eax,[monitor_info.rcWork.bottom]
+	sub eax,[monitor_info.rcWork.top]
+	cmp eax,PLAYFIELD_HEIGHT
+	jbe .small
+	fastcall resize_window,PLAYFIELD_WIDTH,PLAYFIELD_HEIGHT
+	ret
+.small:
+	fastcall resize_window,PLAYFIELD_WIDTH*2/3,PLAYFIELD_HEIGHT*2/3
+	ret
+endp
+
+; Pause (ECX 1) or resume (0). Nothing is owed for the time spent paused; a
+; press made while paused is not carried into play; a pad is let go of.
+proc machine_pause state
+	cmp ecx,[paused]
+	je .done
+	mov [paused],ecx
+	mov [stale],1
+	mov [pressed_pending],0
+	fastcall QueryPerformanceCounter,addr clock_last
+	xorps xmm0,xmm0
+	xorps xmm1,xmm1
+	fastcall pad_rumble
+	fastcall machine_confine
+.done:
+	ret
+endp
+
+; The pointer is the game's while a bare window plays in front: hidden, and
+; held to the client area, so that no press lands on another program. It is
+; given back the moment any of that stops being so; and Windows may take it
+; back at any time, so a frame that plays asks again. A scripted run, which
+; has no one at it, never takes it.
+proc machine_confine
+	if definite MACHINE_BARE
+		cmp [test_mode],0
+		jne .release
+		cmp [paused],0
+		jne .release
+		cmp [minimized],0
+		jne .release
+		fastcall GetForegroundWindow
+		cmp rax,[window]
+		jne .release
+		fastcall GetClientRect,[window],addr clip_rect
+		fastcall ClientToScreen,[window],addr clip_rect.left
+		fastcall ClientToScreen,[window],addr clip_rect.right
+		fastcall ClipCursor,addr clip_rect
+		test eax,eax
+		jz .done
+		cmp [confined],0
+		jne .done
+		mov [confined],1
+		fastcall SetCursor,0
+		ret
+	.release:
+		cmp [confined],0
+		je .done
+		mov [confined],0
+		fastcall ClipCursor,0
+		fastcall SetCursor,[window_class.hCursor]
+	.done:
+	end if
+	ret
+endp
+
+; Which part of a paused bare window a point of the screen (LPARAM as the
+; message packs it) is on: an edge or a corner within WINDOW_EDGE of the
+; outside, which sizes it, or anywhere else, which moves it.
+proc window_part where
+	mov [where],rcx
+	fastcall GetWindowRect,[window],addr window_rect
+	movsx eax,word [where]
+	movsx edx,word [where+2]
+	xor ecx,ecx
+	iterate <coordinate,nearer,farther,low,high>, eax,left,right,1,2, edx,top,bottom,4,8
+		mov r8d,coordinate
+		sub r8d,[window_rect.nearer]
+		cmp r8d,WINDOW_EDGE
+		jge .not_#nearer
+		or ecx,low
+	.not_#nearer:
+		mov r8d,[window_rect.farther]
+		sub r8d,coordinate
+		cmp r8d,WINDOW_EDGE
+		jg .not_#farther
+		or ecx,high
+	.not_#farther:
+	end iterate
+	lea rdx,[window_parts]
+	movzx eax,byte [rdx+rcx]
+	ret
+endp
+
+; Over the whole of the monitor the window is on, with no frame; and back to
+; where and what it was. It is an ordinary window still: not exclusive, not
+; topmost, and other windows come and go over it as over any other.
+proc machine_fullscreen
+	cmp [fullscreen],0
+	jne .restore
+	fastcall GetWindowRect,[window],addr saved_rect
+	fastcall window_monitor
+	test eax,eax
+	jz .done
+	fastcall GetWindowLongPtrW,[window],GWL_STYLE
+	mov [saved_style],rax
+	and eax,not (WS_CAPTION or WS_THICKFRAME or WS_MAXIMIZEBOX)
+	or eax,WS_POPUP
+	mov [whole_style],rax
+	fastcall SetWindowLongPtrW,[window],GWL_STYLE,[whole_style]
+	mov eax,[monitor_info.rcMonitor.right]
+	sub eax,[monitor_info.rcMonitor.left]
+	mov [window_rect.right],eax
+	mov eax,[monitor_info.rcMonitor.bottom]
+	sub eax,[monitor_info.rcMonitor.top]
+	mov [window_rect.bottom],eax
+	fastcall SetWindowPos,[window],0,[monitor_info.rcMonitor.left],[monitor_info.rcMonitor.top],[window_rect.right],[window_rect.bottom],SWP_NOZORDER or SWP_NOOWNERZORDER or SWP_NOACTIVATE or SWP_FRAMECHANGED
+	mov [fullscreen],1
+	jmp .shown
+.restore:
+	fastcall SetWindowLongPtrW,[window],GWL_STYLE,[saved_style]
+	mov eax,[saved_rect.right]
+	sub eax,[saved_rect.left]
+	mov [window_rect.right],eax
+	mov eax,[saved_rect.bottom]
+	sub eax,[saved_rect.top]
+	mov [window_rect.bottom],eax
+	fastcall SetWindowPos,[window],0,[saved_rect.left],[saved_rect.top],[window_rect.right],[window_rect.bottom],SWP_NOZORDER or SWP_NOOWNERZORDER or SWP_NOACTIVATE or SWP_FRAMECHANGED
+	mov [fullscreen],0
+.shown:
+	mov [stale],1
+.done:
 	ret
 endp
 
@@ -244,10 +504,17 @@ proc create_window
 	mov [window_class.hInstance],rax
 	fastcall LoadCursorW,0,IDC_ARROW
 	mov [window_class.hCursor],rax
+	if definite MACHINE_BARE
+		; A pixel of the window is a pixel of the monitor, whatever Windows scales
+		; other programs by: the whole monitor is then all of its pixels. (-4 is
+		; per-monitor awareness, version 2; a Windows without it says no, and the
+		; window is scaled as before.)
+		fastcall SetProcessDpiAwarenessContext,-4
+	end if
 	fastcall RegisterClassExW,addr window_class
 	test eax,eax
 	jz .failed
-	fastcall CreateWindowExW,0,addr class_name,addr window_name,WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,976,579,0,0,[module],0
+	fastcall CreateWindowExW,0,addr class_name,addr window_name,WINDOW_STYLE,CW_USEDEFAULT,CW_USEDEFAULT,976,579,0,0,[module],0
 	test rax,rax
 	jz .failed
 	mov [window],rax
@@ -280,7 +547,7 @@ proc machine_start
 	mov [compute_info.layout],rax
 	mov [graphics_info.layout],rax
 	; The CPU reads these, so the memory is host-visible and cached.
-	require_ok fastcall create_buffer,addr events_buffer,EVENT_SLOTS*sizeof.Events,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT or VK_BUFFER_USAGE_TRANSFER_DST_BIT,1
+	require_ok fastcall create_buffer_domain,addr events_buffer,EVENT_SLOTS*sizeof.Events,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_READBACK
 	mov [failure_stage],0
 	mov eax,1
 	ret
@@ -465,6 +732,23 @@ endp
 proc machine_sample uses rbx
 	test dword [root+Root.flags],ROOT_SCRIPTED
 	jnz .scripted
+	fastcall machine_confine
+	and dword [root+Root.flags],not ROOT_PAUSED
+	cmp [paused],0
+	je .playing
+	; Paused: no tick is paid and none is owed, no control is passed on, and
+	; the picture stays where it stood between its last two.
+	or dword [root+Root.flags],ROOT_PAUSED
+	fastcall QueryPerformanceCounter,addr clock_last
+	xor eax,eax
+	mov [root+Root.ticks],eax
+	mov [root+Root.move],eax
+	mov [root+Root.move+4],eax
+	mov [root+Root.held],eax
+	mov [root+Root.pressed],eax
+	mov [pressed_pending],eax
+	ret
+.playing:
 	fastcall QueryPerformanceCounter,addr clock_now
 	mov rax,[clock_now]
 	mov rdx,rax
@@ -757,6 +1041,9 @@ proc machine_drain
 endp
 
 proc machine_stop
+	; Whatever else happens, the pointer is given back.
+	mov [paused],1
+	fastcall machine_confine
 	cmp [device],0
 	je .instance
 	mov [wsi_shutdown],1
@@ -816,7 +1103,7 @@ proc machine_report_exit
 	je .line
 	cmp [failure_stage],0
 	je .line
-	fastcall wsprintfW,addr title_text,<W,'[myhits] Vulkan initialization or rendering failed (stage=%u, VkResult=%d, missing=%u). This build requires Vulkan 1.3 with maintenance5, or 1.4: 1 dynamic rendering, 2 synchronization2, 8 inline shader code, 16 timeline semaphores, 64 buffer device addresses, 128 scalar block layout.',13,10>,[failure_stage],[gpu_error],[missing_caps]
+	fastcall wsprintfW,addr title_text,<W,'[myhits] Vulkan initialization or rendering failed (stage=%u, VkResult=%d, missing=%u). This build requires a discrete adapter with Vulkan 1.3 and maintenance5, or 1.4: 1 dynamic rendering, 2 synchronization2, 8 inline shader code, 16 timeline semaphores, 64 buffer device addresses, 128 scalar block layout.',13,10>,[failure_stage],[gpu_error],[missing_caps]
 	fastcall OutputDebugStringW,addr title_text
 	cmp [test_mode],0
 	jne .line
@@ -883,6 +1170,9 @@ target_height dd 0
 target_format dd VK_FORMAT_B8G8R8A8_SRGB
 minimized dd 0
 stale dd 1				; the window shows something other than the last frame
+paused dd 0				; no ticks are paid out: P, or a bare window left for another
+fullscreen dd 0				; the window has the whole of its monitor
+confined dd 0				; the pointer is hidden and held to the client area
 test_mode dd 0
 gpu_error dd 0
 failure_stage dd 1
@@ -902,6 +1192,13 @@ window_name GLOBWSTR MACHINE_NAME,0
 window_class WNDCLASSEX cbSize: sizeof.WNDCLASSEX,lpfnWndProc: window_proc,lpszClassName: class_name
 client_rect RECT
 window_rect RECT
+saved_rect RECT				; where the window was before it took the whole monitor
+clip_rect RECT
+saved_style dq 0
+whole_style dq 0
+monitor_info MONITORINFO cbSize: sizeof.MONITORINFO
+; By what is near: 1 the left edge, 2 the right, 4 the top, 8 the bottom.
+window_parts db HTCAPTION,HTLEFT,HTRIGHT,HTCAPTION,HTTOP,HTTOPLEFT,HTTOPRIGHT,HTCAPTION,HTBOTTOM,HTBOTTOMLEFT,HTBOTTOMRIGHT,HTCAPTION,HTCAPTION,HTCAPTION,HTCAPTION,HTCAPTION
 paint PAINTSTRUCT
 message MSG
 address_feature VkPhysicalDeviceBufferDeviceAddressFeatures sType: VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES

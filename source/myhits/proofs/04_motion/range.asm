@@ -75,11 +75,11 @@ end macro
 proc create_world uses rsi rdi
 	mov [failure_stage],3
 	; Only shaders touch the world: device-local memory, reached by address.
-	require_ok fastcall create_device_buffer,addr world_buffer,WORLD_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
+	require_ok fastcall create_buffer_domain,addr world_buffer,WORLD_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_DEVICE
 	; The CPU writes the header and the tables once, into host-visible memory.
-	require_ok fastcall create_buffer,addr header_buffer,sizeof.RangeWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
+	require_ok fastcall create_buffer_domain,addr header_buffer,sizeof.RangeWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_UPLOAD
 	; And the device writes the curves once where the CPU can read them.
-	require_ok fastcall create_buffer,addr curves_buffer,CURVES_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
+	require_ok fastcall create_buffer_domain,addr curves_buffer,CURVES_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_READBACK
 	mov rdi,[header_buffer.mapped]
 	require_ok fastcall pictures_create,rdi
 	mov rax,[header_buffer.address]

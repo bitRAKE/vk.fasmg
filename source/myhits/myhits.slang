@@ -1103,10 +1103,12 @@ struct VeilVertex
     nointerpolation float hurt : COLOR0;
     nointerpolation float over : COLOR1;
     nointerpolation float nova : COLOR2;
+    nointerpolation float paused : COLOR3;
 };
 
 // The last thing drawn, over everything: being hurt reddens the edges of
-// the picture for a moment, and a run that is over dims all of it.
+// the picture for a moment, a run that is over dims all of it, and a pause
+// dims it and puts its two bars in the middle.
 [shader("vertex")]
 VeilVertex veil_vertex(uint vertex : SV_VulkanVertexID)
 {
@@ -1118,8 +1120,9 @@ VeilVertex veil_vertex(uint vertex : SV_VulkanVertexID)
     result.hurt = game.hurt_tick == 0 ? 0.0 : saturate(1.0 - float(since) / 80.0);
     result.over = game.state == STATE_OVER ? saturate(float(game.tick - game.over_tick) / 120.0) : 0.0;
     result.nova = game.nova_tick == 0 ? 0.0 : saturate(1.0 - float(game.tick + 1 - game.nova_tick) / 24.0);
+    result.paused = (root.flags & ROOT_PAUSED) != 0 ? 1.0 : 0.0;
     // With nothing to show it covers nothing.
-    result.position = float4(result.hurt + result.over + result.nova > 0.0 ? result.at : float2(0.0, 0.0), 0.0, 1.0);
+    result.position = float4(result.hurt + result.over + result.nova + result.paused > 0.0 ? result.at : float2(0.0, 0.0), 0.0, 1.0);
     return result;
 }
 
@@ -1131,7 +1134,13 @@ float4 veil_fragment(VeilVertex input) : SV_Target0
     float dim = input.over * 0.45;
     // A nova is a flash of white light over everything: it adds.
     float white = input.nova * input.nova * 0.6;
-    return float4(red * 0.9 + white, red * 0.05 + white, red * 0.02 + white, saturate(red * 0.5 + dim));
+    float4 veil = float4(red * 0.9 + white, red * 0.05 + white, red * 0.02 + white, saturate(red * 0.5 + dim));
+    if (input.paused == 0.0) return veil;
+    // Paused: darker than a run that is over, and the bars, with soft edges.
+    float2 place = float2(abs(input.at.x) * float(PLAYFIELD_WIDTH) / float(PLAYFIELD_HEIGHT), abs(input.at.y));
+    float bar = saturate((0.028 - abs(place.x - 0.062)) * 220.0) * saturate((0.15 - place.y) * 220.0);
+    float shade = 0.55 * (1.0 - bar);
+    return float4(veil.rgb * (1.0 - shade) + float3(0.82, 0.90, 1.0) * bar, saturate(veil.a + shade * (1.0 - veil.a) + bar));
 }
 
 struct BackdropVertex

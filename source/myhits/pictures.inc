@@ -29,8 +29,8 @@ section '.text$pictures' code readable executable align 16
 
 proc pictures_create uses rbx rsi rdi,header
 	mov rbx,rcx
-	require_ok fastcall create_device_buffer,addr pictures_buffer,PICTURES_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
-	require_ok fastcall create_buffer,addr packed_buffer,PACKED_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
+	require_ok fastcall create_buffer_domain,addr pictures_buffer,PICTURES_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_DEVICE
+	require_ok fastcall create_buffer_domain,addr packed_buffer,PACKED_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_UPLOAD
 	mov rdi,[packed_buffer.mapped]
 	lea rsi,[packed_art]
 	mov ecx,PACKED_BYTES

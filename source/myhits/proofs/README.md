@@ -19,13 +19,14 @@ build.cmd myhits-survey
 
 So do pictures. A scripted run draws to a window nobody sees, so proofs 04
 to 07 each leave `frame_NNN.png` there: the whole playfield at 1920×1080, at
-the frames of the script worth looking at. The game's fifteen are its swoopers,
+the frames of the script worth looking at. The game's sixteen are its swoopers,
 its weavers, the worm coming and then turned back on itself, the turrets
 firing with the level stopped, the run over; and of the second game three
 volleys with RAPID and SPREAD in force, the nova going off, the shield about
 to take a rammer, the worm's head under fire, and the companion: where the
-ship was, acting for itself, and taking the player's aim; and the dragon,
-in the second place's inks.
+ship was, acting for itself, and taking the player's aim; the dragon, in the
+second place's inks; and one frame drawn as a paused one is, dimmed under
+its two bars.
 
 | # | Proof | Claim | State |
 | --- | --- | --- | --- |
@@ -506,13 +507,16 @@ one world, and its own scripted run holds it to the rules of play.
 
 ```bat
 build\myhits.exe
+build\myhits.exe --fullscreen
 build\myhits.exe --self-test
 build\myhits_music.wav
 ```
 
 **To look at, and to play.** Arrows, WASD or a pad move; Space or the left
 mouse button fires; Shift or the right button launches a pair of missiles at
-the crosshair, which follows the mouse. What comes is in the `squad` lines of
+the crosshair, which follows the mouse. P pauses and resumes; F11 or
+Alt+Enter gives the window the whole of its monitor and takes it back; Esc
+ends. What comes is in the `squad` lines of
 [tables.inc](../tables.inc): three swoopers, four weavers, then the worm, a
 head and nine segments that uncoil from where it came in and follow it
 through every turn. Shoot the head ten times and the worm goes segment after
@@ -564,6 +568,20 @@ third gives its gun to you: it points from wherever the companion is to the
 crosshair, and fires while you do. Its shots are its own: they do not count
 for or against your accuracy.
 
+**The window.** It has no caption and no frame. It opens in the middle of
+its monitor at the playfield's own 1920 by 1080 where there is room to spare
+for that, and at 1280 by 720 where there is not; a pixel of it is a pixel of
+the monitor whatever Windows scales other programs by. While the game plays,
+the pointer is the crosshair: the arrow is hidden and cannot leave the
+window, so a press cannot land on another program. P pauses, and so does
+leaving for another program (Alt+Tab, the Windows key) or making it an icon;
+coming back does not resume, P does. Paused, the picture dims under two
+bars, the arrow is back and free, and the window is all handle: press and
+hold anywhere on it to move it, or within ten pixels of an edge or a corner
+to size it. Over the whole monitor it does not move. That is an ordinary
+window still, not exclusive and not topmost: other windows come and go over
+it. A paused window draws one frame and then waits, using nothing.
+
 **How it is made.** A tick is the five passes of proof 05. The director
 alone reads the wave table, eases the level's pace, looks at the shooting
 once a second to move rank, and makes every body, the ones other bodies
@@ -600,8 +618,9 @@ companion, and is left to run until the dragon has come and gone.
 | 20 | The level waits for a boss | The dragon is the sixth squad of the second game. Long after it has come, it and its twelve segments are all there, no squad has come after it, and the level stands. The script strikes its head dead; ten frames on the chain is gone, and by frame 995 the table has begun again and the level is at full pace |
 | 21 | The backdrop is the level's | Held on the pictures themselves, by the proof runner: along the top rail, frames 300 and 320 are the same to the pixel, the level having stood still between them; frames 235 and 300 are not |
 | 22 | The music is its notes, and follows the play | The device finds every stem it rendered loud enough and no louder than its gain. With nothing happening only the bass is wanted, with everything all three, each at its own level. Where there is an audio device the stems are playing, and say where in the beat they are. And the proof runner holds the device's stems to a second synthesis of the same notes, as it does the sounds |
+| 23 | The window has its manners | Asked of the window by its own messages, with no one at it. P pauses: the next frame is paid no ticks and carries `ROOT_PAUSED`. Paused, the window says its middle is a handle, its left edge an edge and its corner a corner; playing, or over the whole monitor, that all of it is the game's. F11 gives it exactly its monitor's rectangle and then exactly the one it had. Leaving it pauses it and coming back does not resume it. And the pointer was never taken |
 
-Last result here, GTX 1080 Ti, default and validation alike: all twenty-two
+Last result here, GTX 1080 Ti, default and validation alike: all twenty-three
 hold. The run is 8,000 ticks, 41,000 passes and 4,000 draws, and takes seven
 seconds. The world is 764 KB on the device. The nova went off in frame 468
 and the head died in frame 557; 136 sounds went to voices.
@@ -616,7 +635,32 @@ that changes nothing (17, at 432); a DOUBLE that changes nothing (18, at
 469); a companion 100 behind and not 150 (19, at 568); a guard that stops
 nothing (19, at 600); a gun that ignores the aim (19, at 630); a squad that
 holds nothing (20, at 900); and a drum's thump a semitone sharp puts 24,140
-of the music's 576,000 samples outside the allowance.
+of the music's 576,000 samples outside the allowance. And nine ways of
+getting the window wrong each fail 23: a pause that does not say so, or
+still pays ticks; a paused window that is not a handle, or has no edges; one
+over the whole monitor that still is a handle; a whole monitor a pixel
+short; a window that comes back a pixel off; leaving that does not pause;
+and coming back that resumes.
+
+**What 23 cannot hold, and a hand must.** The check asks the window what it
+would do; it cannot be the hand that does it, and it runs with no one at it,
+so that the pointer is never taken is true of it for more than one reason.
+These want trying, once, by whoever plays:
+
+- [ ] Playing, the arrow is gone and the pointer cannot leave the window, on
+  any side, with more than one monitor.
+- [ ] P, Alt+Tab and the Windows key each give the pointer back at once, and
+  the picture shows the two bars.
+- [ ] Paused, a press and hold in the middle moves the window, to another
+  monitor too; near an edge or a corner it sizes it, and the picture fits
+  the new size when the button is let go.
+- [ ] F11 and Alt+Enter each take the whole of the monitor the window is
+  mostly on, and give back the place and size it had. Over the whole
+  monitor, paused, a press and hold moves nothing.
+- [ ] Other windows brought over it stay over it; it does not flash, change
+  the monitor's mode, or jump in front.
+- [ ] On a monitor Windows scales (125%, 150%), the picture is sharp, not
+  stretched.
 
 **Finding: a run that is over is still a world.** The first script meant to
 stop the squads when the last life went. But then the level, stopped for the
@@ -682,3 +726,6 @@ These assembler traps have cost time; each now has a comment where it bit:
 - An included file with no `section` of its own goes into whatever section
   is open. `bitmap.inc` included after a data section put its code there, and
   the first call to it was an access violation.
+- A variable may not have an instruction's name. `monitor MONITORINFO ...`
+  assembles as the instruction, defines nothing, and every use of it then
+  says the symbol is undefined.

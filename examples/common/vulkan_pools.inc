@@ -1,11 +1,13 @@
 ; Persistent memory blocks, compatible memory types and segregated free ranges.
 ; Buffers and optimal images occupy separate blocks (bufferImageGranularity).
-; A block's class: 1 mapped buffers, 2 images, 3 descriptor-heap buffers,
-; 4 device-local buffers, which are never mapped.
 ; Destruction retires through the command timeline before a range is reusable.
 include 'range_allocator.inc'
 MEMORY_POOL_LIMIT = 64
 GPU_DELETE_LIMIT = 256
+; Explicit buffer domains. Existing create_buffer callers retain their policy.
+BUFFER_DEVICE = 1
+BUFFER_UPLOAD = 2
+BUFFER_READBACK = 3
 struct MemoryPool
 	memory dq 0
 	mapped dq 0
@@ -93,8 +95,8 @@ proc allocate_gpu_memory uses rbx rsi rdi r12 r13 r14 r15,owner,memory_type,kind
 	mov [rbx+GpuBuffer.coherent],eax
 	cmp r13d,2
 	je .search
-	cmp r13d,4
-	je .search
+	test edi,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+	jz .search
 	test eax,eax
 	jnz .search
 	mov rax,[properties2.properties.limits.nonCoherentAtomSize]
@@ -216,8 +218,11 @@ proc allocate_gpu_memory uses rbx rsi rdi r12 r13 r14 r15,owner,memory_type,kind
 	add [memory_reserved_bytes],rax
 	cmp r13d,2
 	je .ranges
-	cmp r13d,4
-	je .ranges
+	; A device-only block has no CPU mapping. Upload/readback pools keep theirs.
+	imul eax,r12d,sizeof.VkMemoryType
+	lea rdx,[memory_properties2.memoryProperties.memoryTypes]
+	test [rdx+rax+VkMemoryType.propertyFlags],VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+	jz .ranges
 	vkMapMemory [device],[rsi+MemoryPool.memory],0,VK_WHOLE_SIZE,0,addr rsi+MemoryPool.mapped
 	test eax,eax
 	jnz .release_failed
@@ -258,6 +263,16 @@ proc allocate_gpu_memory uses rbx rsi rdi r12 r13 r14 r15,owner,memory_type,kind
 	ret
 endp
 
+; Five-argument API: memory domain is explicit and part of the pool class.
+; The UI/render thread owns this transient selection, as it owns pool mutation.
+proc create_buffer_domain owner,bytes,usage,addressable,domain
+	mov eax,dword [domain]
+	mov [buffer_domain],eax
+	fastcall create_buffer,rcx,rdx,r8,r9
+	mov [buffer_domain],0
+	ret
+endp
+
 proc create_buffer uses rbx rsi rdi,owner,bytes,usage,addressable
 	mov rbx,rcx
 	mov [memory_buffer_info.size],rdx
@@ -273,23 +288,27 @@ proc create_buffer uses rbx rsi rdi,owner,bytes,usage,addressable
 	mov rax,[rbx+GpuBuffer.handle]
 	mov [memory_buffer_requirements.buffer],rax
 	vkGetBufferMemoryRequirements2 [device],addr memory_buffer_requirements,addr memory_requirements2
-	cmp [memory_device_local],0
-	je .host
-	; Memory only the device reads and writes: no mapping, no host-visible type.
-	fastcall memory_index,[memory_requirements2.memoryRequirements.memoryTypeBits],VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-	cmp eax,-1
-	je .failed
-	jmp .type
-.host:
+	cmp [buffer_domain],BUFFER_DEVICE
+	je .device_type
+	cmp [buffer_domain],BUFFER_UPLOAD
+	je .host_visible
+	cmp [buffer_domain],BUFFER_READBACK
+	je .cached_type
 	test [memory_buffer_info.usage],VK_BUFFER_USAGE_TRANSFER_DST_BIT
 	jz .host_visible
 	test [memory_buffer_info.usage],VK_BUFFER_USAGE_TRANSFER_SRC_BIT
 	jnz .host_visible
+.cached_type:
 	fastcall memory_index,[memory_requirements2.memoryRequirements.memoryTypeBits],VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT or VK_MEMORY_PROPERTY_HOST_CACHED_BIT
 	cmp eax,-1
 	jne .type
 .host_visible:
 	fastcall memory_index,[memory_requirements2.memoryRequirements.memoryTypeBits],VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+	cmp eax,-1
+	je .failed
+	jmp .type
+.device_type:
+	fastcall memory_index,[memory_requirements2.memoryRequirements.memoryTypeBits],VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
 	cmp eax,-1
 	je .failed
 .type:
@@ -298,10 +317,12 @@ proc create_buffer uses rbx rsi rdi,owner,bytes,usage,addressable
 	jz .allocate
 	mov r9d,VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT
 .allocate:
-	mov esi,4
-	cmp [memory_device_local],0
-	jne .class
 	mov esi,1
+	cmp [buffer_domain],0
+	je .heap_class
+	mov esi,[buffer_domain]
+	add esi,3                         ; device/upload/readback classes 4/5/6
+.heap_class:
 	if definite VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT
 		; Where the projection has descriptor heaps, their buffers keep to blocks of their own.
 		test [memory_buffer_info.usage],VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT
@@ -309,7 +330,6 @@ proc create_buffer uses rbx rsi rdi,owner,bytes,usage,addressable
 		mov esi,3
 	.ordinary:
 	end if
-.class:
 	fastcall allocate_gpu_memory,rbx,rax,rsi,r9
 	test eax,eax
 	jz .failed
@@ -332,13 +352,9 @@ proc create_buffer uses rbx rsi rdi,owner,bytes,usage,addressable
 	ret
 endp
 
-; The same, in device-local memory: for what only shaders touch.
-proc create_device_buffer owner,bytes,usage,addressable
-	mov [memory_device_local],1
-	fastcall create_buffer,rcx,rdx,r8,r9
-	mov [memory_device_local],0
-	ret
-endp
+section '.data$buffer_domain' data readable writeable align 4
+buffer_domain dd 0
+section '.text$pools' code readable executable align 16
 
 proc mapped_buffer_range owner
 	mov rax,[rcx+GpuBuffer.memory]
@@ -573,7 +589,6 @@ memory_reuses dd 0
 gpu_delete_count dd 0
 gpu_delete_head dd 0
 gpu_delete_tail dd 0
-memory_device_local dd 0
 force_dedicated dd 0
 force_noncoherent dd 0
 buffer_pool_bytes dd 1024*1024

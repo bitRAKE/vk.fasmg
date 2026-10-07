@@ -451,6 +451,10 @@ they change a rule, into this plan.
    left is tuning, which wants someone playing: how hard, how fast, how
    generous, how loud.
 
+After these the window was given its manners (no caption, the pointer kept
+inside while it plays, a pause, the whole monitor on F11), and what comes
+next is [plan2.md](plan2.md): milestones 8 to 13.
+
 ## Milestone 5 in detail
 
 The proofs so far are separate programs, each with its own small world.
@@ -486,6 +490,9 @@ coming when a run is over. A world that stopped with the player left the
 level standing still for turrets that would never be relieved.
 
 ## Open
+
+[plan2.md](plan2.md) takes each of these up, with what reading the code
+again found, and says what it gets and when.
 
 - **Art.** The creature atlas is the reference for quality and scale: about
   80 texels to a head, two sheet pixels to a pixel of the art. The ship is a
@@ -540,10 +547,15 @@ before, and event latency is measured rather than assumed; draws use Vulkan's
 raw indices and need no extra feature; the programs are assembly throughout,
 with no C++ bridge; and each proof fails by a numbered claim.
 
-Both branches change `examples\common\vulkan_pools.inc` and
-`vulkan_context.inc`, differently: this one adds `create_device_buffer`, the
-other `create_buffer_domain` and two context switches. Merging both to main
-will conflict there and wants one design for the pair.
+Both branches changed `examples\common\vulkan_pools.inc`, differently, and
+the other also `vulkan_context.inc`. That is settled: this branch now carries
+the other's `create_buffer_domain` and both of its context switches, and the
+three shared files are the same in both. What still collides is the
+directory: both keep their work in `source\myhits\`.
+
+Read a second time the same day, after its seventh proof, for
+[plan2.md](plan2.md): what its playtests record, what is taken from it
+differently, and what is declined and why, are there.
 
 ## Risks
 

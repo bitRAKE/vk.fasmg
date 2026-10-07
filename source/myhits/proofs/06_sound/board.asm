@@ -55,11 +55,11 @@ end macro
 
 proc create_world uses rsi rdi
 	mov [failure_stage],3
-	require_ok fastcall create_device_buffer,addr state_buffer,STATE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
+	require_ok fastcall create_buffer_domain,addr state_buffer,STATE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_DEVICE
 	; The CPU writes the header and the recipes once, into host-visible memory.
-	require_ok fastcall create_buffer,addr header_buffer,sizeof.BoardWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
+	require_ok fastcall create_buffer_domain,addr header_buffer,sizeof.BoardWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_UPLOAD
 	; And the device writes the bank once where the CPU, and so the voices, can read it.
-	require_ok fastcall create_buffer,addr bank_buffer,BANK_SAMPLES*4,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1
+	require_ok fastcall create_buffer_domain,addr bank_buffer,BANK_SAMPLES*4,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_READBACK
 	mov rdi,[header_buffer.mapped]
 	xor eax,eax
 	mov ecx,sizeof.BoardWorld
