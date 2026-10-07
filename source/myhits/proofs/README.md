@@ -25,6 +25,7 @@ build.cmd myhits-survey
 | 03 | [pictures](03_pictures/gallery.asm) | Every frame, cut, made or drawn, is made and masked on the device and drawn from it with nothing bound; a picture that turns is still lit from one side | Passes, with three findings |
 | 04 | [motion](04_motion/range.asm) | The easing curves are the textbook's; the simulation runs at a fixed tick; bodies run the tables' programs and end each move exactly where it says; the level's own pace is eased, to a stop and back | Passes, with three findings |
 | 05 | [hits](05_hits/arena.asm) | What is drawn is what is hit, by its mask, at any angle, size and speed; what is hit takes it and dies of it; a hit throws off exactly the particles and sounds it should; a touch hurts the ship and a near miss does not | Passes, with two findings |
+| 06 | [sound](06_sound/board.asm) | The bank the device renders is the recipes'; a sound asked for in one frame's events is on a voice as the next begins; many in a frame are one voice at their mean | Passes, with three findings |
 
 ## 00 survey
 
@@ -404,6 +405,86 @@ into from `iterate` than from a macro.
 **Finding: three shaders reach no memory now, and the check names them.** A
 particle's fragment computes its own light. Proof 01 lists the shaders that
 may reach nothing; any other that stops reaching memory fails it.
+
+## 06 sound
+
+The game's sounds are not files. Each is a recipe in
+[tables.inc](../tables.inc): a wave whose pitch sweeps from one frequency to
+another along an easing curve, risen in a few milliseconds and fallen away
+along another curve, with a share of noise. The device renders them all once,
+into memory the CPU can read, and XAudio2 plays from there.
+
+```bat
+build\myhits_sound.exe
+build\myhits_sound.exe --self-test
+build\myhits_sound.bank.wav
+```
+
+**To look at, and to hear.** Run it without arguments: this one makes noise.
+Each row is a sound, drawn from its samples and as wide as it is long. Space
+or the left mouse button plays the shot; Shift or the right button the
+launch; Enter the hit, the burst and the hurt in turn. A sound is played
+where the mouse is, from the left speaker to the right. Hold the mouse still
+and tap Space quickly: no two shots are quite the same pitch. The title shows
+how long the last sound took from its controls being read to being on a
+voice, and what the engine says it adds after that.
+
+The checks write the bank as `build\myhits_sound.bank.wav`: the five sounds
+end to end, exactly as the device made them, for any player. To change a
+sound, change its line in tables.inc, build, and listen to that file.
+
+**How it is made.** One compute pass at start writes every sample: the pitch
+is the area under its curve, summed by Simpson's rule, and the noise is a
+hash of the sample's place, so the bank is the same on every run. A frame's
+events carry, for each sound, how many times it was asked for and the sum of
+where; when the next frame begins the CPU gives each sound asked for to the
+next of sixteen voices, once, louder for being many, set between the speakers
+at the mean of where, and a little off pitch. XAudio2 is called from the
+assembly through its interfaces' tables; nothing else stands between.
+
+**The checks**, on 100 scripted frames, with the mastering voice at nothing:
+
+| # | Claim | How it is held |
+| --- | --- | --- |
+| 1 | Events arrive in order, one frame late | As in the spine |
+| 2 | The bank is well formed | The device examines its own: every sound begins at silence, ends within a hundredth of its gain of it, is never louder than its gain, and reaches at least a quarter of it |
+| 3 | What a frame asks for goes to a voice as the next begins | Frames 10 to 50 ask for each sound once, as scripted; each is one more sound on a voice when that frame's events are read |
+| 4 | Many in a frame are one voice, louder, at their mean | Five hits at 200 to 1000 are one voice at 600: 0.882 of it left and 0.471 right, at twice one hit's level |
+| 5 | The voices are a ring | Twenty shots in twenty frames after five others: 25 sounds on 16 voices, and no voice refused one |
+| 6 | The engine plays what it is given | Where there is an audio device, soon after the run no voice has a buffer left |
+| 7 | The traffic is Root down and Events up; a frame is one pass and one draw | Counters. The bank comes back once, at start |
+
+Then the script holds the device's bank to [bank.cs](06_sound/bank.cs), which
+makes the same sounds a second way: in double precision, with the sweep
+summed sixteen times a sample, and with the curves of proof 04's second
+implementation. A sample may differ by a five-hundredth of full scale; a
+thousandth of them may differ by more, since a square or a saw has edges and
+a sample on one can fall either side in single precision.
+
+Last result here, GTX 1080 Ti, default and validation alike: all seven hold.
+5 sounds, 78,240 samples, 1.63 seconds. None differs from the second
+implementation by more than the allowance; the difference is 8.7 × 10⁻⁷ rms.
+25 sounds went to 16 voices and were played out. The engine reports 1,912
+samples of its own latency, 40 ms.
+
+**The checks bite.** Swapping left and right fails check 4 at frame 30.
+Summing the sweep over 31 intervals in place of 32 puts 62,005 samples
+outside the allowance.
+
+**Finding: the engine's own latency is 40 ms here, not 10.** The plan
+reckoned a frame plus XAudio2's 10 ms quantum. XAudio2 reports 1,912 samples
+between a voice starting and its sound leaving, on this machine's output.
+From controls to voice the program adds a frame; the rest is the engine's and
+the device's, and is the larger part. The plan says so now.
+
+**Finding: XAudio2's structures are packed to the byte.** Its header packs
+them, so `XAUDIO2_BUFFER` is 44 bytes with its last pointer at 36, not the 48
+and 40 a compiler would lay out by default. And a voice is not a COM object:
+its table begins with its own methods, with no three for the interface first.
+
+**Finding: a voice forgets what it has played.** `SamplesPlayed` returns to
+nothing when a stream ends, so it cannot show afterwards that a sound was
+played. Check 6 asks instead whether anything is still waiting.
 
 ## Writing the next one
 

@@ -88,8 +88,10 @@ proc create_world uses rsi rdi
 	mov [rdi+ArenaWorld.tables+Tables.styles],rax
 	mov dword [rdi+ArenaWorld.tables+Tables.move_count],TABLE_MOVES
 	mov dword [rdi+ArenaWorld.tables+Tables.kind_count],TABLE_KINDS
+	add rax,TABLE_STYLES*sizeof.Style
+	mov [rdi+ArenaWorld.tables+Tables.sounds],rax
 	mov dword [rdi+ArenaWorld.tables+Tables.style_count],TABLE_STYLES
-	mov dword [rdi+ArenaWorld.tables+Tables.pad],0
+	mov dword [rdi+ArenaWorld.tables+Tables.sound_count],TABLE_SOUNDS
 	mov rax,[world_buffer.address]
 	mov [rdi+ArenaWorld.game],rax
 	add rax,GAME_BYTES
@@ -514,7 +516,7 @@ iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,l
 	name dd 0
 end iterate
 
-; The game's tables, as the device reads them: moves, kinds, styles.
+; The game's tables, as the device reads them: moves, kinds, styles, sounds.
 section '.rdata$arena_tables' data readable align 16
 table_moves:
 	game_tables
@@ -522,8 +524,10 @@ table_kinds:
 	kinds_table
 table_styles:
 	game_styles
+table_sounds:
+	game_sounds
 TABLE_BYTES := $ - table_moves
-assert TABLE_BYTES = TABLE_MOVES * sizeof.Move + TABLE_KINDS * sizeof.Kind + TABLE_STYLES * sizeof.Style
+assert TABLE_BYTES = TABLE_MOVES * sizeof.Move + TABLE_KINDS * sizeof.Kind + TABLE_STYLES * sizeof.Style + TABLE_SOUNDS * sizeof.Recipe
 
 section '.rdata$arena_spirv' data readable align 4
 iterate <name,module>, develop_code,develop, chart_code,chart, census_code,census, begin_code,begin, survey_code,survey, direct_code,direct, update_code,update, \

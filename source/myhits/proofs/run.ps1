@@ -10,6 +10,8 @@
                 programs at a fixed tick; the level's pace is eased too
      05 hits    what is drawn is what is hit, by its mask, at any speed; a
                 hit throws off exactly the particles and sounds it should
+     06 sound   the bank the device renders is the recipes'; a sound asked
+                for in one frame is on a voice as the next begins
 
    -Validation repeats the device runs under Khronos core and synchronization
    validation and rejects any diagnostic.
@@ -28,6 +30,8 @@ function Read-State([string]$path) {
     return $state
 }
 $spirvDis = Join-Path $env:VULKAN_SDK 'Bin\spirv-dis.exe'
+# The second implementations the device is held to: the curves, and the sounds made of them.
+if (-not ('Myhits.Bank' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot '04_motion\curves.cs'), (Join-Path $PSScriptRoot '06_sound\bank.cs') }
 
 # Run one proof's program through its script and hold it to its own numbered
 # checks, then to what every proof owes: a clean exit, no diagnostics, the
@@ -65,7 +69,7 @@ foreach ($line in [IO.File]::ReadAllLines((Join-Path $BuildDir 'myhits_shared.sl
 }
 Assert-True ($promised['Root.world'] -eq 0 -and $promised.ContainsKey('Events.sound') -and $promised.ContainsKey('Picture.checksum')) 'The generated header lists no boundary members'
 $modules = @(Get-ChildItem -LiteralPath $BuildDir -Filter 'myhits_*.spv')
-Assert-True ($modules.Count -ge 40) 'The proofs'' shaders were not built'
+Assert-True ($modules.Count -ge 45) 'The proofs'' shaders were not built'
 $checked = 0
 $pulling = 0
 foreach ($module in $modules) {
@@ -80,7 +84,7 @@ foreach ($module in $modules) {
     else { Assert-True ($module.Name -match '_plot_|_particle_fragment') "$($module.Name) reaches no memory, and is not one of the shaders known to need none" }
     $names = @{}
     foreach ($match in [regex]::Matches($code, 'OpMemberName (%\S+) (\d+) "(\w+)"')) { $names["$($match.Groups[1].Value) $($match.Groups[2].Value)"] = $match.Groups[3].Value }
-    foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census|Tables|Move|Kind|Style)(?:_\w+)?) (\d+) Offset (\d+)')) {
+    foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census|Tables|Move|Kind|Style|Recipe)(?:_\w+)?) (\d+) Offset (\d+)')) {
         $member = "$($match.Groups[2].Value).$($names["$($match.Groups[1].Value) $($match.Groups[3].Value)"])"
         Assert-True ($promised.ContainsKey($member)) "$($module.Name) has $member, which shared.inc does not"
         Assert-True ($promised[$member] -eq [int]$match.Groups[4].Value) "$($module.Name) puts $member at $($match.Groups[4].Value), shared.inc at $($promised[$member])"
@@ -148,7 +152,7 @@ try {
             11='a press was lost, repeated or invented'; 12='a stall was chased, or time was paid out wrongly' }
         $frames = [int]$state.frames
         Assert-True ($frames -eq 200 -and [int]$state.events -eq $frames -and [int]$state.ticks -eq 2 * $frames) 'The motion proof did not run its script'
-        if (-not ('Myhits.Curves' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot '04_motion\curves.cs') }
+
         $worst = ([Myhits.Curves]::Compare((Resolve-Path -LiteralPath (Join-Path $BuildDir 'myhits_motion.curves.bin')).Path, [int]$state.samples)) -split ' '
         Assert-True ([double]$worst[0] -lt 1e-4) "The device's $($worst[1]) is $($worst[0]) from the textbook's at sample $($worst[2])"
         Write-Host ("[myhits] $mode/04 motion: {0} curves by {1} samples within {2} of a second implementation (worst: {3}); {4} ticks a second, 2 a scripted frame; {5} kinds in {6} moves; the missile's three moves end where they say; {7} fired, {8} missed, {9} flying; the level stood still for 40 frames and came {10}; {11} passes and {12} draws a frame" -f `
@@ -168,6 +172,23 @@ try {
         Write-Host ("[myhits] $mode/05 hits: {0} solid texels hit exactly where drawn, through four poses; {1} fired = {2} struck + {3} missed; a lance at 50 units a tick still struck a wall 12 thick; {4} killed for {5}; hurt {6} time by a touch and not by a near miss; {7} particles asked for, {8} left; sounds for {9} shots, {10} hits, {11} death, {12} hurt; {13} passes and {14} draws a frame" -f `
             $state.solid, $state.fired, $state.struck, $state.escaped, $state.kills, $state.score, $state.hurts, $state.particles_asked, $state.particles_live,
             $state.heard_shots, $state.heard_hits, $state.heard_bursts, $state.heard_hurts, ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
+
+        # 06: sound. The bank the device rendered is held to a second synthesis of the same recipes, and written out to be listened to.
+        $state = Run-Proof $mode 'sound' @{ 1='events out of order, or late'; 2='the device found a fault in its own bank'
+            3='a frame did not ask for what its script says, or what it asked for did not go to one voice'; 4='five in a frame were not one voice at their mean, twice as loud'
+            5='the sounds did not all go to voices, or a voice refused one'; 6='the engine did not play out what it was given'
+            7='the traffic or the passes of a frame are not what the plan allows' }
+        $frames = [int]$state.frames
+        Assert-True ($frames -eq 100 -and [int]$state.events -eq $frames) 'The sound proof did not run its script'
+        $dump = (Resolve-Path -LiteralPath (Join-Path $BuildDir 'myhits_sound.bank.bin')).Path
+        $heard = ([Myhits.Bank]::Compare($dump, (Join-Path $repoRoot 'source\myhits\tables.inc'))) -split ' '
+        Assert-True ([int]$heard[1] -eq [int]$state.bank_samples -and [int]$heard[4] -eq [int]$state.sounds) 'The bank is not the size the recipes make'
+        Assert-True ([int]$heard[0] * 1000 -le [int]$heard[1]) "$($heard[0]) of the bank's $($heard[1]) samples are not the second implementation's; the worst sound is $($heard[2])"
+        [Myhits.Bank]::WriteWav($dump, (Join-Path (Split-Path $dump) 'myhits_sound.bank.wav'))
+        $device = if ([int]$state.device) { "{0} sounds went to {1} voices and were played out, silently; the engine adds {2:0} ms" -f $state.plays, $state.voices, (1000.0 * [int]$state.engine_latency_samples / [int]$state.rate) }
+                  else { 'there is no audio device here, so no voice was exercised' }
+        Write-Host ("[myhits] $mode/06 sound: {0} sounds in {1} samples ({2:0.00} s) rendered on the device; all but {3} within 0.002 of a second implementation (rms {4}); {5}; a sound asked for in one frame is on its voice as the next begins; bank written to {6}\myhits_sound.bank.wav" -f `
+            $state.sounds, $state.bank_samples, ([int]$state.bank_samples / [double]$state.rate), $heard[0], $heard[3], $device, $BuildDir)
     }
 } finally {
     $env:VK_INSTANCE_LAYERS = $previousLayers

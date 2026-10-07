@@ -37,6 +37,9 @@ Proved on the device (GTX 1080 Ti, with and without validation):
   pace is eased by the same curves. Proof 04.
 - What is drawn is what is hit, by its mask, at any angle, size and speed; a
   hit throws off exactly the particles and sounds it should. Proof 05.
+- The sounds are recipes the device renders into a bank, sample for sample
+  what a second implementation makes; a sound asked for in one frame is on an
+  XAudio2 voice as the next begins. Proof 06.
 
 ## Shape
 
@@ -190,8 +193,10 @@ Rules that keep it honest:
   frame.
 - **A parallel pass writes its own slot and atomics, nothing else.**
 - **Only compute passes write events.** The draw does not.
-- **Sound follows events.** One frame plus XAudio2's 10 ms quantum: about
-  27 ms at 60 Hz, 16 ms at 165 Hz, before the device's own delay.
+- **Sound follows events.** A sound is on its voice one frame after the
+  controls that caused it were read: 17 ms at 60 Hz, 6 ms at 165 Hz. After
+  that comes the engine's and the device's own latency, which proof 06 read
+  as 40 ms on this machine: the larger part, and not the program's to shorten.
 
 ## Subsystems
 
@@ -321,11 +326,15 @@ rumble all read, with a few frames of hit-stop from the director.
 pattern function, palette and scroll factor from the wave table, scrolling
 sideways at their own rates and crossfading between stages.
 
-**Sound.** XAudio2. Effects are rendered by a compute pass at start from
-recipes in the tables, read back once, and submitted to a pool of voices on
-triggers, with a little random pitch on the CPU. Music follows as looped
-stems whose gains track `intensity`; the loop position returns as `beat`.
-
+**Sound.** XAudio2, called from the assembly through its interfaces' tables.
+A sound is a recipe in tables.inc: a wave whose pitch sweeps along an easing
+curve, risen quickly and fallen away along another, with a share of noise. A
+compute pass renders every recipe once into memory the CPU can read; the
+voices play from there, uncopied. A frame's events carry a count and a sum of
+positions for each sound; the CPU plays each sound asked for once, on the
+next of sixteen voices, louder for being many, between the speakers at their
+mean, and a little off pitch. Music follows as looped stems whose gains track
+`intensity`; the loop position returns as `beat`.
 **Input.** Keyboard and mouse, and an XInput pad when present, merged into
 the same four fields. What is held is read when the frame begins; what was
 pressed comes from the window's messages, and from the edges of the pad's
@@ -337,16 +346,16 @@ buttons. Rumble goes back out from the events.
 | --- | --- | --- |
 | `shared.inc`, `shared.asm` | The boundary blocks; the generated shader header | Built |
 | `machine.inc` | Window, contract, pipelines, the frame, events | Built; proved by the spine |
-| `proofs\` | Each proof, its checks, and what to look at | Six so far |
+| `proofs\` | Each proof, its checks, and what to look at | Seven so far |
 | `art\art.txt`, `art\*.png` | Every frame, whatever its source; the cut ones | 22 frames |
 | `tools\art.cs`, `cut-art.ps1`, `pack-art.ps1` | Cutting sprites out of sheets (authoring); packing the art (build) | Built |
 | `pictures.inc`, `pictures.slang` | Making the pictures on the device; pulling, filtering and lighting them | Built; proved by 03 |
 | `input.inc` | The pad into Root; rumble to come | Built, without rumble |
-| `tables.inc`, `tables.asm` | The table macros and the game's data; their numbers for the shaders | Kinds, moves, particle styles |
+| `tables.inc`, `tables.asm` | The table macros and the game's data; their numbers for the shaders | Kinds, moves, particle styles, sounds |
 | `common.slang` | The root, a hash, opening a frame's events, asking for a sound | Built |
 | `ease.slang`, `motion.slang` | The easing curves; a body and one tick of its program | Built; proved by 04 |
 | `hits.slang`, `particles.slang` | Mask collision; the particle ring, its styles and its light | Built; proved by 05 |
-| `audio.inc` | XAudio2 voices and the bank | |
+| `audio.inc`, `sounds.slang` | XAudio2's engine and voices; the bank rendered on the device | Built; proved by 06 |
 | `myhits.asm`, `*.slang` | The game | |
 
 One addition went into `examples\common`: device-local buffers in the pools,
@@ -374,7 +383,7 @@ they change a rule, into this plan.
 | 03 | pictures: cut, made and drawn frames in one run of texels; masks beside them; a turning chain under a light that does not turn; the pad | 1 | Passes; three findings |
 | 04 | motion: every easing curve drawn and held to a second implementation; a fixed tick; the missile's program traced; the level's pace eased to a stop and back | 2 | Passes; three findings |
 | 05 | hits: every texel hit where it is drawn, counted against the packer's PNGs; swept shots; damage and death; particles by the count; sounds as events; the ship hurt by a touch | 3 | Passes; two findings |
-| 06 | sound: the bank rendered and compared; a trigger's delay measured | 4 | |
+| 06 | sound: the bank rendered and held to a second implementation; triggers to voices in one frame; many as one, panned; the engine's latency read | 4 | Passes; three findings |
 
 ## Milestones
 
@@ -391,11 +400,42 @@ they change a rule, into this plan.
    death, the particle ring with its styles and caps, sound triggers as
    counts, the ship hurt by a touch. Left for when they are first needed:
    enemy shots against the ship, pickups, and a grid in place of the scan.
-4. **Sound.** The bank and triggers.
+4. **Sound.** Done: recipes, the bank rendered on the device, sixteen voices,
+   triggers as counts and positions. Left for milestone 7: music and the beat.
 5. **Opposition.** Kinds, waves, rank, chains, the director.
 6. **Reward.** Bonuses, the animated HUD, damage you feel, the companion's
    three stages.
 7. **Atmosphere.** Backgrounds, music and beat, tuning.
+
+## Milestone 5 in detail
+
+The proofs so far are separate programs, each with its own small world.
+Milestone 5 is where they become one: `myhits.asm` and `myhits.slang`, the
+game, whose own scripted run is its proof (07). What it adds, and how:
+
+- **One world.** Pictures, tables, bodies in groups (the player's shots,
+  hostile shots, hostiles and their segments), damage, particles, trails, a
+  spawn queue and the game block, behind one header.
+- **Chains.** A head lays its path into a ring of points a fixed distance
+  apart, however fast it goes. A segment is a body whose kind follows: it
+  reads its head as it stood last tick, which the two copies of every body
+  keep still for it, and takes the point its own distance back along the
+  ring. Every segment lags by the same one tick, so there is no lag down the
+  body, and nothing is read while it is written. A head that dies takes its
+  segments with it, one after another; a segment that dies leaves a gap.
+- **Hostile fire.** A FIRE move cannot make a body: only the director does.
+  It appends a request to the spawn queue by an atomic count, and the
+  director makes the shot at the start of the next tick. Hostile shots are
+  swept against the ship's mask as the player's are against hostiles'.
+- **Waves.** A table of what comes when: a kind, how many, where, how far
+  apart in time, and the pace the level should ease to for it. The director
+  reads it; rank adds to its numbers.
+- **Rank.** Every second the director looks at the shots resolved since the
+  last look: the share that struck moves rank up or down about a neutral
+  40%, surviving adds a little, and being hurt takes a lot. Rank raises how
+  many come, how often they fire and what a kill is worth.
+- **Lives.** A hurt costs one and buys two seconds of grace; none left ends
+  the run, and Enter starts another.
 
 ## Open
 

@@ -71,7 +71,10 @@ ARENA_SHADERS = $(BUILD)\myhits_hits_develop.spv $(BUILD)\myhits_hits_chart.spv 
 	$(BUILD)\myhits_hits_survey.spv $(BUILD)\myhits_hits_direct.spv $(BUILD)\myhits_hits_update.spv $(BUILD)\myhits_hits_collide.spv \
 	$(BUILD)\myhits_hits_resolve.spv $(BUILD)\myhits_hits_drift.spv $(BUILD)\myhits_hits_report.spv $(BUILD)\myhits_hits_scene_vertex.spv \
 	$(BUILD)\myhits_hits_scene_fragment.spv $(BUILD)\myhits_hits_particle_vertex.spv $(BUILD)\myhits_hits_particle_fragment.spv
-MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe $(BUILD)\myhits_motion.exe $(BUILD)\myhits_hits.exe
+BOARD_SLANG = $(MYHITS)\proofs\06_sound\board.slang
+BOARD_SOURCES = $(BOARD_SLANG) $(MYHITS)\common.slang $(MYHITS)\ease.slang $(MYHITS)\sounds.slang $(MYHITS_TABLES) $(MYHITS_HEADER)
+BOARD_SHADERS = $(BUILD)\myhits_sound_render.spv $(BUILD)\myhits_sound_examine.spv $(BUILD)\myhits_sound_direct.spv $(BUILD)\myhits_sound_wave_vertex.spv $(BUILD)\myhits_sound_wave_fragment.spv
+MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe $(BUILD)\myhits_motion.exe $(BUILD)\myhits_hits.exe $(BUILD)\myhits_sound.exe
 
 VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
@@ -468,6 +471,34 @@ $(BUILD)\myhits_hits.obj: $(MYHITS)\proofs\05_hits\arena.asm $(MYHITS_MACHINE) $
 
 $(BUILD)\myhits_hits.exe: $(BUILD)\myhits_hits.obj $(DEBUG_LOGGER_OBJ)
 	$(LINK_WINDOW) xinput.lib
+
+# Proof 06's passes. It plays through XAudio2.
+$(BUILD)\myhits_sound_render.spv: $(BOARD_SOURCES)
+	$(MYHITS_SLANG) -entry render -stage compute -o $@ $(BOARD_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_sound_examine.spv: $(BOARD_SOURCES)
+	$(MYHITS_SLANG) -entry examine -stage compute -o $@ $(BOARD_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_sound_direct.spv: $(BOARD_SOURCES)
+	$(MYHITS_SLANG) -entry direct -stage compute -o $@ $(BOARD_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_sound_wave_vertex.spv: $(BOARD_SOURCES)
+	$(MYHITS_SLANG) -entry wave_vertex -stage vertex -o $@ $(BOARD_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_sound_wave_fragment.spv: $(BOARD_SOURCES)
+	$(MYHITS_SLANG) -entry wave_fragment -stage fragment -o $@ $(BOARD_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_sound.obj: $(MYHITS)\proofs\06_sound\board.asm $(MYHITS_MACHINE) $(MYHITS)\audio.inc $(MYHITS)\tables.inc $(BOARD_SHADERS)
+	$(ASSEMBLE) -Source $(MYHITS)\proofs\06_sound\board.asm -Output $@
+
+$(BUILD)\myhits_sound.exe: $(BUILD)\myhits_sound.obj $(DEBUG_LOGGER_OBJ)
+	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib
+
 
 
 

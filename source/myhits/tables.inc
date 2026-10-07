@@ -16,6 +16,9 @@
 ;	spray NAME, color from, to, size from, to, CURVE, seconds, more, speed, more, degrees, drag, gravity, pull, cap
 ;						a style of particle (STYLE_NAME); see Style
 ;
+;	tone NAME, seconds, WAVE, hertz from, to, CURVE, attack, FALL, noise, gain
+;						a sound (SOUND_NAME); see Recipe
+;
 ; A program includes this and, in a data section, lays the tables down:
 ;
 ;	table_moves:
@@ -24,6 +27,8 @@
 ;		kinds_table
 ;	table_styles:
 ;		game_styles
+;	table_sounds:
+;		game_sounds
 ;
 ; tables.asm assembles the same lines into build\myhits_tables.slang, which
 ; gives the shaders the KIND_ numbers.
@@ -95,6 +100,19 @@ macro spray name*,tint_from*,tint_to*,wide_from*,wide_to*,curve*,seconds*,more_s
 	assert table.styles <= STYLE_LIMIT
 end macro
 
+table.sounds = 0
+table.samples = 0
+macro tone name*,seconds*,shape*,pitch_from*,pitch_to*,curve*,rise*,fall*,hiss*,loud*
+	repeat 1, n:table.sounds
+		SOUND_#name := n
+		table_line 'static const uint SOUND_',`name,' = ',`n,';'
+	end repeat
+	table_data trunc ((seconds)*SOUND_RATE+0.5),table.samples,WAVE_#shape,EASE_#curve,1.0*(pitch_from),1.0*(pitch_to),1.0*(rise),EASE_#fall,1.0*(hiss),1.0*(loud)
+	table.samples = table.samples + trunc ((seconds)*SOUND_RATE+0.5)
+	table.sounds = table.sounds + 1
+	assert table.sounds <= SOUND_KINDS
+end macro
+
 SHOT_TICKS := 6			; between the player's shots while fire is held
 table_line '// Written by source\myhits\tables.asm from tables.inc. Do not edit.'
 table_line 'static const uint SHOT_TICKS = 6;'
@@ -162,5 +180,20 @@ macro game_styles
 	TABLE_STYLES := table.styles
 	repeat 1, styles:table.styles
 		table_line 'static const uint TABLE_STYLES = ',`styles,';'
+	end repeat
+end macro
+
+macro game_sounds
+	; In the order the passes know them by.
+	tone SHOT,0.11,SQUARE,1400,500,OUT_QUAD,0.002,OUT_CUBIC,0.15,0.35
+	tone LAUNCH,0.45,SAW,180,900,IN_CUBIC,0.03,IN_QUAD,0.25,0.45
+	tone HIT,0.07,SINE,900,300,OUT_QUAD,0.001,OUT_QUAD,0.6,0.5
+	tone BURST,0.6,SINE,220,40,OUT_CUBIC,0.004,OUT_QUAD,0.85,0.8
+	tone HURT,0.4,SAW,300,90,INOUT_SINE,0.005,IN_QUAD,0.3,0.6
+	TABLE_SOUNDS := table.sounds
+	BANK_SAMPLES := table.samples
+	repeat 1, sounds:table.sounds, samples:table.samples
+		table_line 'static const uint TABLE_SOUNDS = ',`sounds,';'
+		table_line 'static const uint BANK_SAMPLES = ',`samples,';'
 	end repeat
 end macro

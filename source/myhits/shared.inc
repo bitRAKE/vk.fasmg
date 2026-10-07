@@ -91,12 +91,13 @@ shared EVENT_SLOTS,4			; a power of two
 shared TICK_RATE,120
 shader_line 'static const float TICK_SECONDS = 1.0 / float(TICK_RATE);'
 
-; The sounds a pass may ask for: which Trigger of Events.sound.
-shared SOUND_SHOT,0
-shared SOUND_LAUNCH,1
-shared SOUND_HIT,2
-shared SOUND_BURST,3
-shared SOUND_HURT,4
+; The sounds a pass may ask for are SOUND_ in tables.inc: each is a Trigger of
+; Events.sound and a Recipe the device renders into the bank, at this rate.
+shared SOUND_RATE,48000
+shared WAVE_SINE,0
+shared WAVE_SQUARE,1
+shared WAVE_SAW,2
+shared WAVE_TRIANGLE,3
 ; Root.held and Root.pressed
 shared BUTTON_FIRE,1
 shared BUTTON_SECOND,2
@@ -283,12 +284,29 @@ shared BODY_BYTES,72
 shared PARTICLE_BYTES,32
 
 ; The game's tables, authored in tables.inc. A program's World holds this.
+; A sound, as a recipe: a wave whose pitch sweeps from one to another along a
+; curve, risen in `attack` seconds and fallen away along another, with a share
+; of noise. The device renders every recipe once, into one run of samples.
+boundary Recipe
+	u32 samples			; its length
+	u32 first			; where it begins in the bank
+	u32 wave			; WAVE_
+	u32 pitch_curve			; EASE_
+	f32 pitch_from			; hertz
+	f32 pitch_to
+	f32 attack			; seconds
+	u32 fall_curve			; EASE_: how its level goes from all to nothing
+	f32 noise			; its share, 0..1
+	f32 gain
+end boundary
+
 boundary Tables
 	ptr moves,Move
 	ptr kinds,Kind
 	ptr styles,Style
+	ptr sounds,Recipe
 	u32 move_count
 	u32 kind_count
 	u32 style_count
-	u32 pad
+	u32 sound_count
 end boundary
