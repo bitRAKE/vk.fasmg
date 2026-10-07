@@ -52,8 +52,7 @@ MYHITS_HEADER = $(BUILD)\myhits_shared.slang
 MYHITS_SLANG = "$(SLANGC)" -I $(BUILD) -I $(COMMON) -target spirv -profile spirv_1_5 -emit-spirv-directly -fvk-use-scalar-layout
 MYHITS_VALIDATE = "$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.3 --scalar-block-layout
 # The modules the machine still borrows from the examples, as they are there.
-MYHITS_BORROWED = examples\common\vulkan_routes.inc examples\common\vulkan_context.inc examples\common\cpu_arena.inc examples\common\vulkan_commands.inc examples\common\vulkan_barriers.inc examples\common\vulkan_wsi.inc examples\common\vulkan_wsi_retirement.inc examples\common\command_options.inc examples\common\bitmap.inc $(DEBUG_BODY)
-MYHITS_MACHINE = $(COMMON)\machine.inc $(COMMON)\memory.inc $(COMMON)\state.inc $(COMMON)\input.inc $(COMMON)\snapshot.inc $(COMMON)\shared.inc $(MYHITS_BORROWED)
+MYHITS_MACHINE = $(COMMON)\machine.inc $(COMMON)\strings.inc $(COMMON)\options.inc $(COMMON)\device.inc $(COMMON)\work.inc $(COMMON)\present.inc $(COMMON)\memory.inc $(COMMON)\state.inc $(COMMON)\input.inc $(COMMON)\snapshot.inc $(COMMON)\shared.inc $(OBJECT_BASE) vk\loader\static.inc vk\loader\lazy.inc $(VK_VALIDATED) $(BUILD_READY)
 STYLE_SLANG = $(MYHITS)\proofs\01_style\style.slang
 STYLE_SHADERS = $(BUILD)\myhits_style_collide.spv $(BUILD)\myhits_style_vertex.spv $(BUILD)\myhits_style_fragment.spv
 SPINE_SLANG = $(MYHITS)\proofs\02_spine\spine.slang
@@ -324,7 +323,7 @@ $(BUILD)\myhits_spine_mote_fragment.spv: $(SPINE_SLANG) $(MYHITS_HEADER)
 $(BUILD)\myhits_spine.obj: $(MYHITS)\proofs\02_spine\spine.asm $(MYHITS_MACHINE) $(SPINE_SHADERS)
 	$(ASSEMBLE) -Source $(MYHITS)\proofs\02_spine\spine.asm -Output $@
 
-$(BUILD)\myhits_spine.exe: $(BUILD)\myhits_spine.obj $(DEBUG_LOGGER_OBJ)
+$(BUILD)\myhits_spine.exe: $(BUILD)\myhits_spine.obj
 	$(LINK_WINDOW) xinput.lib
 
 # The art: the PNGs art.txt names, packed with the table of every frame. The
@@ -359,7 +358,7 @@ $(BUILD)\myhits_pictures_sprite_fragment.spv: $(GALLERY_SLANG) $(MYHITS_PICTURES
 $(BUILD)\myhits_pictures.obj: $(MYHITS)\proofs\03_pictures\gallery.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(GALLERY_SHADERS)
 	$(ASSEMBLE) -Source $(MYHITS)\proofs\03_pictures\gallery.asm -Output $@
 
-$(BUILD)\myhits_pictures.exe: $(BUILD)\myhits_pictures.obj $(DEBUG_LOGGER_OBJ)
+$(BUILD)\myhits_pictures.exe: $(BUILD)\myhits_pictures.obj
 	$(LINK_WINDOW) xinput.lib
 
 # The tables' numbers for the shaders, then proof 04's passes.
@@ -413,7 +412,7 @@ $(BUILD)\myhits_motion_plot_fragment.spv: $(RANGE_SOURCES)
 $(BUILD)\myhits_motion.obj: $(MYHITS)\proofs\04_motion\range.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(RANGE_SHADERS)
 	$(ASSEMBLE) -Source $(MYHITS)\proofs\04_motion\range.asm -Output $@
 
-$(BUILD)\myhits_motion.exe: $(BUILD)\myhits_motion.obj $(DEBUG_LOGGER_OBJ)
+$(BUILD)\myhits_motion.exe: $(BUILD)\myhits_motion.obj
 	$(LINK_WINDOW) xinput.lib
 
 # Proof 05's passes.
@@ -480,7 +479,7 @@ $(BUILD)\myhits_hits_particle_fragment.spv: $(ARENA_SOURCES)
 $(BUILD)\myhits_hits.obj: $(MYHITS)\proofs\05_hits\arena.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(ARENA_SHADERS)
 	$(ASSEMBLE) -Source $(MYHITS)\proofs\05_hits\arena.asm -Output $@
 
-$(BUILD)\myhits_hits.exe: $(BUILD)\myhits_hits.obj $(DEBUG_LOGGER_OBJ)
+$(BUILD)\myhits_hits.exe: $(BUILD)\myhits_hits.obj
 	$(LINK_WINDOW) xinput.lib
 
 # Proof 06's passes. It plays through XAudio2.
@@ -507,7 +506,7 @@ $(BUILD)\myhits_sound_wave_fragment.spv: $(BOARD_SOURCES)
 $(BUILD)\myhits_sound.obj: $(MYHITS)\proofs\06_sound\board.asm $(MYHITS_MACHINE) $(COMMON)\audio.inc $(MYHITS)\tables.inc $(BOARD_SHADERS)
 	$(ASSEMBLE) -Source $(MYHITS)\proofs\06_sound\board.asm -Output $@
 
-$(BUILD)\myhits_sound.exe: $(BUILD)\myhits_sound.obj $(DEBUG_LOGGER_OBJ)
+$(BUILD)\myhits_sound.exe: $(BUILD)\myhits_sound.obj
 	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib
 
 # The game.
@@ -594,12 +593,12 @@ $(BUILD)\myhits_game_backdrop_fragment.spv: $(GAME_SOURCES)
 $(BUILD)\myhits.obj: $(MYHITS)\myhits.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\audio.inc $(GAME_SHADERS)
 	$(ASSEMBLE) -Source $(MYHITS)\myhits.asm -Output $@
 
-$(BUILD)\myhits.exe: $(BUILD)\myhits.obj $(DEBUG_LOGGER_OBJ)
+$(BUILD)\myhits.exe: $(BUILD)\myhits.obj
 	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib
 
 # The same program under another name, for trying things out: the one someone
 # may be playing is not replaced by an experiment.
-$(BUILD)\myhits_try.exe: $(BUILD)\myhits.obj $(DEBUG_LOGGER_OBJ)
+$(BUILD)\myhits_try.exe: $(BUILD)\myhits.obj
 	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib
 
 

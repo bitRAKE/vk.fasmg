@@ -52,6 +52,9 @@ function Run-Proof([string]$mode, [string]$tag, [hashtable]$checks, [string]$pro
     $executable = (Resolve-Path -LiteralPath (Join-Path $BuildDir $program)).Path
     $imports = (& dumpbin.exe /NOLOGO /IMPORTS $executable | Out-String)
     Assert-True ($imports -notmatch '(?i)\bvulkan-1\.dll\b|\bgdi32\.dll\b') "The $tag proof imports Vulkan or GDI directly"
+    # The layer is its own: a program is one object, and the linker's map names no other.
+    $objects = @([regex]::Matches([IO.File]::ReadAllText(($executable -replace '\.exe$', '.map')), '(?i)\b[\w.]+\.obj\b') | ForEach-Object { $_.Value.ToLowerInvariant() } | Sort-Object -Unique)
+    Assert-True ($objects.Count -eq 1 -and $objects[0] -match '^myhits') "The $tag proof is linked from more than its own object: $($objects -join ', ')"
     $report = [VkFasmgTests.DebugOutputCapture]::Run($executable, $repoRoot, '--self-test')
     [IO.File]::WriteAllText((Join-Path $logRoot 'debugger.log'), $report)
     Assert-True ($report -notmatch 'VUID-|SYNC-HAZARD') "The $tag proof emitted a validation diagnostic"
@@ -111,6 +114,9 @@ foreach ($module in $modules) {
 }
 $atomics = [regex]::Matches((& $spirvDis (Join-Path $BuildDir 'myhits_style_collide.spv') | Out-String), 'OpAtomicIAdd').Count
 Assert-True ($atomics -ge 4) 'The collision sketch lost its atomics'
+# And the layer stands on the projection alone: no source here includes one of the examples'.
+$borrowed = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'source') -Recurse -Include *.inc, *.asm, *.slang | Select-String -Pattern '^\s*#?(include|import)\b.*examples')
+Assert-True ($borrowed.Count -eq 0) "A source includes something of the examples': $($borrowed | ForEach-Object { "$($_.Filename):$($_.LineNumber)" })"
 
 Write-Host "[myhits] 01 style: $($modules.Count) modules valid, none binds a descriptor, $pulling reach memory through pointers; $checked member offsets match shared.inc; $atomics atomics through pointers in the collision sketch"
 

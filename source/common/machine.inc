@@ -45,21 +45,8 @@ include 'vk/ext/debug_utils.inc'
 include 'vk/khr/surface.inc'
 include 'vk/khr/win32_surface.inc'
 include 'vk/khr/swapchain.inc'
-include 'vk/khr/swapchain_maintenance1.inc'
 include 'vk/loader/static.inc'
-include '..\..\examples\debug\sink.inc'
-include '..\..\examples\strings.inc'
-include '..\..\examples\common\command_options.inc'
-
-; The contract: modern only. Dynamic rendering (1), synchronization2 (2),
-; inline shader code (8) and timeline semaphores (16) are required, with the
-; two features below; nothing they replace is assembled.
-CAP_ADDRESS := 64			; bufferDeviceAddress: every resource is a pointer
-CAP_SCALAR := 128			; scalarBlockLayout: the layout shared.inc promises
-CAP_MASK = 1 or 2 or 8 or 16 or 64 or 128
-CAP_REQUIRED = CAP_MASK
-TILE_CEILING = 16384
-include '..\..\examples\common\vulkan_routes.inc'
+include 'strings.inc'
 include 'shared.inc'
 
 MACHINE_STAGES := VK_SHADER_STAGE_COMPUTE_BIT or VK_SHADER_STAGE_VERTEX_BIT or VK_SHADER_STAGE_FRAGMENT_BIT
@@ -93,22 +80,13 @@ end iterate
 if definite MACHINE_BARE
 	extrn SetProcessDpiAwarenessContext:qword
 end if
-; For the startup arena the borrowed presentation module takes its tables from.
-iterate function,GetLargePageMinimum,GetLastError,SetLastError,OpenProcessToken,LookupPrivilegeValueW,AdjustTokenPrivileges
-	extrn function:qword
-end iterate
 
-GPU_APP_NAME equ MACHINE_NAME
-GPU_EXTRA_FEATURES := 1
-GPU_EXTRA_FORMATS := 1
-GPU_HARDWARE_ONLY := 1
-GPU_WSI := 1
-include '..\..\examples\common\cpu_arena.inc'
-include '..\..\examples\common\vulkan_wsi.inc'
-include '..\..\examples\common\vulkan_context.inc'
+; The layer, from the ground up: nothing here is another program's.
+include 'options.inc'
+include 'device.inc'
+include 'work.inc'
+include 'present.inc'
 include 'memory.inc'
-include '..\..\examples\common\vulkan_commands.inc'
-include '..\..\examples\common\vulkan_barriers.inc'
 include 'state.inc'
 include 'input.inc'
 if definite MACHINE_SNAPSHOT
@@ -130,55 +108,6 @@ end macro
 
 section '.text$machine' code readable executable align 16
 
-; Hooks of the shared context: the two features the contract adds.
-proc query_extra_features
-	cmp [device_api],VK_API_VERSION_1_2
-	jb .done
-	fastcall chain_feature,addr address_feature
-	fastcall chain_feature,addr scalar_feature
-.done:
-	ret
-endp
-
-proc enable_extra_features
-	cmp [device_api],VK_API_VERSION_1_2
-	jb .done
-	cmp [address_feature.bufferDeviceAddress],VK_TRUE
-	jne .scalar
-	mov [address_feature.bufferDeviceAddressCaptureReplay],0
-	mov [address_feature.bufferDeviceAddressMultiDevice],0
-	fastcall chain_feature,addr address_feature
-	or [active_caps],CAP_ADDRESS
-.scalar:
-	cmp [scalar_feature.scalarBlockLayout],VK_TRUE
-	jne .done
-	fastcall chain_feature,addr scalar_feature
-	or [active_caps],CAP_SCALAR
-.done:
-	ret
-endp
-
-proc resolve_extra_commands
-	mov eax,1
-	ret
-endp
-
-; The context asks this of each adapter it has found a queue on, and passes
-; on to the next when the answer is no: so this is where the machine says
-; which will do. The contract's hardware is a discrete adapter; an integrated
-; one, though Windows may list it first, is passed over. And colors are
-; blended in linear light, so the surface is sRGB.
-proc choose_formats
-	cmp [properties2.properties.deviceType],VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
-	jne .failed
-	require_ok fastcall wsi_choose_format,VK_FORMAT_B8G8R8A8_SRGB
-	mov eax,[wsi_format]
-	mov [target_format],eax
-	mov eax,1
-.failed:
-	ret
-endp
-
 proc resize_client
 	fastcall GetClientRect,[window],addr client_rect
 	mov eax,[client_rect.right]
@@ -194,7 +123,7 @@ proc resize_client
 .changed:
 	mov [frame_width],eax
 	mov [frame_height],edx
-	mov [wsi_dirty],1
+	mov [present_dirty],1
 .done:
 	ret
 endp
@@ -612,21 +541,11 @@ endp
 proc machine_start
 	mov [failure_stage],1
 	fastcall QueryPerformanceFrequency,addr clock_frequency
-	mov [large_pages_requested],0
-	require_ok fastcall create_cpu_arena
 	require_ok fastcall create_window
-	require_ok fastcall probe_gpu
+	require_ok fastcall device_start
 	mov [failure_stage],2
-	; The queue the frame is drawn with runs its compute passes too.
-	mov eax,[queue_info.queueFamilyIndex]
-	imul eax,eax,sizeof.VkQueueFamilyProperties
-	lea rdx,[queues]
-	test [rdx+rax+VkQueueFamilyProperties.queueFlags],VK_QUEUE_COMPUTE_BIT
-	jz .failed
-	require_vk fastcall create_commands
-	mov rax,[command_buffer]
-	mov [serial_command_buffer],rax
-	require_ok fastcall wsi_create_frames
+	require_ok fastcall work_start
+	require_ok fastcall present_start
 	require_vk vkCreatePipelineLayout [device],addr layout_info,0,addr machine_layout
 	mov rax,[machine_layout]
 	mov [compute_info.layout],rax
@@ -697,25 +616,18 @@ endp
 ; Work outside a frame, for what is set up once: between these two, record
 ; with machine_bind and machine_dispatch. Returns when the device has done it.
 proc machine_serial_open
-	mov rax,[serial_command_buffer]
-	mov [command_buffer],rax
-	require_vk fastcall begin_commands
+	require_ok fastcall work_begin
 	vkCmdPushConstants [command_buffer],[machine_layout],MACHINE_STAGES,0,sizeof.Root,addr root
 	mov eax,1
-	ret
-.result:
-	mov [gpu_error],eax
-	xor eax,eax
+.failed:
 	ret
 endp
 
 proc machine_serial_close
-	require_vk fastcall submit_commands
+	require_ok fastcall work_submit,0,0
+	require_ok fastcall work_wait,[work_submitted]
 	mov eax,1
-	ret
-.result:
-	mov [gpu_error],eax
-	xor eax,eax
+.failed:
 	ret
 endp
 
@@ -753,44 +665,36 @@ endp
 ; back frames late and its controls would be stale by as much. Waiting here
 ; instead keeps both at one frame, and reads the controls as late as can be.
 proc machine_await
-	require_vk fastcall wait_retirement,[last_retirement]
+	require_ok fastcall work_wait,[last_work]
 	fastcall measure_collect
 	if definite MACHINE_SNAPSHOT
 		fastcall snapshot_save
 	end if
 	require_ok fastcall machine_events
 	mov eax,1
-	ret
-.result:
-	mov [gpu_error],eax
 .failed:
-	xor eax,eax
 	ret
 endp
 
 ; Hand each finished frame's Events to the program, oldest first, without
 ; waiting; except that a slot about to be reused is waited for.
 proc machine_events uses rbx
-	fastcall poll_retirement
-	test eax,eax
-	jnz .result
+	require_ok fastcall work_poll
 .next:
 	mov ebx,[events_read]
 	cmp ebx,[root+Root.frame]
 	jae .done
 	mov eax,ebx
 	and eax,EVENT_SLOTS-1
-	lea rdx,[events_retirement]
+	lea rdx,[events_work]
 	mov rcx,[rdx+rax*8]
-	cmp rcx,[completed_retirement]
+	cmp rcx,[work_completed]
 	jbe .consume
 	mov eax,[root+Root.frame]
 	sub eax,ebx
 	cmp eax,EVENT_SLOTS
 	jb .done
-	fastcall wait_retirement,rcx
-	test eax,eax
-	jnz .result
+	require_ok fastcall work_wait,rcx
 .consume:
 	require_ok fastcall invalidate_buffer,addr events_buffer
 	mov eax,ebx
@@ -803,11 +707,7 @@ proc machine_events uses rbx
 	jmp .next
 .done:
 	mov eax,1
-	ret
-.result:
-	mov [gpu_error],eax
 .failed:
-	xor eax,eax
 	ret
 endp
 
@@ -1120,7 +1020,7 @@ proc machine_open uses rbx rsi
 	xor esi,esi
 	mov [failure_stage],5
 	fastcall QueryPerformanceCounter,addr cpu_opened
-	cmp [wsi_dirty],0
+	cmp [present_dirty],0
 	jne .resize
 	mov eax,[frame_width]
 	cmp eax,[target_width]
@@ -1129,30 +1029,33 @@ proc machine_open uses rbx rsi
 	cmp eax,[target_height]
 	je .acquire
 .resize:
-	require_vk fastcall wsi_wait_work
-	fastcall wsi_destroy_swapchain
 	mov [target_width],0
-	require_ok fastcall wsi_create_swapchain
-	mov eax,[wsi_swapchain_info.imageExtent.width]
+	fastcall present_size
+	cmp eax,2
+	je .skip			; a window with no area is drawn nothing
+	test eax,eax
+	jz .failed
+	mov eax,[swapchain_info.imageExtent.width]
 	mov [frame_width],eax
 	mov [target_width],eax
 	mov [rendering_info.renderArea.extent.width],eax
-	mov eax,[wsi_swapchain_info.imageExtent.height]
+	mov eax,[swapchain_info.imageExtent.height]
 	mov [frame_height],eax
 	mov [target_height],eax
 	mov [rendering_info.renderArea.extent.height],eax
 	fastcall fit_playfield
 .acquire:
-	fastcall wsi_begin_frame
+	fastcall present_acquire
 	cmp eax,2
 	je .retry
 	test eax,eax
-	jz .wsi_failed
+	jz .failed
+	require_ok fastcall work_begin
 	mov [failure_stage],6
-	mov rbx,[wsi_current_image]
-	mov rax,[rbx+WsiImage.handle]
+	mov rbx,[present_image]
+	mov rax,[rbx+PresentImage.handle]
 	mov [draw_image],rax
-	mov rax,[rbx+WsiImage.view]
+	mov rax,[rbx+PresentImage.view]
 	mov [render_color.imageView],rax
 	mov eax,[root+Root.frame]
 	and eax,EVENT_SLOTS-1
@@ -1175,12 +1078,9 @@ proc machine_open uses rbx rsi
 	inc esi
 	cmp esi,2
 	jb .resize
+.skip:
 	mov eax,2
 	ret
-.wsi_failed:
-	mov eax,[wsi_error]
-.result:
-	mov [gpu_error],eax
 .failed:
 	xor eax,eax
 	ret
@@ -1257,15 +1157,13 @@ proc machine_close
 	.present:
 	end if
 	fastcall transition_image,[draw_image],VK_IMAGE_ASPECT_COLOR_BIT,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,0
-	fastcall wsi_submit_frame
-	test eax,eax
-	jz .failed
+	require_ok fastcall present_submit
 	mov eax,[root+Root.frame]
 	and eax,EVENT_SLOTS-1
-	lea rdx,[events_retirement]
-	mov rcx,[retirement_value]
+	lea rdx,[events_work]
+	mov rcx,[work_submitted]
 	mov [rdx+rax*8],rcx
-	mov [last_retirement],rcx
+	mov [last_work],rcx
 	inc dword [root+Root.frame]
 	mov [failure_stage],0
 	; What the frame cost this side of the device.
@@ -1279,28 +1177,20 @@ proc machine_close
 	mov [cpu_most],rax
 .counted:
 	mov eax,1
-	ret
 .failed:
-	mov eax,[wsi_error]
-	mov [gpu_error],eax
-	xor eax,eax
 	ret
 endp
 
 ; Everything submitted is finished and its events handed over.
 proc machine_drain
-	require_vk fastcall wsi_wait_work
+	require_ok fastcall work_wait,[work_submitted]
 	fastcall measure_collect
 	if definite MACHINE_SNAPSHOT
 		fastcall snapshot_save
 	end if
 	require_ok fastcall machine_events
 	mov eax,1
-	ret
-.result:
-	mov [gpu_error],eax
 .failed:
-	xor eax,eax
 	ret
 endp
 
@@ -1318,15 +1208,13 @@ proc machine_stop
 	mov [paused],1
 	fastcall machine_confine
 	cmp [device],0
-	je .instance
-	mov [wsi_shutdown],1
-	mov [wsi_replacement_hold],0
-	fastcall wsi_drain
+	je .device
+	vkDeviceWaitIdle [device]
 	if definite MACHINE_SNAPSHOT
 		fastcall snapshot_stop
 	end if
 	fastcall release_world
-	fastcall wsi_destroy_swapchain
+	fastcall present_stop
 	fastcall destroy_buffer,addr events_buffer
 	cmp [measure_pool],0
 	je .unmeasured
@@ -1334,41 +1222,18 @@ proc machine_stop
 	mov [measure_pool],0
 .unmeasured:
 	cmp [machine_layout],0
-	je .pools
+	je .work
 	vkDestroyPipelineLayout [device],[machine_layout],0
 	mov [machine_layout],0
-.pools:
-	fastcall wsi_destroy_frames
-	fastcall destroy_commands
-	vkDestroyDevice [device],0
-	mov [device],0
-.instance:
-	cmp [instance],0
-	je .module
-	cmp [surface],0
-	je .messenger
-	vkDestroySurfaceKHR [instance],[surface],0
-	mov [surface],0
-.messenger:
-	cmp [messenger],0
-	je .destroy_instance
-	vkDestroyDebugUtilsMessengerEXT [instance],[messenger],0
-	mov [messenger],0
-.destroy_instance:
-	vkDestroyInstance [instance],0
-	mov [instance],0
-.module:
-	cmp [vulkan_module],0
-	je .window
-	fastcall FreeLibrary,[vulkan_module]
-	mov [vulkan_module],0
-.window:
+.work:
+	fastcall work_stop
+.device:
+	fastcall device_stop
 	cmp [window],0
-	je .arena
+	je .done
 	fastcall DestroyWindow,[window]
 	mov [window],0
-.arena:
-	fastcall destroy_cpu_arena
+.done:
 	ret
 endp
 
@@ -1423,7 +1288,6 @@ window dq 0
 module dq 0
 machine_layout dq 0
 draw_image dq 0
-serial_command_buffer dq 0
 clock_frequency dq 1
 clock_last dq 0
 clock_now dq 0
@@ -1451,8 +1315,8 @@ measure_kinds:
 measure_info VkQueryPoolCreateInfo sType: VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,queryType: VK_QUERY_TYPE_TIMESTAMP,queryCount: MEASURE_STAMPS
 traffic_down dq 0			; bytes the CPU sent after startup
 traffic_up dq 0				; bytes the CPU read back
-events_retirement rq EVENT_SLOTS
-last_retirement dq 0
+events_work rq EVENT_SLOTS		; the submission each slot's events come back with
+last_work dq 0
 events_buffer GpuBuffer
 events_read dd 0
 dispatch_count dd 0
@@ -1461,7 +1325,6 @@ frame_width dd 960
 frame_height dd 540
 target_width dd 0
 target_height dd 0
-target_format dd VK_FORMAT_B8G8R8A8_SRGB
 minimized dd 0
 stale dd 1				; the window shows something other than the last frame
 paused dd 0				; no ticks are paid out: P, or a bare window left for another
@@ -1514,8 +1377,6 @@ monitor_info MONITORINFO cbSize: sizeof.MONITORINFO
 window_parts db HTCAPTION,HTLEFT,HTRIGHT,HTCAPTION,HTTOP,HTTOPLEFT,HTTOPRIGHT,HTCAPTION,HTBOTTOM,HTBOTTOMLEFT,HTBOTTOMRIGHT,HTCAPTION,HTCAPTION,HTCAPTION,HTCAPTION,HTCAPTION
 paint PAINTSTRUCT
 message MSG
-address_feature VkPhysicalDeviceBufferDeviceAddressFeatures sType: VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES
-scalar_feature VkPhysicalDeviceScalarBlockLayoutFeatures sType: VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES
 ; One layout for every pipeline: the root block and nothing else.
 push_range VkPushConstantRange stageFlags: MACHINE_STAGES,size: sizeof.Root
 layout_info VkPipelineLayoutCreateInfo sType: VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,pushConstantRangeCount: 1,pPushConstantRanges: push_range

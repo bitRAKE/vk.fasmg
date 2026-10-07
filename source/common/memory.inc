@@ -18,7 +18,7 @@
 ;	create_image	owner, info, view_info	device-local, with its view
 ;	destroy_image	owner
 ;
-; Include after the context: this reads the memory types it found.
+; Include after device.inc: this reads the memory types it found.
 MEMORY_DEVICE := 0
 MEMORY_UPLOAD := 1
 MEMORY_READBACK := 2
@@ -260,13 +260,6 @@ proc destroy_image uses rbx,owner
 	mov [rbx+GpuImage.view],0
 	mov [rbx+GpuImage.handle],0
 	mov [rbx+GpuImage.memory],0
-	ret
-endp
-
-; The command and presentation modules borrowed from the examples ask, after
-; every wait, for resources whose deletion was put off until the device had
-; finished with them. Here nothing is deleted while frames run.
-proc collect_gpu_deletes
 	ret
 endp
 

@@ -7,7 +7,10 @@ us, the surprise is written down under it.
 
 Most of what 02 to 06 prove is no longer the game's alone: it lives in
 [source\common](../../common/README.md), the layer the game is built on, and
-these are that layer's proofs as much as the game's.
+these are that layer's proofs as much as the game's. The layer stands on the
+projection alone, and every run holds it to that: each program's map names
+one object, its own, and no source under `source\` includes one of the
+examples'.
 
 ```bat
 rem Build every proof and run its checks:
@@ -682,8 +685,9 @@ stage, with no squads, where the script sets down what it wants seen.
 Last result here, GTX 1080 Ti, default and validation alike: all thirty-one
 hold. A tick costs the device 62 microseconds: 15 for the director, 8 for
 the bodies, 31 for the shots, 4 for the struck, 4 for the particles. A
-picture, at the unseen window's 960 by 540, costs 85, nearly all of it the
-backdrop. The report, which in a scripted run sums the world and counts its
+picture, at the unseen window's 960 by 540, costs 103, nearly all of it the
+backdrop. (Of a device left idle. One just played on is a third quicker in
+all of it: see the finding below.) The report, which in a scripted run sums the world and counts its
 pools on one thread, costs 730; a played frame's report does neither. The run is 10,000 ticks, 51,250 passes and 5,000 draws, and takes nine
 seconds. The world is 855 KB on the device. The nova went off in frame 468
 and the head died in frame 557; 186 sounds went to voices. In the third
@@ -775,6 +779,17 @@ check passed. In this arithmetic a float's travel does not coarsen the
 layer in space; it coarsens when the layer moves, in steps of thirteen
 pixels. The check now asks that: that so much more travel is the layer so
 much to the left. Three ways of taking a share with a float each fail it.
+
+**Finding: what a pass costs depends on what the device did a minute
+ago.** The layer's own device, command and presentation code replaced the
+examples', and the first measuring run after it put the picture at 103
+microseconds where this page said 85. The old code, built again and measured
+at once, said 73. Neither was the code. Run turn and turn about, old and new
+cost the same to within a few parts in a hundred, and both drift together by
+a third: a device that has just been played on is at its full clocks, and
+one left idle is not. So a cost is compared only with one measured beside
+it, in turns; and the budgets of claim 29 are several times the cost for
+this as much as for anything.
 
 **Finding: one thread on the device is slow, and the check could not see
 it.** The first way of reading requests in order had the director walk every

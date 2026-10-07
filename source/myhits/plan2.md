@@ -51,6 +51,8 @@ is now the first rule of every choreography here.
   backdrop that is the level's, music that listens; and now charge, a dash,
   the near miss, and the first choreographed attack. Thirty-one numbered
   claims hold on a scripted run of three games, under validation too.
+- Milestone 8, the ground, is built: each of its problems below is done, or
+  was measured and found not to need doing. Its list for a hand is untried.
 - Its content is thin: 24 kinds, 6 squads in one loop, 14 sounds, 3 stems of
   two bars, 4 particle styles, 41 pictures, one place in three inks.
 - It has never been tuned. The author of its code has not heard it or played
@@ -70,6 +72,11 @@ is now the first rule of every choreography here.
   words and the Slang libraries. The game keeps its tables, backdrop and art.
 - **Its own memory.** A buffer is asked for by who touches it and is its own
   allocation. It replaces the examples' pools here.
+- **Its own device, work and presentation.** `device.inc`, `work.inc` and
+  `present.inc`: nothing negotiated, one command buffer, one timeline, and a
+  swapchain replaced with the device idle. The machine includes nothing of
+  the examples' and links nothing of theirs; the proof runner holds it to
+  that.
 - **Charge, the dash, the near miss.** Claim 24.
 - **The hail-mary.** Claim 25.
 - **Room.** The director looks for room and refuses what there is none
@@ -223,7 +230,7 @@ built as written, and their check is a numbered claim of the game's.
 
 | # | Problem | Answer | When | Held by |
 | --- | --- | --- | --- | --- |
-| 1 | The layer still borrows the examples' context, commands, barriers and presentation: modules written to negotiate what this layer requires, reaching each other by name | This layer's own, for the modern contract only: a device, a timeline, a swapchain. What the examples' do that an application needs is kept; the negotiation is not | 8 | Every proof as now; the machine includes nothing from `examples` |
+| 1 | The layer borrowed the examples' context, commands, barriers and presentation: modules written to negotiate what this layer requires, reaching each other by name | This layer's own, for the modern contract only: a device, one command buffer and one timeline, a swapchain replaced with the device idle. A third the size, and nothing measured changed | done | Every proof as before, under validation too; a program is one object, and no source includes one of the examples' |
 | 2 | A new body can overwrite a living one. Shots, pellets and hostiles each take the next slot of a ring; a bonus dropped while the hostile ring wraps can land on a segment of the dragon | The director looks for free slots, bounded, from its cursor; a chain needs a free run. What cannot be placed is refused and counted, per pool | done | A flood on the stage: nothing alive is ever replaced; refusals equal what did not fit |
 | 3 | The order of requests in a tick depends on which thread won | A body's requests go in cells that are its own; the director reads them in slot order. No atomic, no overflow | done | The run's two modes, default and validation, report the same hash of the world |
 | 4 | Nothing is timed. Pool sizes and pass costs are guesses | A measuring run: timestamps round every kind of pass, the CPU's time to record and submit, memory by domain (which `memory.inc` already counts). Budgets are written from its first report | done | The report is checked against the budgets, so a regression fails |
@@ -474,10 +481,11 @@ according to them.
 - **The tools are work that is not the game.** Two milestones show little
   new on the screen. They are kept small by being the proofs that exist,
   watching a file.
-- **Writing the layer's own presentation is the riskiest thing in milestone
-  8.** The borrowed module handles resizing, retirement and a lost surface,
-  and took time to get right. It is replaced last, behind the proofs that
-  already resize and present, and kept until they pass without it.
+- **The layer's own presentation is younger than what it replaced.** The
+  borrowed module handled resizing, retirement and a lost surface, and took
+  time to get right. Its replacement passes every proof that resizes and
+  presents, under validation, and has been played on; it treats a lost
+  surface as a failure, and has met one monitor and one driver.
 - **Reloading can show a state no fresh start would reach,** such as a body
   half-way through a program that has changed under it. A reload therefore
   clears what is hostile, and the theatre replays to where it was.

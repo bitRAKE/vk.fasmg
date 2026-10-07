@@ -21,8 +21,55 @@ SNAPSHOT_BYTES := PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT * 4
 
 section '.text$snapshot' code readable executable align 16
 
-; (It has no section of its own: it goes where it is included.)
-include '..\..\examples\common\bitmap.inc'
+; A picture as a file: a bitmap, its first row at the top, blue first, which
+; is what the image is. Nonzero if all of it was written.
+proc snapshot_write uses rbx rsi rdi,name,source,width,height
+	mov rsi,rdx
+	mov [snapshot_header.width],r8d
+	mov eax,r9d
+	neg eax
+	mov [snapshot_header.height],eax
+	mov edi,r8d
+	imul edi,r9d
+	shl edi,2
+	mov [snapshot_header.bytes],edi
+	lea eax,[edi+SNAPSHOT_HEADER]
+	mov [snapshot_header.length],eax
+	fastcall CreateFileW,rcx,GENERIC_WRITE,FILE_SHARE_READ,0,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,0
+	cmp rax,-1
+	je .failed
+	mov rbx,rax
+	fastcall WriteFile,rbx,addr snapshot_header,SNAPSHOT_HEADER,addr written,0
+	test eax,eax
+	jz .closed
+	cmp [written],SNAPSHOT_HEADER
+	jne .closed
+.more:
+	; WriteFile may take less than it is given.
+	test edi,edi
+	jz .written
+	fastcall WriteFile,rbx,rsi,rdi,addr written,0
+	test eax,eax
+	jz .closed
+	mov eax,[written]
+	test eax,eax
+	jz .closed
+	add rsi,rax
+	sub edi,eax
+	jmp .more
+.written:
+	fastcall CloseHandle,rbx
+	test eax,eax
+	jz .failed
+	mov eax,1
+	ret
+.closed:
+	fastcall CloseHandle,rbx
+.failed:
+	mov [app_io_failed],1
+	xor eax,eax
+	ret
+endp
 
 proc snapshot_start
 	mov eax,[target_format]
@@ -86,7 +133,7 @@ proc snapshot_save
 	dec r8d
 	mov [snapshot_recorded],0
 	fastcall wsprintfW,addr snapshot_path,<W,'build\myhits_' bappend MACHINE_TAG bappend '.%u.bmp'>,r8
-	fastcall save_bitmap,addr snapshot_path,[snapshot_buffer.mapped],PLAYFIELD_WIDTH,PLAYFIELD_HEIGHT
+	fastcall snapshot_write,addr snapshot_path,[snapshot_buffer.mapped],PLAYFIELD_WIDTH,PLAYFIELD_HEIGHT
 .done:
 	ret
 endp
@@ -107,7 +154,6 @@ snapshot_buffer GpuBuffer
 snapshot_ready dd 0
 snapshot_wanted dd 0			; the number of the picture this frame is to be, plus one
 snapshot_recorded dd 0			; the same, of the one a submitted frame recorded
-save_byte_count dd 0
 snapshot_image_info VkImageCreateInfo sType: VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,imageType: VK_IMAGE_TYPE_2D,extent: <width: PLAYFIELD_WIDTH,height: PLAYFIELD_HEIGHT,depth: 1>, \
 	mipLevels: 1,arrayLayers: 1,samples: VK_SAMPLE_COUNT_1_BIT,tiling: VK_IMAGE_TILING_OPTIMAL,usage: VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT or VK_IMAGE_USAGE_TRANSFER_SRC_BIT
 snapshot_view_info VkImageViewCreateInfo sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,viewType: VK_IMAGE_VIEW_TYPE_2D, \
@@ -115,19 +161,20 @@ snapshot_view_info VkImageViewCreateInfo sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CRE
 snapshot_region VkBufferImageCopy imageSubresource: <aspectMask: VK_IMAGE_ASPECT_COLOR_BIT,layerCount: 1>,imageExtent: <width: PLAYFIELD_WIDTH,height: PLAYFIELD_HEIGHT,depth: 1>
 snapshot_viewport VkViewport width: 1920.0,height: 1080.0,minDepth: 0.0,maxDepth: 1.0
 snapshot_rect VkRect2D extent: <width: PLAYFIELD_WIDTH,height: PLAYFIELD_HEIGHT>
-; A bitmap's header: 14 bytes of file and 40 of picture, 32 bits a pixel.
-bitmap_file_header:
+; A bitmap's header: 14 bytes of file and 40 of picture, 32 bits a pixel. A
+; height below zero is a picture that begins at its top.
+SNAPSHOT_HEADER := 54
+snapshot_header:
 	db 'BM'
 .length dd 0
 	dw 0,0
-	dd 54
-.info:
+	dd SNAPSHOT_HEADER
 	dd 40
-.info.biWidth dd 0
-.info.biHeight dd 0
+.width dd 0
+.height dd 0
 	dw 1,32
 	dd 0
-.info.biSizeImage dd 0
+.bytes dd 0
 	dd 0,0,0,0
 
 section '.bss$snapshot' readable writeable align 8
