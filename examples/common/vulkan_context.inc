@@ -134,10 +134,6 @@ proc probe_gpu uses rbx rsi rdi
 		cmp [properties2.properties.deviceType],VK_PHYSICAL_DEVICE_TYPE_CPU
 		je .next_adapter
 	end if
-	if definite GPU_DISCRETE_ONLY
-		cmp [properties2.properties.deviceType],VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
-		jne .next_adapter
-	end if
 	mov eax,[properties2.properties.apiVersion]
 	cmp eax,VK_API_VERSION_1_1
 	jb .next_adapter
@@ -157,10 +153,6 @@ proc probe_gpu uses rbx rsi rdi
 	je .next_queue
 	test [rsi+VkQueueFamilyProperties.queueFlags],VK_QUEUE_GRAPHICS_BIT
 	jz .next_queue
-	if definite GPU_REQUIRE_COMPUTE
-		test [rsi+VkQueueFamilyProperties.queueFlags],VK_QUEUE_COMPUTE_BIT
-		jz .next_queue
-	end if
 	if definite GPU_WSI
 		fastcall wsi_pick_present_queue,rdi
 		test eax,eax

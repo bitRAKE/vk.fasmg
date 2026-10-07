@@ -1,8 +1,8 @@
 // Proof 04, motion: the easing curves on the wall, and a range where bodies
 // run the programs of tables.inc at a fixed tick. What it settles and how to
 // run it is in ..\README.md. The library is ..\..\ease.slang and motion.slang.
-#include "../../pictures.slang"
-#include "../../motion.slang"
+#include "pictures.slang"
+#include "motion.slang"
 
 static const uint CAPACITY = 256;                   // bodies, each twice
 static const uint SHOTS = 128;                      // the first slots: what the player fires, a ring

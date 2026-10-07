@@ -29,7 +29,7 @@ proc snapshot_start
 	mov [snapshot_image_info.format],eax
 	mov [snapshot_view_info.format],eax
 	require_ok fastcall create_image,addr snapshot_image,addr snapshot_image_info,addr snapshot_view_info
-	require_ok fastcall create_buffer_domain,addr snapshot_buffer,SNAPSHOT_BYTES,VK_BUFFER_USAGE_TRANSFER_DST_BIT,0,BUFFER_READBACK
+	require_ok fastcall create_buffer,addr snapshot_buffer,SNAPSHOT_BYTES,VK_BUFFER_USAGE_TRANSFER_DST_BIT,MEMORY_READBACK
 	mov [snapshot_ready],1
 	mov eax,1
 	ret

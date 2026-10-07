@@ -1,9 +1,9 @@
 // Proof 06, sound: the bank the device renders from the recipes of
 // tables.inc, and triggers on their way to the voices. What it settles and how
 // to run it is in ..\README.md. The library is ..\..\sounds.slang.
-#include "../../common.slang"
+#include "common.slang"
 #include "myhits_tables.slang"
-#include "../../ease.slang"
+#include "ease.slang"
 
 struct State
 {
@@ -14,7 +14,7 @@ struct State
 // The header the CPU writes once: BoardWorld in board.asm.
 struct World { Tables tables; float* bank; State* state; };
 
-#include "../../sounds.slang"
+#include "sounds.slang"
 
 // Once, at start, after the bank is rendered: what a sound must be, whatever
 // its recipe. It begins at silence, ends near it, is never louder than its

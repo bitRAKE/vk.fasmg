@@ -19,10 +19,10 @@ MACHINE_NAME equ 'myhits'
 MACHINE_TAG equ 'game'
 MACHINE_SNAPSHOT := 1
 MACHINE_BARE := 1
-include 'machine.inc'
-include 'pictures.inc'
+include '..\common\machine.inc'
+include '..\common\pictures.inc'
 include 'tables.inc'
-include 'audio.inc'
+include '..\common\audio.inc'
 
 ; These are myhits.slang's.
 BODIES := 1024
@@ -98,11 +98,11 @@ end macro
 proc create_world uses rsi rdi
 	mov [failure_stage],3
 	; Only shaders touch the world: device-local memory, reached by address.
-	require_ok fastcall create_buffer_domain,addr world_buffer,WORLD_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_DEVICE
+	require_ok fastcall create_buffer,addr world_buffer,WORLD_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_DEVICE
 	; The CPU writes the header and the tables once, into host-visible memory.
-	require_ok fastcall create_buffer_domain,addr header_buffer,sizeof.GameWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_UPLOAD
+	require_ok fastcall create_buffer,addr header_buffer,sizeof.GameWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_UPLOAD
 	; And the device writes the sounds once where the CPU, and so the voices, can read them.
-	require_ok fastcall create_buffer_domain,addr bank_buffer,BANK_TOTAL*4,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_READBACK
+	require_ok fastcall create_buffer,addr bank_buffer,BANK_TOTAL*4,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_READBACK
 	mov rdi,[header_buffer.mapped]
 	require_ok fastcall pictures_create,rdi
 	mov rax,[header_buffer.address]

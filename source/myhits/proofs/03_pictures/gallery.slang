@@ -1,7 +1,7 @@
 // Proof 03, pictures: every frame art.txt lists, made on the device and drawn
 // from it, with nothing bound. What it settles and how to run it is in
 // ..\README.md. The pictures themselves are ..\..\pictures.slang.
-#include "../../pictures.slang"
+#include "pictures.slang"
 
 static const float SHIP_SPEED = 600.0;      // playfield units a second
 static const uint CHAIN = 14;               // head, bodies, tail

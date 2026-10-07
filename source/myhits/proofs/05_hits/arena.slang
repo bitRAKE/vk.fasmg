@@ -1,8 +1,8 @@
 // Proof 05, hits: shots against masks, bodies against the ship, and the
 // particles and events a hit throws off. What it settles and how to run it is
 // in ..\README.md. The library is ..\..\hits.slang and particles.slang.
-#include "../../pictures.slang"
-#include "../../motion.slang"
+#include "pictures.slang"
+#include "motion.slang"
 
 static const uint CAPACITY = 256;           // bodies, each twice
 static const uint SHOTS = 128;              // the first slots: what the player fires, a ring
@@ -45,8 +45,8 @@ struct World
     Particle* particles; ParticlePool* pool; float2* hit_log; uint capacity; uint particle_capacity;
 };
 
-#include "../../hits.slang"
-#include "../../particles.slang"
+#include "hits.slang"
+#include "particles.slang"
 
 Sprite ship_pose(float2 at)
 {

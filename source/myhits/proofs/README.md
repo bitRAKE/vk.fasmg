@@ -188,7 +188,7 @@ frame, whatever its source:
   repository, and its PNGs are committed. Run it with `-Sheet out.png` to see
   every result over a dark and a light ground.
 - **made** on the device by a generator in
-  [pictures.slang](../pictures.slang): a spark, a shock ring.
+  [pictures.slang](../../common/pictures.slang): a spark, a shock ring.
 - **drawn** on the device from strokes written in art.txt itself: capsules,
   discs and rings. The crosshair and the shield are drawn.
 
@@ -709,7 +709,7 @@ what it claims, what to look at and what its checks are. It should fail by
 number, as the spine does, so a report says which claim broke. And it should
 leave pictures: define MACHINE_SNAPSHOT, keep the frame's draws in
 `draw_world`, and ask for the frames worth seeing
-([snapshot.inc](../snapshot.inc)). The one kind of proof that cannot is one
+([snapshot.inc](../../common/snapshot.inc)). The one kind of proof that cannot is one
 whose fragments count themselves, as 02's and 03's do.
 
 These assembler traps have cost time; each now has a comment where it bit:

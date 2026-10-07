@@ -64,6 +64,27 @@ drawn	crosshair	64 64				symmetric
 	line	52 32 61 32 1.5 ffe0f0ff
 	disc	32 32 2 ff4060ff
 
+; What something that means to strike shows where it means to: brackets
+; while it is fixing on the place, and crosshairs once it has. The ring of the
+; crosshairs is 84 texels out: the game draws it as wide as the strike reaches.
+drawn	focus		192 192				symmetric
+	line	20 20 52 20 3 ffffffff
+	line	20 20 20 52 3 ffffffff
+	line	172 20 140 20 3 ffffffff
+	line	172 20 172 52 3 ffffffff
+	line	20 172 52 172 3 ffffffff
+	line	20 172 20 140 3 ffffffff
+	line	172 172 140 172 3 ffffffff
+	line	172 172 172 140 3 ffffffff
+
+drawn	lock		192 192				symmetric
+	ring	96 96 84 5 ffffffff
+	line	96 4 96 44 2.5 ffffffff
+	line	96 148 96 188 2.5 ffffffff
+	line	4 96 44 96 2.5 ffffffff
+	line	148 96 188 96 2.5 ffffffff
+	disc	96 96 5 ffffffff
+
 drawn	shield		96 96				glow symmetric
 	ring	48 48 40 6 c0ffc080
 	ring	48 48 44 2 ffffe0c0

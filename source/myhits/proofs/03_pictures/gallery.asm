@@ -9,8 +9,8 @@
 ; What each check settles is in ..\README.md.
 MACHINE_NAME equ 'myhits proof 03: pictures'
 MACHINE_TAG equ 'pictures'
-include '..\..\machine.inc'
-include '..\..\pictures.inc'
+include '..\..\..\common\machine.inc'
+include '..\..\..\common\pictures.inc'
 
 SPRITES := 2 * ART_FRAMES + 25		; the gallery, the light, the chain, the ship and its two
 SCRIPT_FRAMES := 120
@@ -56,9 +56,9 @@ end macro
 proc create_world uses rdi
 	mov [failure_stage],3
 	; Only shaders touch the world: device-local memory, reached by address.
-	require_ok fastcall create_buffer_domain,addr world_buffer,WORLD_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_DEVICE
+	require_ok fastcall create_buffer,addr world_buffer,WORLD_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_DEVICE
 	; The CPU writes the header once, straight into host-visible memory.
-	require_ok fastcall create_buffer_domain,addr header_buffer,sizeof.GalleryWorld,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_UPLOAD
+	require_ok fastcall create_buffer,addr header_buffer,sizeof.GalleryWorld,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_UPLOAD
 	mov rdi,[header_buffer.mapped]
 	require_ok fastcall pictures_create,rdi
 	mov rax,[world_buffer.address]

@@ -9,7 +9,7 @@ handles for the debug callback.
 |---|---|
 | `vulkan_routes.inc` | Capability bits, and the `route`/`alternate` blocks that assemble each side of an operation only if the build's contract leaves it possible. Define `CAP_MASK`, and `CAP_REQUIRED` for a build that cannot do without some of it, then include this before the modules below. |
 | `vulkan_context.inc` | Loads Vulkan explicitly; selects a graphics queue, supported core/KHR routes, memory properties, and optional debug messenger. A masked route is never a candidate; a required one that is not selected fails negotiation with `missing_caps` set. Define `TILE_CEILING`; include core, debug-utils, the static loader, pooled strings, and `DebugSink` first. |
-| `vulkan_memory.inc` | Selects compatible memory types, then includes the pools. `create_buffer` retains the examples' mapped policy; `create_buffer_domain(owner, bytes, usage, addressable, domain)` selects `BUFFER_DEVICE`, `BUFFER_UPLOAD`, or `BUFFER_READBACK`. Domains use separate pool classes; only host-visible buffer blocks are mapped. Readback owners must cover only retired, atom-aligned ranges when invalidating. |
+| `vulkan_memory.inc` | Selects compatible memory types, then includes the pools. |
 | `vulkan_pools.inc` | Included by `vulkan_memory.inc`. `GpuBuffer`/`GpuImage` keep handles, memory, and mappings together; creators return a Boolean and destroyers accept partial creation. Persistent blocks separated by type, flags, and buffer/image class; atom-aligned mapped ranges that prefer host caching for readback, required dedicated allocations, bounded metadata, and deferred resource deletion. Initialize after the CPU arena/device; destroy after graphics retirement and resource destruction. |
 | `cpu_arena.inc` | Fixed startup arena with optional large pages and ordinary-page fallback. Configure before `create_cpu_arena`; use `arena_take` only for startup metadata. Link `advapi32.lib` and supply its Win32 imports. |
 | `range_allocator.inc` | Single-threaded segregated free ranges with alignment, splitting, coalescing, and a fixed node inventory from the CPU arena. Tokens identify live allocations; release each token exactly once. Heap destruction returns metadata nodes. |
@@ -28,8 +28,6 @@ preserves application core-feature query results before clearing enabled bits.
 `GPU_APP_NAME` customizes application/debug labels. `GPU_HARDWARE_ONLY` skips
 CPU adapters. `GPU_WSI` adds Win32 surface/swapchain negotiation, including
 separate present queues.
-`GPU_DISCRETE_ONLY` selects only discrete adapters; `GPU_REQUIRE_COMPUTE` requires
-the chosen graphics queue to support compute. The shooter uses both.
 
 Both the explorer and the cube present through WSI, keep the serial command
 buffer for uploads and export, and allocate from the pools; the commands,

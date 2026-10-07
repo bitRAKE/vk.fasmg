@@ -30,6 +30,8 @@ struct Body
     uint laid;          // a head: points of trail laid so far
     float carried;      // and how far it has come since the last
     uint span;          // how many ticks the move in hand lasts, settled when it began
+    float2 mark;        // a point it means to strike,
+    uint marking;       // and whether it has one: MARK_
 };
 
 // What a moving body may look at.
@@ -70,7 +72,16 @@ Body new_body(Tables tables, uint kind, float2 at, float angle, uint seed, uint 
     body.laid = 0;
     body.carried = 0.0;
     body.span = 0;
+    body.mark = at;
+    body.marking = 0;
     return body;
+}
+
+// How much of its way to its mark a body still has to go: all of it, 1, where
+// its move began; none where the mark is.
+float mark_fade(Body body)
+{
+    return saturate(distance(body.position, body.mark) / max(distance(body.origin, body.mark), 1.0));
 }
 
 // One tick of one body's program. False when the program ended it.
@@ -81,7 +92,8 @@ Body new_body(Tables tables, uint kind, float2 at, float angle, uint seed, uint 
 // heading at its speed, and the level carries what rides it.
 // `fires` comes back as the kind FIRE moves asked for, with how many above
 // FIRE_COUNT, and `fan` as how wide they are to be thrown: a body cannot
-// make another, so its pass hands the requests on to the director.
+// make another, so its pass hands the requests on to the director. When the
+// program ends the body in a burst, `fan` is how far the burst reaches.
 static const uint FIRE_COUNT = 16;
 bool advance_body(inout Body body, Tables tables, Scene scene, out uint fires, out float fan)
 {
@@ -93,7 +105,11 @@ bool advance_body(inout Body body, Tables tables, Scene scene, out uint fires, o
     {
         Move move = tables.moves[body.move];
         bool at_once = move.ticks == 0;
-        if (move.action == MOVE_DIE) return false;
+        if (move.action == MOVE_DIE)
+        {
+            fan = move.a;
+            return false;
+        }
         if (move.action == MOVE_HOLD && at_once) break;
         if (move.action == MOVE_AGAIN)
         {
@@ -109,7 +125,8 @@ bool advance_body(inout Body body, Tables tables, Scene scene, out uint fires, o
         if (!at_once) ++body.elapsed;
         float eased = at_once ? 1.0 : ease(move.curve, float(body.elapsed) / float(body.span));
         float2 ahead = heading(body.from);
-        float2 target = move.target == TARGET_PLAYER ? scene.player : move.target == TARGET_CROSSHAIR ? scene.crosshair : body.origin + ahead * 1000.0;
+        float2 target = move.target == TARGET_PLAYER ? scene.player : move.target == TARGET_CROSSHAIR ? scene.crosshair
+            : move.target == TARGET_MARK ? body.mark : body.origin + ahead * 1000.0;
         float2 reach = float2(move.a, move.b * side);
         switch (move.action)
         {
@@ -124,6 +141,15 @@ bool advance_body(inout Body body, Tables tables, Scene scene, out uint fires, o
         }
         case MOVE_TURN: body.angle = body.from + radians(move.a) * side * eased; break;
         case MOVE_THRUST: body.speed = lerp(body.from_speed, move.a, eased); break;
+        case MOVE_MARK:
+        {
+            // While it is being fixed the mark is wherever the target is.
+            body.mark = target;
+            body.marking = MARK_FOCUS;
+            float2 toward = target - body.origin;
+            body.angle = body.from + turn_to(atan2(toward.y, toward.x) - body.from) * eased;
+            break;
+        }
         case MOVE_FIRE:
             fires = (fires & ~((1u << FIRE_COUNT) - 1)) + (1u << FIRE_COUNT) + move.target;
             fan = radians(move.a);
@@ -131,7 +157,9 @@ bool advance_body(inout Body body, Tables tables, Scene scene, out uint fires, o
         default: break;
         }
         if (!at_once && body.elapsed < body.span) break;
-        // The move is over: what it slid becomes where the body is.
+        // The move is over: what it slid becomes where the body is, and a
+        // mark that was being fixed is locked where it stands.
+        if (move.action == MOVE_MARK) body.marking = MARK_LOCKED;
         body.origin += slid;
         slid = float2(0.0, 0.0);
         body.move += 1;

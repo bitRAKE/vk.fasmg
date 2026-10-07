@@ -81,7 +81,7 @@ macro block? field*,type*,count:1
 	boundary.place field,sizeof.type,4,count,`type
 end macro
 
-shader_line '// Written by source\myhits\shared.asm from shared.inc. Do not edit.'
+shader_line '// Written by source\common\shared.asm from shared.inc. Do not edit.'
 
 shared PLAYFIELD_WIDTH,1920
 shared PLAYFIELD_HEIGHT,1080
@@ -108,6 +108,7 @@ shared MUSIC_SAMPLES,192000
 shared BUTTON_FIRE,1
 shared BUTTON_SECOND,2
 shared BUTTON_START,4
+shared BUTTON_THIRD,8
 ; Root.flags
 shared ROOT_PAUSED,1
 shared ROOT_SCRIPTED,2
@@ -242,12 +243,19 @@ shared MOVE_FACE,4			; turn to face its target
 shared MOVE_TURN,5			; turn by a degrees
 shared MOVE_THRUST,6			; bring its speed to a
 shared MOVE_AGAIN,7			; go back `target` moves
-shared MOVE_DIE,8
-shared MOVE_FIRE,9			; ask the director for a body of kind `target`, sent at the player, within `a` degrees
+shared MOVE_DIE,8			; and with `a`, burst: what is within `a` of it is hurt
+shared MOVE_FIRE,9			; ask the director for a body of kind `target`, sent at the player, within `a` degrees;
+					; or, by a body whose mark is locked, sent at its mark, which the new body takes
+shared MOVE_MARK,10			; fix on its target: its mark follows the target and it turns to face it;
+					; when the move is over the mark is locked where it stands
 ; What a move aims at.
 shared TARGET_HEADING,0			; straight ahead
 shared TARGET_PLAYER,1
 shared TARGET_CROSSHAIR,2
+shared TARGET_MARK,3			; its own mark
+; A body's mark: a point it means to strike, and shows.
+shared MARK_FOCUS,1			; being fixed: it follows its target still
+shared MARK_LOCKED,2			; fixed
 boundary Move
 	u32 action
 	u32 curve
@@ -273,6 +281,8 @@ boundary Kind
 	u32 link_kind			; what they are,
 	u32 tail_kind			; what the last of them is,
 	f32 link_spacing		; and how far apart along the head's path
+	u32 wounded_first		; the first move of what it does once it is hurt enough; none: nothing else
+	f32 wounded			; and how little health that is
 end boundary
 
 ; What comes, and when: so long after the squad before, so many of a kind,
@@ -314,9 +324,9 @@ end boundary
 shared STYLE_LIMIT,16
 ; What the device keeps of these two is the shaders' business; the assembly
 ; only needs their sizes: Body in motion.slang, Particle in particles.slang.
-shared BODY_BYTES,88
+shared BODY_BYTES,100
 shared PARTICLE_BYTES,32
-shared REQUEST_BYTES,20			; Request in myhits.slang: what a FIRE asks the director for
+shared REQUEST_BYTES,32			; Request in myhits.slang: what a FIRE asks the director for
 
 ; The game's tables, authored in tables.inc. A program's World holds this.
 ; A sound, as a recipe: a wave whose pitch sweeps from one to another along a

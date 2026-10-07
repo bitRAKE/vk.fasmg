@@ -80,7 +80,7 @@ replace is assembled. The floor is Vulkan 1.4, or 1.3 with maintenance5.
 ## Interfaces
 
 Three blocks cross the CPU boundary. They are defined once, in
-[shared.inc](shared.inc). Assembling it writes the Slang header the shaders
+[shared.inc](../common/shared.inc). Assembling it writes the Slang header the shaders
 include, each member with its offset, and the checks hold the compiler to
 those offsets. Everything else is private to the shaders.
 

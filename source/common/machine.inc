@@ -83,7 +83,7 @@ end iterate
 if definite MACHINE_BARE
 	extrn SetProcessDpiAwarenessContext:qword
 end if
-; For the startup arena behind the shared allocators.
+; For the startup arena the borrowed presentation module takes its tables from.
 iterate function,GetLargePageMinimum,GetLastError,SetLastError,OpenProcessToken,LookupPrivilegeValueW,AdjustTokenPrivileges
 	extrn function:qword
 end iterate
@@ -92,15 +92,14 @@ GPU_APP_NAME equ MACHINE_NAME
 GPU_EXTRA_FEATURES := 1
 GPU_EXTRA_FORMATS := 1
 GPU_HARDWARE_ONLY := 1
-GPU_DISCRETE_ONLY := 1			; the contract's hardware: an integrated adapter is passed over
-GPU_REQUIRE_COMPUTE := 1		; the frame's queue runs the compute passes too
 GPU_WSI := 1
 include '..\..\examples\common\cpu_arena.inc'
 include '..\..\examples\common\vulkan_wsi.inc'
 include '..\..\examples\common\vulkan_context.inc'
-include '..\..\examples\common\vulkan_memory.inc'
+include 'memory.inc'
 include '..\..\examples\common\vulkan_commands.inc'
 include '..\..\examples\common\vulkan_barriers.inc'
+include 'state.inc'
 include 'input.inc'
 if definite MACHINE_SNAPSHOT
 	include 'snapshot.inc'
@@ -154,8 +153,14 @@ proc resolve_extra_commands
 	ret
 endp
 
-; Colors are blended in linear light, so the surface is sRGB.
+; The context asks this of each adapter it has found a queue on, and passes
+; on to the next when the answer is no: so this is where the machine says
+; which will do. The contract's hardware is a discrete adapter; an integrated
+; one, though Windows may list it first, is passed over. And colors are
+; blended in linear light, so the surface is sRGB.
 proc choose_formats
+	cmp [properties2.properties.deviceType],VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
+	jne .failed
 	require_ok fastcall wsi_choose_format,VK_FORMAT_B8G8R8A8_SRGB
 	mov eax,[wsi_format]
 	mov [target_format],eax
@@ -537,7 +542,12 @@ proc machine_start
 	require_ok fastcall create_window
 	require_ok fastcall probe_gpu
 	mov [failure_stage],2
-	require_ok fastcall create_memory_pools
+	; The queue the frame is drawn with runs its compute passes too.
+	mov eax,[queue_info.queueFamilyIndex]
+	imul eax,eax,sizeof.VkQueueFamilyProperties
+	lea rdx,[queues]
+	test [rdx+rax+VkQueueFamilyProperties.queueFlags],VK_QUEUE_COMPUTE_BIT
+	jz .failed
 	require_vk fastcall create_commands
 	mov rax,[command_buffer]
 	mov [serial_command_buffer],rax
@@ -547,7 +557,7 @@ proc machine_start
 	mov [compute_info.layout],rax
 	mov [graphics_info.layout],rax
 	; The CPU reads these, so the memory is host-visible and cached.
-	require_ok fastcall create_buffer_domain,addr events_buffer,EVENT_SLOTS*sizeof.Events,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_READBACK
+	require_ok fastcall create_buffer,addr events_buffer,EVENT_SLOTS*sizeof.Events,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_READBACK
 	mov [failure_stage],0
 	mov eax,1
 	ret
@@ -1060,8 +1070,6 @@ proc machine_stop
 	vkDestroyPipelineLayout [device],[machine_layout],0
 	mov [machine_layout],0
 .pools:
-	fastcall collect_gpu_deletes
-	fastcall destroy_memory_pools
 	fastcall wsi_destroy_frames
 	fastcall destroy_commands
 	vkDestroyDevice [device],0

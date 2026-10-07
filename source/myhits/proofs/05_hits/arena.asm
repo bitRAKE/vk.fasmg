@@ -11,8 +11,8 @@
 MACHINE_NAME equ 'myhits proof 05: hits'
 MACHINE_TAG equ 'hits'
 MACHINE_SNAPSHOT := 1
-include '..\..\machine.inc'
-include '..\..\pictures.inc'
+include '..\..\..\common\machine.inc'
+include '..\..\..\common\pictures.inc'
 include '..\..\tables.inc'
 
 ; These are arena.slang's.
@@ -75,9 +75,9 @@ end macro
 proc create_world uses rsi rdi
 	mov [failure_stage],3
 	; Only shaders touch the world: device-local memory, reached by address.
-	require_ok fastcall create_buffer_domain,addr world_buffer,WORLD_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_DEVICE
+	require_ok fastcall create_buffer,addr world_buffer,WORLD_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_DEVICE
 	; The CPU writes the header and the tables once, into host-visible memory.
-	require_ok fastcall create_buffer_domain,addr header_buffer,sizeof.ArenaWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_UPLOAD
+	require_ok fastcall create_buffer,addr header_buffer,sizeof.ArenaWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_UPLOAD
 	mov rdi,[header_buffer.mapped]
 	require_ok fastcall pictures_create,rdi
 	mov rax,[header_buffer.address]

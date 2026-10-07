@@ -46,36 +46,40 @@ RANGE_PROBE = $(BUILD)\vk_ranges_test.dll
 
 # myhits: the boundary header is assembled first, the shaders are compiled against it, then the programs embed them.
 MYHITS = source\myhits
+# What is not this game's alone: the machine, its memory, and the libraries beside it.
+COMMON = source\common
 MYHITS_HEADER = $(BUILD)\myhits_shared.slang
-MYHITS_SLANG = "$(SLANGC)" -I $(BUILD) -target spirv -profile spirv_1_5 -emit-spirv-directly -fvk-use-scalar-layout
+MYHITS_SLANG = "$(SLANGC)" -I $(BUILD) -I $(COMMON) -target spirv -profile spirv_1_5 -emit-spirv-directly -fvk-use-scalar-layout
 MYHITS_VALIDATE = "$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.3 --scalar-block-layout
-MYHITS_MACHINE = $(MYHITS)\machine.inc $(MYHITS)\input.inc $(MYHITS)\snapshot.inc $(MYHITS)\shared.inc examples\common\bitmap.inc $(SHARED_EXAMPLE_BODY)
+# The modules the machine still borrows from the examples, as they are there.
+MYHITS_BORROWED = examples\common\vulkan_routes.inc examples\common\vulkan_context.inc examples\common\cpu_arena.inc examples\common\vulkan_commands.inc examples\common\vulkan_barriers.inc examples\common\vulkan_wsi.inc examples\common\vulkan_wsi_retirement.inc examples\common\command_options.inc examples\common\bitmap.inc $(DEBUG_BODY)
+MYHITS_MACHINE = $(COMMON)\machine.inc $(COMMON)\memory.inc $(COMMON)\state.inc $(COMMON)\input.inc $(COMMON)\snapshot.inc $(COMMON)\shared.inc $(MYHITS_BORROWED)
 STYLE_SLANG = $(MYHITS)\proofs\01_style\style.slang
 STYLE_SHADERS = $(BUILD)\myhits_style_collide.spv $(BUILD)\myhits_style_vertex.spv $(BUILD)\myhits_style_fragment.spv
 SPINE_SLANG = $(MYHITS)\proofs\02_spine\spine.slang
 SPINE_SHADERS = $(BUILD)\myhits_spine_seed.spv $(BUILD)\myhits_spine_direct.spv $(BUILD)\myhits_spine_advance.spv $(BUILD)\myhits_spine_mote_vertex.spv $(BUILD)\myhits_spine_mote_fragment.spv
 MYHITS_ART = $(BUILD)\myhits_art.inc
-MYHITS_PICTURES = $(MYHITS)\pictures.inc $(MYHITS)\pictures.slang $(MYHITS)\common.slang $(MYHITS_ART)
+MYHITS_PICTURES = $(COMMON)\pictures.inc $(COMMON)\pictures.slang $(COMMON)\common.slang $(MYHITS_ART)
 GALLERY_SLANG = $(MYHITS)\proofs\03_pictures\gallery.slang
 GALLERY_SHADERS = $(BUILD)\myhits_pictures_develop.spv $(BUILD)\myhits_pictures_chart.spv $(BUILD)\myhits_pictures_census.spv $(BUILD)\myhits_pictures_direct.spv $(BUILD)\myhits_pictures_sprite_vertex.spv $(BUILD)\myhits_pictures_sprite_fragment.spv
 MYHITS_TABLES = $(BUILD)\myhits_tables.slang
-MYHITS_MOTION = $(MYHITS)\motion.slang $(MYHITS)\ease.slang $(MYHITS)\tables.inc $(MYHITS_TABLES)
+MYHITS_MOTION = $(COMMON)\motion.slang $(COMMON)\ease.slang $(COMMON)\tables.inc $(MYHITS)\tables.inc $(MYHITS_TABLES)
 RANGE_SLANG = $(MYHITS)\proofs\04_motion\range.slang
 RANGE_SOURCES = $(RANGE_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(MYHITS_HEADER)
 RANGE_SHADERS = $(BUILD)\myhits_motion_develop.spv $(BUILD)\myhits_motion_chart.spv $(BUILD)\myhits_motion_census.spv $(BUILD)\myhits_motion_examine.spv \
 	$(BUILD)\myhits_motion_direct.spv $(BUILD)\myhits_motion_update.spv $(BUILD)\myhits_motion_report.spv $(BUILD)\myhits_motion_scene_vertex.spv \
 	$(BUILD)\myhits_motion_scene_fragment.spv $(BUILD)\myhits_motion_plot_vertex.spv $(BUILD)\myhits_motion_plot_fragment.spv
 ARENA_SLANG = $(MYHITS)\proofs\05_hits\arena.slang
-ARENA_SOURCES = $(ARENA_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(MYHITS)\hits.slang $(MYHITS)\particles.slang $(MYHITS_HEADER)
+ARENA_SOURCES = $(ARENA_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\hits.slang $(COMMON)\particles.slang $(MYHITS_HEADER)
 ARENA_SHADERS = $(BUILD)\myhits_hits_develop.spv $(BUILD)\myhits_hits_chart.spv $(BUILD)\myhits_hits_census.spv $(BUILD)\myhits_hits_begin.spv \
 	$(BUILD)\myhits_hits_survey.spv $(BUILD)\myhits_hits_direct.spv $(BUILD)\myhits_hits_update.spv $(BUILD)\myhits_hits_collide.spv \
 	$(BUILD)\myhits_hits_resolve.spv $(BUILD)\myhits_hits_drift.spv $(BUILD)\myhits_hits_report.spv $(BUILD)\myhits_hits_scene_vertex.spv \
 	$(BUILD)\myhits_hits_scene_fragment.spv $(BUILD)\myhits_hits_particle_vertex.spv $(BUILD)\myhits_hits_particle_fragment.spv
 BOARD_SLANG = $(MYHITS)\proofs\06_sound\board.slang
-BOARD_SOURCES = $(BOARD_SLANG) $(MYHITS)\common.slang $(MYHITS)\ease.slang $(MYHITS)\sounds.slang $(MYHITS_TABLES) $(MYHITS_HEADER)
+BOARD_SOURCES = $(BOARD_SLANG) $(COMMON)\common.slang $(COMMON)\ease.slang $(COMMON)\sounds.slang $(MYHITS_TABLES) $(MYHITS_HEADER)
 BOARD_SHADERS = $(BUILD)\myhits_sound_render.spv $(BUILD)\myhits_sound_examine.spv $(BUILD)\myhits_sound_direct.spv $(BUILD)\myhits_sound_wave_vertex.spv $(BUILD)\myhits_sound_wave_fragment.spv
 GAME_SLANG = $(MYHITS)\myhits.slang
-GAME_SOURCES = $(GAME_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(MYHITS)\hits.slang $(MYHITS)\particles.slang $(MYHITS)\chains.slang $(MYHITS)\sounds.slang $(MYHITS)\backdrop.slang $(MYHITS_HEADER)
+GAME_SOURCES = $(GAME_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\hits.slang $(COMMON)\particles.slang $(COMMON)\chains.slang $(COMMON)\sounds.slang $(MYHITS)\backdrop.slang $(MYHITS_HEADER)
 GAME_SHADERS = $(BUILD)\myhits_game_develop.spv $(BUILD)\myhits_game_chart.spv $(BUILD)\myhits_game_census.spv $(BUILD)\myhits_game_begin.spv \
 	$(BUILD)\myhits_game_direct.spv $(BUILD)\myhits_game_update.spv $(BUILD)\myhits_game_collide.spv $(BUILD)\myhits_game_resolve.spv \
 	$(BUILD)\myhits_game_drift.spv $(BUILD)\myhits_game_report.spv $(BUILD)\myhits_game_render.spv $(BUILD)\myhits_game_scene_vertex.spv \
@@ -280,8 +284,8 @@ $(RANGE_PROBE): $(BUILD)\ranges_probe.obj tests\ranges_probe.def
 check-noAPI_cube: $(CUBE_EXAMPLE) $(RANGE_PROBE)
 	$(POWERSHELL) -File tests\verify-noAPI-cube.ps1 -BuildDir "$(BUILD)" -Validation
 
-$(MYHITS_HEADER): $(MYHITS)\shared.asm $(MYHITS)\shared.inc tools\assemble.ps1 $(BUILD_READY)
-	$(ASSEMBLE) -Source $(MYHITS)\shared.asm -Output $@
+$(MYHITS_HEADER): $(COMMON)\shared.asm $(COMMON)\shared.inc tools\assemble.ps1 $(BUILD_READY)
+	$(ASSEMBLE) -Source $(COMMON)\shared.asm -Output $@
 
 # Proof 01: the pointer style compiles and is valid SPIR-V. Nothing runs.
 $(BUILD)\myhits_style_collide.spv: $(STYLE_SLANG) $(MYHITS_HEADER)
@@ -359,7 +363,7 @@ $(BUILD)\myhits_pictures.exe: $(BUILD)\myhits_pictures.obj $(DEBUG_LOGGER_OBJ)
 	$(LINK_WINDOW) xinput.lib
 
 # The tables' numbers for the shaders, then proof 04's passes.
-$(MYHITS_TABLES): $(MYHITS)\tables.asm $(MYHITS)\tables.inc $(MYHITS)\shared.inc $(MYHITS_ART) tools\assemble.ps1
+$(MYHITS_TABLES): $(MYHITS)\tables.asm $(MYHITS)\tables.inc $(COMMON)\tables.inc $(COMMON)\shared.inc $(MYHITS_ART) tools\assemble.ps1
 	$(ASSEMBLE) -Source $(MYHITS)\tables.asm -Output $@
 
 $(BUILD)\myhits_motion_develop.spv: $(RANGE_SOURCES)
@@ -500,7 +504,7 @@ $(BUILD)\myhits_sound_wave_fragment.spv: $(BOARD_SOURCES)
 	$(MYHITS_SLANG) -entry wave_fragment -stage fragment -o $@ $(BOARD_SLANG)
 	$(MYHITS_VALIDATE) $@
 
-$(BUILD)\myhits_sound.obj: $(MYHITS)\proofs\06_sound\board.asm $(MYHITS_MACHINE) $(MYHITS)\audio.inc $(MYHITS)\tables.inc $(BOARD_SHADERS)
+$(BUILD)\myhits_sound.obj: $(MYHITS)\proofs\06_sound\board.asm $(MYHITS_MACHINE) $(COMMON)\audio.inc $(MYHITS)\tables.inc $(BOARD_SHADERS)
 	$(ASSEMBLE) -Source $(MYHITS)\proofs\06_sound\board.asm -Output $@
 
 $(BUILD)\myhits_sound.exe: $(BUILD)\myhits_sound.obj $(DEBUG_LOGGER_OBJ)
@@ -583,7 +587,7 @@ $(BUILD)\myhits_game_backdrop_fragment.spv: $(GAME_SOURCES)
 	$(MYHITS_SLANG) -entry backdrop_fragment -stage fragment -o $@ $(GAME_SLANG)
 	$(MYHITS_VALIDATE) $@
 
-$(BUILD)\myhits.obj: $(MYHITS)\myhits.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(MYHITS)\audio.inc $(GAME_SHADERS)
+$(BUILD)\myhits.obj: $(MYHITS)\myhits.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\audio.inc $(GAME_SHADERS)
 	$(ASSEMBLE) -Source $(MYHITS)\myhits.asm -Output $@
 
 $(BUILD)\myhits.exe: $(BUILD)\myhits.obj $(DEBUG_LOGGER_OBJ)

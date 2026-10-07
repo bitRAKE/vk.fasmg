@@ -7,7 +7,7 @@
 ; What each check settles is in ..\README.md.
 MACHINE_NAME equ 'myhits proof 02: spine'
 MACHINE_TAG equ 'spine'
-include '..\..\machine.inc'
+include '..\..\..\common\machine.inc'
 
 MOTES := 1024
 SCRIPT_FRAMES := 120
@@ -45,9 +45,9 @@ end macro
 proc create_world uses rdi
 	mov [failure_stage],3
 	; Only shaders touch the world: device-local memory, reached by address.
-	require_ok fastcall create_buffer_domain,addr world_buffer,WORLD_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_DEVICE
+	require_ok fastcall create_buffer,addr world_buffer,WORLD_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_DEVICE
 	; The CPU writes the header once, straight into host-visible memory.
-	require_ok fastcall create_buffer_domain,addr header_buffer,sizeof.SpineWorld,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_UPLOAD
+	require_ok fastcall create_buffer,addr header_buffer,sizeof.SpineWorld,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_UPLOAD
 	mov rdi,[header_buffer.mapped]
 	mov rax,[world_buffer.address]
 	mov [rdi+SpineWorld.state],rax

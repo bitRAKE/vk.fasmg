@@ -13,9 +13,9 @@
 MACHINE_NAME equ 'myhits proof 06: sound'
 MACHINE_TAG equ 'sound'
 MACHINE_SNAPSHOT := 1
-include '..\..\machine.inc'
+include '..\..\..\common\machine.inc'
 include '..\..\tables.inc'
-include '..\..\audio.inc'
+include '..\..\..\common\audio.inc'
 
 SCRIPT_FRAMES := 100
 SCRIPT_PLAYS := 25			; 1 + 1 + 1 + 1 + 1, then twenty in a row
@@ -55,11 +55,11 @@ end macro
 
 proc create_world uses rsi rdi
 	mov [failure_stage],3
-	require_ok fastcall create_buffer_domain,addr state_buffer,STATE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_DEVICE
+	require_ok fastcall create_buffer,addr state_buffer,STATE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_DEVICE
 	; The CPU writes the header and the recipes once, into host-visible memory.
-	require_ok fastcall create_buffer_domain,addr header_buffer,sizeof.BoardWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_UPLOAD
+	require_ok fastcall create_buffer,addr header_buffer,sizeof.BoardWorld+TABLE_BYTES,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_UPLOAD
 	; And the device writes the bank once where the CPU, and so the voices, can read it.
-	require_ok fastcall create_buffer_domain,addr bank_buffer,BANK_SAMPLES*4,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,1,BUFFER_READBACK
+	require_ok fastcall create_buffer,addr bank_buffer,BANK_SAMPLES*4,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_READBACK
 	mov rdi,[header_buffer.mapped]
 	xor eax,eax
 	mov ecx,sizeof.BoardWorld
