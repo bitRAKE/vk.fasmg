@@ -74,7 +74,13 @@ ARENA_SHADERS = $(BUILD)\myhits_hits_develop.spv $(BUILD)\myhits_hits_chart.spv 
 BOARD_SLANG = $(MYHITS)\proofs\06_sound\board.slang
 BOARD_SOURCES = $(BOARD_SLANG) $(MYHITS)\common.slang $(MYHITS)\ease.slang $(MYHITS)\sounds.slang $(MYHITS_TABLES) $(MYHITS_HEADER)
 BOARD_SHADERS = $(BUILD)\myhits_sound_render.spv $(BUILD)\myhits_sound_examine.spv $(BUILD)\myhits_sound_direct.spv $(BUILD)\myhits_sound_wave_vertex.spv $(BUILD)\myhits_sound_wave_fragment.spv
-MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe $(BUILD)\myhits_motion.exe $(BUILD)\myhits_hits.exe $(BUILD)\myhits_sound.exe
+GAME_SLANG = $(MYHITS)\myhits.slang
+GAME_SOURCES = $(GAME_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(MYHITS)\hits.slang $(MYHITS)\particles.slang $(MYHITS)\chains.slang $(MYHITS)\sounds.slang $(MYHITS_HEADER)
+GAME_SHADERS = $(BUILD)\myhits_game_develop.spv $(BUILD)\myhits_game_chart.spv $(BUILD)\myhits_game_census.spv $(BUILD)\myhits_game_begin.spv \
+	$(BUILD)\myhits_game_direct.spv $(BUILD)\myhits_game_update.spv $(BUILD)\myhits_game_collide.spv $(BUILD)\myhits_game_resolve.spv \
+	$(BUILD)\myhits_game_drift.spv $(BUILD)\myhits_game_report.spv $(BUILD)\myhits_game_render.spv $(BUILD)\myhits_game_scene_vertex.spv \
+	$(BUILD)\myhits_game_scene_fragment.spv $(BUILD)\myhits_game_particle_vertex.spv $(BUILD)\myhits_game_particle_fragment.spv
+MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe $(BUILD)\myhits_motion.exe $(BUILD)\myhits_hits.exe $(BUILD)\myhits_sound.exe $(BUILD)\myhits.exe
 
 VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
@@ -498,6 +504,74 @@ $(BUILD)\myhits_sound.obj: $(MYHITS)\proofs\06_sound\board.asm $(MYHITS_MACHINE)
 
 $(BUILD)\myhits_sound.exe: $(BUILD)\myhits_sound.obj $(DEBUG_LOGGER_OBJ)
 	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib
+
+# The game.
+$(BUILD)\myhits_game_develop.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry develop -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_chart.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry chart -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_census.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry census -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_begin.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry begin -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_direct.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry direct -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_update.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry update -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_collide.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry collide -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_resolve.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry resolve -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_drift.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry drift -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_report.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry report -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_render.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry render -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_scene_vertex.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry scene_vertex -stage vertex -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_scene_fragment.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry scene_fragment -stage fragment -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_particle_vertex.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry particle_vertex -stage vertex -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_particle_fragment.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry particle_fragment -stage fragment -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits.obj: $(MYHITS)\myhits.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(MYHITS)\audio.inc $(GAME_SHADERS)
+	$(ASSEMBLE) -Source $(MYHITS)\myhits.asm -Output $@
+
+$(BUILD)\myhits.exe: $(BUILD)\myhits.obj $(DEBUG_LOGGER_OBJ)
+	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib
+
 
 
 

@@ -12,6 +12,8 @@
                 hit throws off exactly the particles and sounds it should
      06 sound   the bank the device renders is the recipes'; a sound asked
                 for in one frame is on a voice as the next begins
+     07 game    the game itself, through two scripted runs: waves by the
+                table, chains, hostile fire, rank, lives, the level's pace
 
    -Validation repeats the device runs under Khronos core and synchronization
    validation and rejects any diagnostic.
@@ -36,10 +38,10 @@ if (-not ('Myhits.Bank' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot '
 # Run one proof's program through its script and hold it to its own numbered
 # checks, then to what every proof owes: a clean exit, no diagnostics, the
 # contract met. Returns its report.
-function Run-Proof([string]$mode, [string]$tag, [hashtable]$checks) {
+function Run-Proof([string]$mode, [string]$tag, [hashtable]$checks, [string]$program = "myhits_$tag.exe") {
     $logRoot = Join-Path $BuildDir "myhits_checks\$mode\$tag"
     New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
-    $executable = (Resolve-Path -LiteralPath (Join-Path $BuildDir "myhits_$tag.exe")).Path
+    $executable = (Resolve-Path -LiteralPath (Join-Path $BuildDir $program)).Path
     $imports = (& dumpbin.exe /NOLOGO /IMPORTS $executable | Out-String)
     Assert-True ($imports -notmatch '(?i)\bvulkan-1\.dll\b|\bgdi32\.dll\b') "The $tag proof imports Vulkan or GDI directly"
     $report = [VkFasmgTests.DebugOutputCapture]::Run($executable, $repoRoot, '--self-test')
@@ -69,7 +71,7 @@ foreach ($line in [IO.File]::ReadAllLines((Join-Path $BuildDir 'myhits_shared.sl
 }
 Assert-True ($promised['Root.world'] -eq 0 -and $promised.ContainsKey('Events.sound') -and $promised.ContainsKey('Picture.checksum')) 'The generated header lists no boundary members'
 $modules = @(Get-ChildItem -LiteralPath $BuildDir -Filter 'myhits_*.spv')
-Assert-True ($modules.Count -ge 45) 'The proofs'' shaders were not built'
+Assert-True ($modules.Count -ge 60) 'The proofs'' shaders were not built'
 $checked = 0
 $pulling = 0
 foreach ($module in $modules) {
@@ -84,7 +86,7 @@ foreach ($module in $modules) {
     else { Assert-True ($module.Name -match '_plot_|_particle_fragment') "$($module.Name) reaches no memory, and is not one of the shaders known to need none" }
     $names = @{}
     foreach ($match in [regex]::Matches($code, 'OpMemberName (%\S+) (\d+) "(\w+)"')) { $names["$($match.Groups[1].Value) $($match.Groups[2].Value)"] = $match.Groups[3].Value }
-    foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census|Tables|Move|Kind|Style|Recipe)(?:_\w+)?) (\d+) Offset (\d+)')) {
+    foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census|Tables|Move|Kind|Style|Recipe|Wave)(?:_\w+)?) (\d+) Offset (\d+)')) {
         $member = "$($match.Groups[2].Value).$($names["$($match.Groups[1].Value) $($match.Groups[3].Value)"])"
         Assert-True ($promised.ContainsKey($member)) "$($module.Name) has $member, which shared.inc does not"
         Assert-True ($promised[$member] -eq [int]$match.Groups[4].Value) "$($module.Name) puts $member at $($match.Groups[4].Value), shared.inc at $($promised[$member])"
@@ -189,6 +191,20 @@ try {
                   else { 'there is no audio device here, so no voice was exercised' }
         Write-Host ("[myhits] $mode/06 sound: {0} sounds in {1} samples ({2:0.00} s) rendered on the device; all but {3} within 0.002 of a second implementation (rms {4}); {5}; a sound asked for in one frame is on its voice as the next begins; bank written to {6}\myhits_sound.bank.wav" -f `
             $state.sounds, $state.bank_samples, ([int]$state.bank_samples / [double]$state.rate), $heard[0], $heard[3], $device, $BuildDir)
+
+        # 07: the game, through its own scripted run of two games.
+        $state = Run-Proof $mode 'game' @{ 1='events out of order, or late'; 2='what came was not what the table says, when it says'; 3='a shot is unaccounted for'
+            4='rank did not read the shooting, or a hurt, as it should'; 5='a chain did not follow its head exactly'; 6='a FIRE did not become a body in the next tick'
+            7='a hurt did not cost one life, or two came within the grace, or the run did not end with the last, or begin again on Enter'
+            8='the level did not stop for what was anchored to it, or did not move on'; 9='the chain did not die with its head'
+            10='a rise or fall of rank, or the death of the head, was never seen'; 11='the sounds asked for did not each go to a voice, or a hurt was not heard'
+            12='the traffic or the passes of a frame are not what the plan allows' } 'myhits.exe'
+        $frames = [int]$state.frames
+        Assert-True ($frames -eq 580 -and [int]$state.events -eq $frames) 'The game did not run its script'
+        $voices = if ([int]$state.device) { "$($state.plays) sounds to voices" } else { 'no audio device here' }
+        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through two games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on; {8}; {9} passes and {10} draws a frame" -f `
+            $frames, $state.ticks_a_frame, ([int]$state.kinds - 1), $state.moves, $state.squads, [int]([int]$state.world_bytes / 1024), $state.head_died_frame, $state.hurts_heard, $voices,
+            ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
     }
 } finally {
     $env:VK_INSTANCE_LAYERS = $previousLayers

@@ -236,6 +236,7 @@ shared MOVE_TURN,5			; turn by a degrees
 shared MOVE_THRUST,6			; bring its speed to a
 shared MOVE_AGAIN,7			; go back `target` moves
 shared MOVE_DIE,8
+shared MOVE_FIRE,9			; ask the director for a body of kind `target`, sent at the player
 ; What a move aims at.
 shared TARGET_HEADING,0			; straight ahead
 shared TARGET_PLAYER,1
@@ -251,6 +252,7 @@ end boundary
 
 shared KIND_FACES_LEFT,1		; its picture looks left; its heading is where it looks
 shared KIND_RIDES,2			; it belongs to the level, and is carried at its pace
+shared KIND_FOLLOWS,4			; a segment: it goes where its head went (chains.slang)
 boundary Kind
 	u32 first			; its first move
 	u32 picture			; FRAME_
@@ -258,7 +260,29 @@ boundary Kind
 	u32 flags
 	f32 health			; hits it takes; none: nothing can hit it
 	u32 worth			; what it scores
+	u32 links			; segments that follow one of these; none for most
+	u32 link_kind			; what they are,
+	u32 tail_kind			; what the last of them is,
+	f32 link_spacing		; and how far apart along the head's path
 end boundary
+
+; What comes, and when: so long after the squad before, so many of a kind,
+; each so long after the last and so far below it; and the share of its full
+; pace the level eases to, so long after they begin (less than none: as it was).
+boundary Wave
+	u32 after
+	u32 kind
+	u32 count
+	u32 stagger
+	f32 y
+	f32 spread
+	f32 pace
+	u32 pace_after
+end boundary
+
+; A head lays a point of its path every so many units, into a ring of this many.
+shared TRAIL_STEP,8
+shared TRAIL_POINTS,256
 
 ; A style of particle: how one looks and goes, from birth to death.
 boundary Style
@@ -280,8 +304,9 @@ end boundary
 shared STYLE_LIMIT,16
 ; What the device keeps of these two is the shaders' business; the assembly
 ; only needs their sizes: Body in motion.slang, Particle in particles.slang.
-shared BODY_BYTES,72
+shared BODY_BYTES,84
 shared PARTICLE_BYTES,32
+shared REQUEST_BYTES,20			; Request in myhits.slang: what a FIRE asks the director for
 
 ; The game's tables, authored in tables.inc. A program's World holds this.
 ; A sound, as a recipe: a wave whose pitch sweeps from one to another along a
@@ -305,8 +330,11 @@ boundary Tables
 	ptr kinds,Kind
 	ptr styles,Style
 	ptr sounds,Recipe
+	ptr waves,Wave
 	u32 move_count
 	u32 kind_count
 	u32 style_count
 	u32 sound_count
+	u32 wave_count
+	u32 pad
 end boundary

@@ -26,6 +26,7 @@ build.cmd myhits-survey
 | 04 | [motion](04_motion/range.asm) | The easing curves are the textbook's; the simulation runs at a fixed tick; bodies run the tables' programs and end each move exactly where it says; the level's own pace is eased, to a stop and back | Passes, with three findings |
 | 05 | [hits](05_hits/arena.asm) | What is drawn is what is hit, by its mask, at any angle, size and speed; what is hit takes it and dies of it; a hit throws off exactly the particles and sounds it should; a touch hurts the ship and a near miss does not | Passes, with two findings |
 | 06 | [sound](06_sound/board.asm) | The bank the device renders is the recipes'; a sound asked for in one frame's events is on a voice as the next begins; many in a frame are one voice at their mean | Passes, with three findings |
+| 07 | [game](../myhits.asm) | The game itself: what comes is what the table says; a chain follows its head exactly and dies with it; only the director makes a body; rank reads the shooting; a hurt costs a life, once; the level stops for what is anchored to it and moves on | Passes, with two findings |
 
 ## 00 survey
 
@@ -485,6 +486,79 @@ its table begins with its own methods, with no three for the interface first.
 **Finding: a voice forgets what it has played.** `SamplesPlayed` returns to
 nothing when a stream ends, so it cannot show afterwards that a sound was
 played. Check 6 asks instead whether anything is still waiting.
+
+## 07 game
+
+From here the proof is the game. [myhits.asm](../myhits.asm) and
+[myhits.slang](../myhits.slang) put everything the proofs above settled into
+one world, and its own scripted run holds it to the rules of play.
+
+```bat
+build\myhits.exe
+build\myhits.exe --self-test
+```
+
+**To look at, and to play.** Arrows, WASD or a pad move; Space or the left
+mouse button fires; Shift or the right button launches a pair of missiles at
+the crosshair, which follows the mouse. What comes is in the `squad` lines of
+[tables.inc](../tables.inc): three swoopers, four weavers, then the worm, a
+head and nine segments that uncoil from where it came in and follow it
+through every turn. Shoot the head ten times and the worm goes segment after
+segment, from the head back. Then two turrets ride in on the level, the level
+stops for them, and they fire at where you are; when the divers come it
+moves on, and the table begins again. A hit on the ship costs one of three
+lives and two seconds of blinking in which nothing more can hurt. With none
+left the run is over, and the world goes on without you until Enter. The
+title carries the score, lives, rank, squad and the shooting, until the HUD
+of milestone 6 takes them over.
+
+**How it is made.** A tick is the five passes of proof 05. The director
+alone reads the wave table, eases the level's pace, looks at the shooting
+once a second to move rank, and makes every body, the ones other bodies
+asked for among them: a FIRE move only appends a request to a queue by an
+atomic count. A chain's head lays its path into a ring of points eight units
+apart; a segment reads its head as the head stood last tick and takes the
+point its own distance back.
+
+**The checks**, on 580 scripted frames of eight ticks: a first game played
+badly to its end, and the start of a second.
+
+| # | Claim | How it is held |
+| --- | --- | --- |
+| 1 | Events arrive in order, one frame late | As in the spine |
+| 2 | What comes is what the table says, when it says | Nothing alive at frame 12; three swoopers at frame 37; the second and third squads begun by frames 100 and 145 |
+| 3 | Every shot is accounted for | In every frame, fired = struck + escaped + flying |
+| 4 | Rank reads the shooting | A second survived adds a hundredth. Eight shots at nothing take six thousandths off at each of the next two looks, to nothing. A look at which every resolved shot had struck adds thirty-four thousandths. A hurt takes fifteen hundredths, or all there is |
+| 5 | A chain follows its head exactly | While the worm comes straight on, its first segment is 112 behind where the head stood a tick ago, on the head's line, to a twentieth of a unit. Once all of it is out and turning, all nine segments are alive and no two neighbors are more than 112.6 apart or less than 104 |
+| 6 | A body cannot make a body | The first turret's FIRE is no pellet by frame 258 and one in frame 259: a request in one tick, a body in the next |
+| 7 | A hurt costs a life, once | Hurts and lives always sum to three; no two hurts come within the grace; the run is over exactly when no life is left, and stays over until Enter, which begins another with three lives and no score |
+| 8 | The level stops for what is anchored to it, and moves on | From frame 290 to 335 its pace is nothing and it has not come a bit farther; by frame 352 it is at full pace |
+| 9 | Kill the head and the chain goes with it | In the second game the worm's head is shot as it comes; five frames after the frame it dies in, at least ten fewer are alive |
+| 10 | Those things were seen | The rise and the falls of rank were each checked at least once, and the head did die |
+| 11 | The sounds are the events | Each sound a frame asked for went to a voice once, none was refused, and every hurt was heard |
+| 12 | The traffic is Root down and Events up; a frame of eight ticks is 41 passes and two draws | Counters |
+
+Last result here, GTX 1080 Ti, default and validation alike: all twelve hold.
+The run is 4,640 ticks, 23,780 passes and 1,160 draws, and takes four
+seconds. The world is 753 KB on the device. The head died in frame 562; 77
+sounds went to voices.
+
+**The checks bite.** Each of these was made and seen to fail the check it
+should: segments a tenth too far apart (5, at frame 150); the director
+ignoring requests (6, at 259); a grace of half a second (7, at 312); rank
+moved by a twentieth (4, at 29); the level ignoring a squad's pace (8, at
+290); segments that outlive their head (9, at 567).
+
+**Finding: a run that is over is still a world.** The first script meant to
+stop the squads when the last life went. But then the level, stopped for the
+turrets, would never be told to move on, and the script's later checks would
+depend on when the player happened to die. The squads come whoever is
+playing; only the player's ship, and fire aimed at it, wait for Enter.
+
+**Finding: the ship cannot be kept safe by standing still.** Every row of
+the playfield is crossed by something. The script's checks of lives are
+therefore rules that hold whenever a hurt comes, not hurts expected at
+frames.
 
 ## Writing the next one
 

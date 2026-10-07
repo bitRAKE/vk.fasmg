@@ -26,6 +26,9 @@ struct Body
     uint born;          // the tick it was made in
     float health;       // hits it can still take
     uint struck;        // the tick it was last hit in, for the flash
+    uint link;          // a head: its ring of trail, plus one. A segment: its head, and its place (chains.slang)
+    uint laid;          // a head: points of trail laid so far
+    float carried;      // and how far it has come since the last
 };
 
 // What a moving body may look at.
@@ -61,6 +64,9 @@ Body new_body(Tables tables, uint kind, float2 at, float angle, uint seed, uint 
     body.born = tick;
     body.health = made.health;
     body.struck = 0;
+    body.link = 0;
+    body.laid = 0;
+    body.carried = 0.0;
     return body;
 }
 
@@ -70,8 +76,11 @@ Body new_body(Tables tables, uint kind, float2 at, float angle, uint seed, uint 
 // it began: nothing accumulates, so a move ends exactly where it says. Moves
 // of no ticks happen at once, a few to a tick. Then the body coasts along its
 // heading at its speed, and the level carries what rides it.
-bool advance_body(inout Body body, Tables tables, Scene scene)
+// `fires` comes back as the kind a FIRE move asked for, or nothing: a body
+// cannot make another, so its pass hands the request on to the director.
+bool advance_body(inout Body body, Tables tables, Scene scene, out uint fires)
 {
+    fires = 0;
     float side = (body.seed & 1) != 0 ? -1.0 : 1.0;
     float2 slid = float2(0.0, 0.0);
     for (uint chained = 0; chained < 4; ++chained)
@@ -106,6 +115,7 @@ bool advance_body(inout Body body, Tables tables, Scene scene)
         }
         case MOVE_TURN: body.angle = body.from + radians(move.a) * side * eased; break;
         case MOVE_THRUST: body.speed = lerp(body.from_speed, move.a, eased); break;
+        case MOVE_FIRE: fires = move.target; break;
         default: break;
         }
         if (!at_once && body.elapsed < move.ticks) break;
@@ -122,6 +132,12 @@ bool advance_body(inout Body body, Tables tables, Scene scene)
     if ((body.flags & KIND_RIDES) != 0) body.origin.x -= scene.drift;
     body.position = body.origin + slid;
     return true;
+}
+
+bool advance_body(inout Body body, Tables tables, Scene scene)
+{
+    uint fires;
+    return advance_body(body, tables, scene, fires);
 }
 
 // A body as the picture shows it: between its last two ticks. One that has

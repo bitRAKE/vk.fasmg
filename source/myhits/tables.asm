@@ -8,3 +8,4 @@ game_tables
 kinds_table
 game_styles
 game_sounds
+game_waves

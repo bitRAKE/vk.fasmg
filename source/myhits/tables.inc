@@ -4,7 +4,10 @@
 ;	mover NAME, FRAME, scale, flags, health, worth
 ;						a kind of body (KIND_NAME), its picture,
 ;						the hits it takes and what it scores
+;		chain count, KIND, KIND, spacing	it is a head: so many of the first kind follow
+;						it and one of the second, so far apart
 ;		move seconds, CURVE, ACTION, a, b, TARGET
+;		fire KIND			ask for one of these, sent at the player
 ;		again count			go back that many moves
 ;	end mover				and coast from there on
 ;
@@ -18,6 +21,8 @@
 ;
 ;	tone NAME, seconds, WAVE, hertz from, to, CURVE, attack, FALL, noise, gain
 ;						a sound (SOUND_NAME); see Recipe
+;	squad after, KIND, count, apart, y, spread, pace, pace after
+;						what comes, and when; see Wave. Times in seconds
 ;
 ; A program includes this and, in a data section, lays the tables down:
 ;
@@ -29,6 +34,8 @@
 ;		game_styles
 ;	table_sounds:
 ;		game_sounds
+;	table_waves:
+;		game_waves
 ;
 ; tables.asm assembles the same lines into build\myhits_tables.slang, which
 ; gives the shaders the KIND_ numbers.
@@ -60,6 +67,10 @@ macro mover name*,art*,size:1.0,bits:0,toughness:0,prize:0
 		table.flags_#n := bits
 		table.health_#n := 1.0*(toughness)
 		table.worth_#n := prize
+		table.links_#n = 0
+		table.link_kind_#n = 0
+		table.tail_kind_#n = 0
+		table.spacing_#n = 0.0
 		table_line 'static const uint KIND_',`name,' = ',`n,';'
 	end repeat
 end macro
@@ -70,15 +81,31 @@ macro move seconds*,curve*,action*,a:0,b:0,target:HEADING
 	table_data MOVE_#action,EASE_#curve,trunc ((seconds)*TICK_RATE+0.5),TARGET_#target,1.0*(a),1.0*(b)
 	table.moves = table.moves + 1
 end macro
+; Inside a mover: it is the head of a chain.
+macro chain many*,body_kind*,last_kind*,apart*
+	repeat 1, n:table.kinds
+		table.links_#n = many
+		table.link_kind_#n = KIND_#body_kind
+		table.tail_kind_#n = KIND_#last_kind
+		table.spacing_#n = 1.0*(apart)
+		; A tail must find its place in the ring before the head writes over it.
+		assert (many)*(apart) <= (TRAIL_POINTS-32)*TRAIL_STEP
+	end repeat
+end macro
+macro fire what*
+	table_data MOVE_FIRE,EASE_LINEAR,0,KIND_#what,0.0,0.0
+	table.moves = table.moves + 1
+end macro
 macro again back*
 	table_data MOVE_AGAIN,EASE_LINEAR,0,back,0.0,0.0
 	table.moves = table.moves + 1
 end macro
 
 macro kinds_table
-	table_data 0,0,0.0,0,0.0,0
+	table_data 0,0,0.0,0,0.0,0,0,0,0,0.0
 	repeat table.kinds, n:1
-		table_data table.first_#n,table.picture_#n,table.scale_#n,table.flags_#n,table.health_#n,table.worth_#n
+		table_data table.first_#n,table.picture_#n,table.scale_#n,table.flags_#n,table.health_#n,table.worth_#n, \
+			table.links_#n,table.link_kind_#n,table.tail_kind_#n,table.spacing_#n
 	end repeat
 	TABLE_KINDS := table.kinds + 1
 	TABLE_MOVES := table.moves
@@ -111,6 +138,12 @@ macro tone name*,seconds*,shape*,pitch_from*,pitch_to*,curve*,rise*,fall*,hiss*,
 	table.samples = table.samples + trunc ((seconds)*SOUND_RATE+0.5)
 	table.sounds = table.sounds + 1
 	assert table.sounds <= SOUND_KINDS
+end macro
+
+table.waves = 0
+macro squad gap*,what*,many*,apart*,high*,down*,share:-1.0,share_gap:0
+	table_data trunc ((gap)*TICK_RATE+0.5),KIND_#what,many,trunc ((apart)*TICK_RATE+0.5),1.0*(high),1.0*(down),1.0*(share),trunc ((share_gap)*TICK_RATE+0.5)
+	table.waves = table.waves + 1
 end macro
 
 SHOT_TICKS := 6			; between the player's shots while fire is held
@@ -170,6 +203,48 @@ macro game_tables
 	mover LANCE,FRAME_BOLT,2.0
 		move 0,LINEAR,THRUST,6000
 	end mover
+
+	; The worm: a head, eight bodies and a tail. It comes on, turns back on
+	; itself one way and then the other, for as long as it lives. Kill the
+	; head and the rest goes with it, segment after segment.
+	mover WORM,FRAME_WORM_HEAD,1.5,KIND_FACES_LEFT,10,2000
+		chain 9,WORM_BODY,WORM_TAIL,112
+		move 0,LINEAR,THRUST,300
+		move 1.6,LINEAR,HOLD
+		move 2.4,INOUT_SINE,TURN,-200
+		move 0.8,LINEAR,HOLD
+		move 2.4,INOUT_SINE,TURN,200
+		again 4
+	end mover
+	mover WORM_BODY,FRAME_WORM_BODY,1.5,KIND_FACES_LEFT or KIND_FOLLOWS,6,100
+	end mover
+	mover WORM_TAIL,FRAME_WORM_TAIL,1.5,KIND_FACES_LEFT or KIND_FOLLOWS,6,100
+	end mover
+	; Sits on the level and fires at the player.
+	mover TURRET,FRAME_CORE,1.4,KIND_RIDES,8,800
+		move 0.8,LINEAR,HOLD
+		fire PELLET
+		again 2
+	end mover
+	; What hostiles fire.
+	mover PELLET,FRAME_NOVA,0.45
+		move 0,LINEAR,THRUST,520
+	end mover
+end macro
+
+; What comes, in order, and then again from the top.
+macro game_waves
+	squad 1.0,SWOOPER,3,0.35,260,180
+	squad 4.0,WEAVER,4,0.5,200,210
+	squad 4.5,WORM,1,0,420,0
+	; Two turrets ride in; two seconds on, the level stops for them.
+	squad 7.0,TURRET,2,0.6,330,400,0.0,2.0
+	; And moves on when the divers come.
+	squad 6.0,DIVER,3,0.6,240,260,1.0
+	TABLE_WAVES := table.waves
+	repeat 1, waves:table.waves
+		table_line 'static const uint TABLE_WAVES = ',`waves,';'
+	end repeat
 end macro
 
 macro game_styles

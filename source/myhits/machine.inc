@@ -551,9 +551,10 @@ proc machine_sample uses rbx
 	fastcall merge_presses,rbx
 	ret
 .scripted:
-	mov dword [root+Root.ticks],SCRIPT_TICKS
+	mov eax,[script_ticks]
+	mov [root+Root.ticks],eax
 	mov dword [root+Root.blend],1.0
-	add [ticks_run],SCRIPT_TICKS
+	add [ticks_run],rax
 	cvtsi2sd xmm0,[ticks_run]
 	divsd xmm0,[tick_rate]
 	cvtsd2ss xmm1,xmm0
@@ -872,6 +873,7 @@ written dd 0
 longest_step dd 0.05
 frame_seconds dd 0.0			; real time since the last frame, for what follows the hand
 pressed_pending dd 0			; BUTTON_ bits the window's messages saw go down
+script_ticks dd SCRIPT_TICKS		; what a scripted frame runs; a long script may raise it
 pad_before dd 0
 playfield_PLAYFIELD_WIDTH dd 1920.0
 playfield_PLAYFIELD_HEIGHT dd 1080.0

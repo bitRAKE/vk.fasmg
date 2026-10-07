@@ -40,6 +40,9 @@ Proved on the device (GTX 1080 Ti, with and without validation):
 - The sounds are recipes the device renders into a bank, sample for sample
   what a second implementation makes; a sound asked for in one frame is on an
   XAudio2 voice as the next begins. Proof 06.
+- The game: waves by a table, chains that follow their head exactly, hostile
+  fire through the director, rank from the shooting, lives, and a level that
+  stops and moves on, in one world of 753 KB. Proof 07, the game's own run.
 
 ## Shape
 
@@ -346,17 +349,18 @@ buttons. Rumble goes back out from the events.
 | --- | --- | --- |
 | `shared.inc`, `shared.asm` | The boundary blocks; the generated shader header | Built |
 | `machine.inc` | Window, contract, pipelines, the frame, events | Built; proved by the spine |
-| `proofs\` | Each proof, its checks, and what to look at | Seven so far |
+| `proofs\` | Each proof, its checks, and what to look at | Eight so far, the last the game itself |
 | `art\art.txt`, `art\*.png` | Every frame, whatever its source; the cut ones | 22 frames |
 | `tools\art.cs`, `cut-art.ps1`, `pack-art.ps1` | Cutting sprites out of sheets (authoring); packing the art (build) | Built |
 | `pictures.inc`, `pictures.slang` | Making the pictures on the device; pulling, filtering and lighting them | Built; proved by 03 |
 | `input.inc` | The pad into Root; rumble to come | Built, without rumble |
-| `tables.inc`, `tables.asm` | The table macros and the game's data; their numbers for the shaders | Kinds, moves, particle styles, sounds |
+| `tables.inc`, `tables.asm` | The table macros and the game's data; their numbers for the shaders | Kinds, moves, chains, particle styles, sounds, squads |
+| `chains.slang` | A head's trail, and the segments that follow it | Built; proved by 07 |
 | `common.slang` | The root, a hash, opening a frame's events, asking for a sound | Built |
 | `ease.slang`, `motion.slang` | The easing curves; a body and one tick of its program | Built; proved by 04 |
 | `hits.slang`, `particles.slang` | Mask collision; the particle ring, its styles and its light | Built; proved by 05 |
 | `audio.inc`, `sounds.slang` | XAudio2's engine and voices; the bank rendered on the device | Built; proved by 06 |
-| `myhits.asm`, `*.slang` | The game | |
+| `myhits.asm`, `myhits.slang` | The game | Playable: squads, chains, hostile fire, rank, lives. No HUD yet |
 
 One addition went into `examples\common`: device-local buffers in the pools,
 for the world. One is still to come: a present-mode choice in
@@ -384,6 +388,7 @@ they change a rule, into this plan.
 | 04 | motion: every easing curve drawn and held to a second implementation; a fixed tick; the missile's program traced; the level's pace eased to a stop and back | 2 | Passes; three findings |
 | 05 | hits: every texel hit where it is drawn, counted against the packer's PNGs; swept shots; damage and death; particles by the count; sounds as events; the ship hurt by a touch | 3 | Passes; two findings |
 | 06 | sound: the bank rendered and held to a second implementation; triggers to voices in one frame; many as one, panned; the engine's latency read | 4 | Passes; three findings |
+| 07 | game: the game's own scripted run of two games: squads by the table, a chain behind its head and dead with it, hostile fire through the director, rank, lives, the level's pace | 5 | Passes; two findings |
 
 ## Milestones
 
@@ -402,7 +407,11 @@ they change a rule, into this plan.
    enemy shots against the ship, pickups, and a grid in place of the scan.
 4. **Sound.** Done: recipes, the bank rendered on the device, sixteen voices,
    triggers as counts and positions. Left for milestone 7: music and the beat.
-5. **Opposition.** Kinds, waves, rank, chains, the director.
+5. **Opposition.** Done: the game as one program; squads by a table; chains;
+   hostile fire through the director; rank from the shooting; lives. Rank so
+   far adds to a squad's numbers and to what a kill is worth; how often
+   hostiles fire and how fast they come are still to read it. More kinds and
+   squads, and a boss, are table work for milestone 7.
 6. **Reward.** Bonuses, the animated HUD, damage you feel, the companion's
    three stages.
 7. **Atmosphere.** Backgrounds, music and beat, tuning.
@@ -436,6 +445,10 @@ game, whose own scripted run is its proof (07). What it adds, and how:
   many come, how often they fire and what a kill is worth.
 - **Lives.** A hurt costs one and buys two seconds of grace; none left ends
   the run, and Enter starts another.
+
+Built as written, with one change the run itself forced: the squads keep
+coming when a run is over. A world that stopped with the player left the
+level standing still for turrets that would never be relieved.
 
 ## Open
 
