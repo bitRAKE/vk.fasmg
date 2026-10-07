@@ -19,6 +19,12 @@
 ; program that has a frame's ticks and controls from somewhere else, a record
 ; of a run, fills Root with them and calls machine_given in its place.
 ;
+; A frame may be run and not shown: with machine_unseen set when it is
+; opened, it takes no image, machine_canvas and machine_draw do nothing, and
+; it is finished when the device has run its passes, not when a monitor has
+; shown it. Everything else about it is a frame's: its Root, its events a
+; frame later. It is how a program gets to the middle of a run quickly.
+;
 ; What a frame costs can be measured: machine_measure before the first frame,
 ; machine_stamp with a number of the program's choosing after each thing to
 ; be timed, and measure_mean for what each number came to. A stamp is the
@@ -655,12 +661,15 @@ endp
 
 ; `vertices` for each of `instances`, all of it pulled by the shaders.
 proc machine_draw uses rbx rsi,pipeline,vertices,instances
+	cmp [frame_unseen],0
+	jne .unseen
 	mov ebx,edx
 	mov esi,r8d
 	mov [pipeline],rcx
 	vkCmdBindPipeline [command_buffer],VK_PIPELINE_BIND_POINT_GRAPHICS,[pipeline]
 	vkCmdDraw [command_buffer],rbx,rsi,0,0
 	inc [draw_count]
+.unseen:
 	ret
 endp
 
@@ -1033,6 +1042,16 @@ proc machine_open uses rbx rsi
 	xor esi,esi
 	mov [failure_stage],5
 	fastcall QueryPerformanceCounter,addr cpu_opened
+	; A frame that is run and not shown needs no image: only somewhere to
+	; record. (What it is, it stays, whatever is asked of the next meanwhile.)
+	mov eax,[machine_unseen]
+	mov [frame_unseen],eax
+	test eax,eax
+	jz .seen
+	require_ok fastcall work_begin
+	mov [failure_stage],6
+	jmp .slot
+.seen:
 	cmp [present_dirty],0
 	jne .resize
 	mov eax,[frame_width]
@@ -1070,6 +1089,7 @@ proc machine_open uses rbx rsi
 	mov [draw_image],rax
 	mov rax,[rbx+PresentImage.view]
 	mov [render_color.imageView],rax
+.slot:
 	mov eax,[root+Root.frame]
 	and eax,EVENT_SLOTS-1
 	imul eax,sizeof.Events
@@ -1149,17 +1169,26 @@ endp
 ; From the compute passes to the picture: the swapchain image, cleared, with
 ; the playfield as viewport.
 proc machine_canvas
+	cmp [frame_unseen],0
+	jne .unseen
 	fastcall memory_barrier,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_ACCESS_SHADER_WRITE_BIT, \
 		VK_PIPELINE_STAGE_VERTEX_SHADER_BIT or VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,VK_ACCESS_SHADER_READ_BIT or VK_ACCESS_SHADER_WRITE_BIT
 	fastcall transition_image,[draw_image],VK_IMAGE_ASPECT_COLOR_BIT,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,0,VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
 	vkCmdBeginRendering [command_buffer],addr rendering_info
 	vkCmdSetViewport [command_buffer],0,1,addr viewport
 	vkCmdSetScissor [command_buffer],0,1,addr playfield_rect
+.unseen:
 	ret
 endp
 
-; Close the frame: present it, and remember when its events may be read.
+; Close the frame: present it, and remember when its events may be read. A
+; frame that is not shown is only given to the device.
 proc machine_close
+	cmp [frame_unseen],0
+	je .seen
+	require_ok fastcall work_submit,0,0
+	jmp .submitted
+.seen:
 	vkCmdEndRendering [command_buffer]
 	; What was left when the last draw was stamped: the end of the pass.
 	fastcall machine_stamp,MEASURE_PICTURE
@@ -1171,6 +1200,7 @@ proc machine_close
 	end if
 	fastcall transition_image,[draw_image],VK_IMAGE_ASPECT_COLOR_BIT,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,0
 	require_ok fastcall present_submit
+.submitted:
 	mov eax,[root+Root.frame]
 	and eax,EVENT_SLOTS-1
 	lea rdx,[events_work]
@@ -1343,6 +1373,8 @@ stale dd 1				; the window shows something other than the last frame
 paused dd 0				; no ticks are paid out: P, or a bare window left for another
 fullscreen dd 0				; the window has the whole of its monitor
 confined dd 0				; the pointer is hidden and held to the client area
+machine_unseen dd 0			; a program sets it for frames that are to be run and not shown
+frame_unseen dd 0			; whether the frame that is open is one
 machine_stays dd 0			; a program sets it to go on when it is left: for one being looked at while something else is worked in
 test_mode dd 0
 gpu_error dd 0

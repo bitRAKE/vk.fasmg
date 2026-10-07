@@ -325,17 +325,40 @@ try {
         Assert-True ($said[1290] -gt 1000 -and $said[900] -lt 100) "game check 32 failed: the frame after the tables were taken has $($said[1290]) pixels of words along its top, and a frame long before has $($said[900])"
         Assert-True ([int]$state.reloads -eq 5 -and [int]$state.reloads_refused -eq 1) 'game check 32 failed: the tables were not taken five times and refused once'
         # 34: a run that was recorded is the same run played back. The scripted run keeps every
-        # frame's controls, and the tables it took on the way, in a file as it goes. The game is then
-        # run from that file and not from its script, and every frame's sum of the world, folded into
-        # one number, is what it was.
+        # frame's controls, the tables it took on the way, and what each frame came to, in a file
+        # as it goes. The game is then run from that file and not from its script, with no frame
+        # of it shown: every frame comes to what the record says it came to, and all of them,
+        # folded into one number, to what the scripted run's did.
         $kept = ''
         if ($mode -eq 'default') {
-            $replayed = [VkFasmgTests.DebugOutputCapture]::Run((Resolve-Path -LiteralPath (Join-Path $BuildDir 'myhits.exe')).Path, $repoRoot, '--self-test --replay')
+            $game = (Resolve-Path -LiteralPath (Join-Path $BuildDir 'myhits.exe')).Path
+            $replayed = [VkFasmgTests.DebugOutputCapture]::Run($game, $repoRoot, '--self-test --replay')
             [IO.File]::WriteAllText((Join-Path $logRoot 'replay.log'), $replayed)
             $back = Read-State (Join-Path $BuildDir 'myhits_game.report.txt')
             Assert-True ($replayed.Contains('[myhits] exit: app_io=0 validation=0 debug_io=0') -and $back.proof -eq 'game_replay' -and [int]$back.failure -eq 0) 'game check 34 failed: the run could not be played back from its record'
+            Assert-True ([int]$back.replay_left -eq 0 -and [int]$back.replay_held -eq $frames) "game check 34 failed: played back, the run left its record at frame $([int]$back.replay_left - 1); $($back.replay_held) of its $frames frames were held to it"
             Assert-True ([int]$back.frames -eq $frames -and $back.frames_sum -eq $state.frames_sum -and $state.frames_sum -notmatch '^0+$') "game check 34 failed: the run's $frames frames came to $($state.frames_sum), and played back from its record, $($back.frames) frames came to $($back.frames_sum)"
-            $kept = " a run played back from its record of $((Get-Item -LiteralPath (Join-Path $BuildDir 'myhits_game.run')).Length) bytes is the same run, frame for frame ($($back.frames_sum));"
+            $kept = " a run played back from its record of $((Get-Item -LiteralPath (Join-Path $BuildDir 'myhits_game.run')).Length) bytes, unseen, is the same run, frame for frame ($($back.frames_sum));"
+            # And a run somebody played, whose frames are of no ticks, one, two and three as a clock
+            # had it: 07_game\played.run. It was kept before records said what their frames came to,
+            # so it is played back once and kept again as it goes, and that record is played back
+            # and held to itself.
+            $played = Join-Path $PSScriptRoot '07_game\played.run'
+            $names = [BitConverter]::ToUInt32([IO.File]::ReadAllBytes((Join-Path $BuildDir 'myhits_tables.bin')), 4)
+            if ([BitConverter]::ToUInt32([IO.File]::ReadAllBytes($played), 8) -eq $names) {
+                $again = Join-Path $BuildDir 'myhits_played.run'
+                $turns = @()
+                foreach ($arguments in "--self-test --replay source\myhits\proofs\07_game\played.run --record $again", "--self-test --replay $again") {
+                    $said = [VkFasmgTests.DebugOutputCapture]::Run($game, $repoRoot, $arguments)
+                    Assert-True ($said.Contains('[myhits] exit: app_io=0 validation=0 debug_io=0')) 'game check 34 failed: the played run could not be played back'
+                    $turns += Read-State (Join-Path $BuildDir 'myhits_game.report.txt')
+                }
+                Assert-True ([int]$turns[0].frames -gt 1000 -and $turns[1].frames -eq $turns[0].frames -and $turns[1].frames_sum -eq $turns[0].frames_sum) "game check 34 failed: the played run's $($turns[0].frames) frames came to $($turns[0].frames_sum), and kept and played back again, $($turns[1].frames) came to $($turns[1].frames_sum)"
+                Assert-True ([int]$turns[1].replay_left -eq 0 -and $turns[1].replay_held -eq $turns[1].frames) "game check 34 failed: the played run, kept again and played back, left its record at frame $([int]$turns[1].replay_left - 1)"
+                $kept += " and so is a run somebody played, $($turns[1].frames) frames and $($turns[1].ticks) ticks of it, to a score of $($turns[1].score);"
+            } else {
+                $kept += ' the played run that is kept is of other names than the game now has, and was not played back;'
+            }
         }
         Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through four games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; the run as it sounded is $BuildDir\myhits_run.wav, $($mix.seconds) seconds at $($mix.level) dB, its peak $($mix.peak) dB with $($mix.clipped) samples cut off, and $($mix.furthest) the sound furthest from the rest, by $($mix.apart) dB; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks and bursts where it locked, is dodged by moving and not stopped by killing; the window pauses, moves, takes its monitor and is remembered; nothing alive is written over, and what there is no room for is refused; its tables are taken again from a file as it runs ($($state.reload_bytes) bytes in five takings), and refused when their names are not its own; two runs sum to the same ($gameSums);$kept $costs; {9} passes and {10} draws a frame" -f `
             $frames, $state.ticks_a_frame, ([int]$state.kinds - 1), $state.moves, $state.squads, [int]([int]$state.world_bytes / 1024), $state.head_died_frame, $state.hurts_heard, $voices,

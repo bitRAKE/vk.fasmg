@@ -20,6 +20,9 @@
 ;					build\myhits_last.run as it is played
 ;	build\myhits.exe --replay	that run again, from the record, and then on from
 ;					where it ended, in the player's hands
+;	    --record file, --replay file	the same, to or from a file of that name;
+;					both together, a run played back and kept
+;					again, with whatever is then played after it
 ;	build\myhits.exe --self-test	a scripted run of four games, every claim checked
 ;
 ; Its window has no caption. While it plays the pointer is the crosshair and
@@ -348,10 +351,17 @@ endp
 ;	a frame: its ticks, where it was steered, where it aimed, what was held
 ;		and pressed, and its flags
 ;	tables: RUN_IMAGE, how many bytes, and the image
-RUN_VERSION := 1
+;	what a frame came to: RUN_CAME, its number, and the device's sum of the
+;		world after it, which comes back a frame later
+;
+; The last is what a playing back is held to as it goes: the first frame
+; that comes to something else is where it left its record (replay_left).
+; A record of the first version has none, and is played back unheld.
+RUN_VERSION := 2
 RUN_HEAD := 16
 RUN_FRAME := 32
 RUN_IMAGE := 0FFFFFFFFh
+RUN_CAME := 0FFFFFFFEh
 RUN_ROOM := 16*1024*1024		; the longest record that is played back: some hours
 
 proc record_start name
@@ -398,6 +408,70 @@ proc record_image uses rbx,image,bytes
 	ret
 endp
 
+; What a frame came to, as its events say: into the record of a run being
+; kept; and, of a run being played back, beside what its record says.
+proc record_came frame,sum
+	cmp [run_file],0
+	je .done
+	mov [run_came+4],ecx
+	mov [run_came+8],edx
+	fastcall file_more,[run_file],addr run_came,16
+.done:
+	ret
+endp
+
+; ECX a frame, EDX what it came to; R8 which side says so: nothing, this
+; playing; otherwise, the record. When both have spoken of a frame and do
+; not agree, that is where the playing left its record, if it had not yet.
+proc replay_came frame,sum,side
+	cmp [replayed],0
+	je .done
+	mov eax,ecx
+	and eax,15
+	inc ecx
+	lea r9,[came_now]
+	lea r10,[came_then]
+	test r8d,r8d
+	jz .said
+	xchg r9,r10
+.said:
+	mov [r9+rax*8],ecx
+	mov [r9+rax*8+4],edx
+	cmp [r10+rax*8],ecx
+	jne .done
+	cmp [r10+rax*8+4],edx
+	je .agreed
+	cmp [replay_left],0
+	jne .done
+	mov [replay_left],ecx
+	ret
+.agreed:
+	inc [replay_held]
+.done:
+	ret
+endp
+
+; The file a record goes to or comes from: the one named after the option
+; (RCX), or the usual one.
+proc run_file_name uses rsi rdi,option
+	fastcall command_value,rcx,addr run_path,260
+	test eax,eax
+	jnz .done
+	lea rsi,[run_name]
+	cmp [test_mode],0
+	je .usual
+	lea rsi,[run_test_name]
+.usual:
+	lea rdi,[run_path]
+.copy:
+	lodsw
+	stosw
+	test ax,ax
+	jnz .copy
+.done:
+	ret
+endp
+
 proc record_stop
 	cmp [run_file],0
 	je .done
@@ -416,8 +490,10 @@ proc replay_start name
 	lea rdx,[run_taken]
 	cmp dword [rdx],'MRUN'
 	jne .none
+	cmp dword [rdx+4],0
+	je .none
 	cmp dword [rdx+4],RUN_VERSION
-	jne .none
+	ja .none
 	mov eax,[rdx+8]
 	cmp eax,[run_head+8]
 	jne .none
@@ -441,6 +517,16 @@ proc replay_frame uses rbx rsi
 	add eax,8
 	cmp eax,[run_end]
 	ja .over
+	cmp dword [rsi],RUN_CAME
+	jne .not_came
+	mov eax,[run_at]
+	add eax,16
+	cmp eax,[run_end]
+	ja .over
+	mov [run_at],eax
+	fastcall replay_came,[rsi+4],[rsi+8],1
+	jmp .next
+.not_came:
 	cmp dword [rsi],RUN_IMAGE
 	jne .frame
 	mov ebx,[rsi+4]
@@ -466,6 +552,7 @@ proc replay_frame uses rbx rsi
 	fastcall take_tables,rsi,rbx
 	test eax,eax
 	jz .over
+	fastcall record_image,addr kept_image,rbx
 	jmp .next
 .frame:
 	mov eax,[run_at]
@@ -669,6 +756,8 @@ proc play_frame uses rbx
 	movss dword [root+Root.beat],xmm0
 	jmp .open
 .given:
+	; (A run being played back may be kept again as it goes.)
+	fastcall record_frame
 	mov dword [root+Root.beat],0
 .open:
 	fastcall machine_open
@@ -783,6 +872,10 @@ proc consume_events uses rbx rsi rdi,events
 	jbe .counted
 	mov [worst_latency],eax
 .counted:
+	; What the frame came to: kept, in a run that is being kept; and held to
+	; its record, in a run that is being played back.
+	fastcall record_came,rsi,[rbx+Events.debug+12]
+	fastcall replay_came,rsi,[rbx+Events.debug+12],0
 	cmp [test_mode],0
 	je .done
 	; Every frame's sum of the world, folded into one: what a run played back
@@ -2058,6 +2151,9 @@ endp
 ; one number, made of every frame's sum of the world; the proof runner holds
 ; it to the scripted run's own.
 proc replayed_run
+	; Nobody is watching: its frames are run and not shown, which is as
+	; quick as the device is, and not as slow as a monitor.
+	mov [machine_unseen],1
 .frame:
 	fastcall play_frame
 	cmp eax,3
@@ -2072,8 +2168,10 @@ proc replayed_run
 	mov [app_io_failed],1
 .report:
 	fastcall wsprintfW,addr report_text,<W,'proof=game_replay',13,10,'failure=%u',13,10,'frames=%u',13,10,'events=%u',13,10,'frames_sum=%08X',13,10, \
+		'replay_left=%u',13,10,'replay_held=%u',13,10,'ticks=%u',13,10,'score=%u',13,10,'kills=%u',13,10,'squads=%u',13,10,'lives=%u',13,10,'state=%u',13,10, \
 		'caps=%u',13,10,'required=%u',13,10,'gpu_error=%d',13,10,'failure_stage=%u',13,10>, \
-		[proof_failure],[root+Root.frame],[events_seen],[frames_sum],[active_caps],CAP_REQUIRED,[gpu_error],[failure_stage]
+		[proof_failure],[root+Root.frame],[events_seen],[frames_sum],[replay_left],[replay_held],dword [ticks_run],[last_score],[last_kills],[last_wave],[last_lives],[last_state], \
+		[active_caps],CAP_REQUIRED,[gpu_error],[failure_stage]
 	fastcall machine_write_report,rax
 	ret
 endp
@@ -2258,9 +2356,16 @@ proc mainCRTStartup
 	fastcall command_option,<W,'--replay'>
 	test eax,eax
 	jz .scripted
-	fastcall replay_start,addr run_test_name
+	fastcall run_file_name,<W,'--replay'>
+	fastcall replay_start,addr run_path
 	test eax,eax
 	jz .failed
+	fastcall command_option,<W,'--record'>
+	test eax,eax
+	jz .played_back
+	fastcall run_file_name,<W,'--record'>
+	fastcall record_start,addr run_path
+.played_back:
 	fastcall replayed_run
 	jmp .finish
 .scripted:
@@ -2290,13 +2395,14 @@ proc mainCRTStartup
 	fastcall command_option,<W,'--replay'>
 	test eax,eax
 	jz .not_replayed
-	fastcall replay_start,addr run_name
-	jmp .unrecorded
+	fastcall run_file_name,<W,'--replay'>
+	fastcall replay_start,addr run_path
 .not_replayed:
 	fastcall command_option,<W,'--record'>
 	test eax,eax
 	jz .unrecorded
-	fastcall record_start,addr run_name
+	fastcall run_file_name,<W,'--record'>
+	fastcall record_start,addr run_path
 .unrecorded:
 	cmp [start_whole],0
 	je .placed
@@ -2427,7 +2533,7 @@ iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,l
 	fired_mark,nova_frame,nova_score,nova_kills,score_before,kills_before,struck_mark,last_music_faults, \
 	start_whole,last_counts,stage_ship_y,stage_phase,stage_round,stage_followed,stage_hurts,stage_recoiled,room_occupied,room_refused, \
 	sum_first,sum_second,sum_third,sum_fourth,stage_score,stage_kills,stage_rank, \
-	replaying,replayed,frames_sum,run_at,run_end,watching,watch_result,reload_owed,reloads_taken,reloads_refused,reload_bytes,reload_dispatches,home_groups,bank_groups,fit_expected,sum_at_start,bank_at_start,music_at_start, \
+	replaying,replayed,replay_left,replay_held,frames_sum,run_at,run_end,watching,watch_result,reload_owed,reloads_taken,reloads_refused,reload_bytes,reload_dispatches,home_groups,bank_groups,fit_expected,sum_at_start,bank_at_start,music_at_start, \
 	lock_x,lock_y,fire_x,fire_y
 	name dd 0
 end iterate
@@ -2435,6 +2541,9 @@ end iterate
 run_file dq 0				; the record being written, if one is
 run_head dd 'MRUN',RUN_VERSION,TABLE_PRINT,TICK_RATE
 run_mark dd RUN_IMAGE,0
+run_came dd RUN_CAME,0,0,0
+came_now rq 16				; what each of the last frames came to in this playing: its number and one, and its sum;
+came_then rq 16				; and what the record says it came to
 run_record rd 8
 run_name GLOBWSTR 'build\myhits_last.run',0
 run_test_name GLOBWSTR 'build\myhits_game.run',0
@@ -2481,6 +2590,7 @@ taken_image rb TAKEN_ROOM		; what a file held
 kept_image rb TAKEN_ROOM		; and what was taken from one, which is then the image in force
 heard_log rb SCRIPT_FRAMES*HEARD_BYTES
 run_taken rb RUN_ROOM			; a record being played back
+run_path rw 260				; and the name of its file
 
 section '.rdata$game_spirv' data readable align 4
 iterate <name,module>, develop_code,develop, chart_code,chart, census_code,census, settle_code,settle, begin_code,begin, direct_code,direct, update_code,update, \

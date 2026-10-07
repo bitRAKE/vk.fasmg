@@ -390,7 +390,7 @@ level that can slow or stop, carried through.
 
 | Control | Does |
 | --- | --- |
-| `--stage n --from seconds` | Starts there. The run is replayed from its start without drawing. The scripted run already does 1,100 ticks a second with its draws, so a minute of level should cost a few seconds at most; the measuring run will say |
+| `--stage n --from seconds` | Starts there. The run is replayed from its start without drawing: the machine has frames that are run and not shown, and 68 seconds of a played run cost under two that way |
 | `[` and `]`, `,` and `.` | Slower and faster; one tick back or on. Back is the replay again, one tick shorter |
 | G | A ghost: nothing hurts |
 | `-` and `=` | Rank down and up a pip |
@@ -403,10 +403,12 @@ to be read, compared before and after an edit, and looked at by someone who
 cannot play it.
 
 **Runs kept.** Built: `--record` writes what the device was given in every
-frame, as it is played, and the tables taken on the way; `--replay` plays
-it back and then hands the ship over where the record stopped. With problem
-3 solved, a replay is the same run: claim 34 holds the scripted run to that,
-frame for frame. A bug is a file, and its last frame is in it. Still to
+frame, as it is played, the tables taken on the way, and what each frame
+came to; `--replay` plays it back, held to that, and then hands the ship
+over where the record stopped. Either may name its file, and both together
+play a run back and go on keeping it. With problem 3 solved a replay is the
+same run: claim 34 holds the scripted run to that frame for frame, and a
+run somebody played. A bug is a file, and its last frame is in it. Still to
 come: every run appends a line to `build\myhits_runs.csv`:
 how long, the score, rank over time, accuracy, hurts and what did each,
 bonuses taken by kind, kills by kind, charge spent on what. Tuning then has

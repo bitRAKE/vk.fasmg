@@ -24,7 +24,7 @@ addresses.
 
 | File | What it is |
 | --- | --- |
-| [machine.inc](machine.inc) | The window, the device under the contract, pipelines from SPIR-V whose only interface is the root, and the frame: real time paid out in fixed ticks, the root down, a block of events back a frame later. What a frame costs: the device's clock stamped wherever the program asks, and a file of the means. The window's manners: pause, the whole monitor and back, and for a program that asks, no caption, a held pointer, and a place it remembers |
+| [machine.inc](machine.inc) | The window, the device under the contract, pipelines from SPIR-V whose only interface is the root, and the frame: real time paid out in fixed ticks, the root down, a block of events back a frame later. What a frame costs: the device's clock stamped wherever the program asks, and a file of the means. The window's manners: pause, the whole monitor and back, and for a program that asks, no caption, a held pointer, and a place it remembers. A frame's clock may be given and not read, and a frame may be run and not shown: for a run played back, and for getting to the middle of one quickly |
 | [device.inc](device.inc) | Vulkan loaded by hand, so that its absence is a failure the program can report; an instance; the first discrete adapter that has everything the contract asks, with a queue that draws, computes and presents; the device. What the loader and the validation layers say, to the debugger |
 | [work.inc](work.inc) | One command buffer and one timeline. A submission's name is the value it raises the timeline to; whether it is done is two numbers compared. The barriers between passes |
 | [present.inc](present.inc) | The surface, and a swapchain for the window as it is: an image to draw to, and the frame's work and that image to the monitor |
@@ -35,7 +35,7 @@ addresses.
 | [input.inc](input.inc) | A pad by XInput, over the keys and the mouse; rumble |
 | [audio.inc](audio.inc) | XAudio2 called from assembly: sixteen voices for sounds asked for by count and place, looping voices for stems of music mixed by a level, and where the music is in its beat |
 | [snapshot.inc](snapshot.inc) | Chosen frames of a scripted run, redrawn at the playfield's own size and written out: what a program nobody is watching looked like |
-| [strings.inc](strings.inc), [options.inc](options.inc) | Text written in the middle of a call; what the command line asks for |
+| [strings.inc](strings.inc), [options.inc](options.inc) | Text written in the middle of a call; what the command line asks for, and what it names after an option |
 | [shared.inc](shared.inc), [shared.asm](shared.asm) | The blocks both sides of the boundary read, written once: the assembly takes their offsets from here, and the shaders a header assembled from here. Every shader module's offsets are checked against it |
 | [pictures.inc](pictures.inc), [pictures.slang](pictures.slang) | Pictures cut, made or drawn; their masks and normals made on the device; drawn by pulling texels through addresses, sharp at any angle |
 | [tables.inc](tables.inc) | The words a game's tables are written in: kinds and their programs of moves, particles, sounds, music, squads, things said. None of it is code. Laid down as an image, with a print of the names the shaders know, the tables can be a file as well as part of a program |
