@@ -333,10 +333,14 @@ records when it was collected and animates from that with its own curve.
 Damage sets one timestamp that the HUD, the shake, the vignette and the
 rumble all read, with a few frames of hit-stop from the director.
 
-**Backgrounds.** Several procedural layers in one fullscreen pass, each a
-pattern function, palette and scroll factor from the wave table, scrolling
-sideways at their own rates and crossfading between stages.
-
+**Backgrounds.** One fullscreen draw, first, of four layers computed where
+they are needed: clouds, a lattice of diamonds, a ridge and its echo, rails
+with rivets. Nothing of it is stored. Each layer is a function of the
+playfield point moved by its own share of how far the level has come, so it
+passes at its own rate, slows when the level slows and stands when it stands.
+A stage is three inks; the inks cross over each time the table of squads has
+been gone through. More stages, and layers that belong to one stage only,
+are table work.
 **Sound.** XAudio2, called from the assembly through its interfaces' tables.
 A sound is a recipe in tables.inc: a wave whose pitch sweeps along an easing
 curve, risen quickly and fallen away along another, with a share of noise. A
@@ -365,6 +369,7 @@ buttons. Rumble goes back out from the events.
 | `input.inc` | The pad into Root; rumble to come | Built, without rumble |
 | `tables.inc`, `tables.asm` | The table macros and the game's data; their numbers for the shaders | Kinds, moves, chains, particle styles, sounds, squads |
 | `chains.slang` | A head's trail, and the segments that follow it | Built; proved by 07 |
+| `backdrop.slang` | The layers behind everything, as functions of place and the level's travel | Built; held on the pictures |
 | `common.slang` | The root, a hash, opening a frame's events, asking for a sound | Built |
 | `ease.slang`, `motion.slang` | The easing curves; a body and one tick of its program | Built; proved by 04 |
 | `hits.slang`, `particles.slang` | Mask collision; the particle ring, its styles and its light | Built; proved by 05 |
@@ -430,7 +435,9 @@ they change a rule, into this plan.
    where you were, then acting for itself with a gun and a guard, then
    taking your aim. Done, then, but for tuning: how fast it should grow, and
    whether a lost life should cost it a stage.
-7. **Atmosphere.** Backgrounds, music and beat, tuning.
+7. **Atmosphere.** In hand. Done: the backdrop, four layers of pattern that
+   pass at their own rates with the level. To come: music and the beat; rank
+   reaching how often hostiles fire and how fast they come; a boss; tuning.
 
 ## Milestone 5 in detail
 

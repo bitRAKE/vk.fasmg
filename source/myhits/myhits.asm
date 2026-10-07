@@ -131,6 +131,7 @@ proc create_world uses rsi rdi
 	require_ok fastcall machine_graphics,addr scene_vertex_code,scene_vertex_code.size,addr scene_fragment_code,scene_fragment_code.size,BLEND_PREMULTIPLIED,addr scene_pipeline
 	require_ok fastcall machine_graphics,addr particle_vertex_code,particle_vertex_code.size,addr particle_fragment_code,particle_fragment_code.size,BLEND_PREMULTIPLIED,addr particle_pipeline
 	require_ok fastcall machine_graphics,addr veil_vertex_code,veil_vertex_code.size,addr veil_fragment_code,veil_fragment_code.size,BLEND_PREMULTIPLIED,addr veil_pipeline
+	require_ok fastcall machine_graphics,addr backdrop_vertex_code,backdrop_vertex_code.size,addr backdrop_fragment_code,backdrop_fragment_code.size,BLEND_OPAQUE,addr backdrop_pipeline
 	require_ok fastcall pictures_develop
 	require_ok fastcall machine_serial_open
 	fastcall machine_dispatch,[begin_pipeline],1
@@ -151,7 +152,7 @@ endp
 
 proc release_world
 	fastcall audio_stop
-	iterate name, begin,direct,update,collide,resolve,drift,report,render,scene,particle,veil
+	iterate name, begin,direct,update,collide,resolve,drift,report,render,scene,particle,veil,backdrop
 		cmp [name#_pipeline],0
 		je .skip_#name
 		vkDestroyPipeline [device],[name#_pipeline],0
@@ -241,7 +242,7 @@ proc play_frame uses rbx
 	; over; and of the second game three volleys with RAPID and SPREAD, the
 	; nova going off, the shield about to take a rammer, and the worm's head
 	; under fire.
-	iterate when, 37,110,165,235,300,395,444,468,500,555,568,596,625
+	iterate when, 37,110,165,235,300,320,395,444,468,500,555,568,596,625
 		cmp dword [root+Root.frame],when
 		jne .no_#when
 		fastcall snapshot_take,when
@@ -256,9 +257,10 @@ proc play_frame uses rbx
 	ret
 endp
 
-; Everything a frame draws: the sprites and the HUD among them, then the
-; light, then the veil a hurt or the end of a run draws over it all.
+; Everything a frame draws: the backdrop; the sprites and the HUD among them;
+; the light; then the veil a hurt or the end of a run draws over it all.
 proc draw_world
+	fastcall machine_draw,[backdrop_pipeline],6,1
 	fastcall machine_draw,[scene_pipeline],6,INSTANCES
 	fastcall machine_draw,[particle_pipeline],6,PARTICLES
 	fastcall machine_draw,[veil_pipeline],6,1
@@ -770,7 +772,7 @@ proc scripted_run uses rbx rsi
 	jne .commands
 	cmp [dispatch_count],SCRIPT_FRAMES*(GAME_TICKS*TICK_DISPATCHES+1)
 	jne .commands
-	cmp [draw_count],SCRIPT_FRAMES*3
+	cmp [draw_count],SCRIPT_FRAMES*4
 	je .report
 .commands:
 	fail 12
@@ -906,7 +908,7 @@ title_format dq 0
 world_buffer GpuBuffer
 header_buffer GpuBuffer
 bank_buffer GpuBuffer
-iterate name, begin,direct,update,collide,resolve,drift,report,render,scene,particle,veil
+iterate name, begin,direct,update,collide,resolve,drift,report,render,scene,particle,veil,backdrop
 	name#_pipeline dq 0
 end iterate
 iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,last_latency,worst_latency,title_rank,sounds_asked,heard_hurts, \
@@ -934,7 +936,7 @@ assert TABLE_BYTES = TABLE_MOVES * sizeof.Move + TABLE_KINDS * sizeof.Kind + TAB
 section '.rdata$game_spirv' data readable align 4
 iterate <name,module>, develop_code,develop, chart_code,chart, census_code,census, begin_code,begin, direct_code,direct, update_code,update, \
 	collide_code,collide, resolve_code,resolve, drift_code,drift, report_code,report, render_code,render, scene_vertex_code,scene_vertex, \
-	scene_fragment_code,scene_fragment, particle_vertex_code,particle_vertex, particle_fragment_code,particle_fragment, veil_vertex_code,veil_vertex, veil_fragment_code,veil_fragment
+	scene_fragment_code,scene_fragment, particle_vertex_code,particle_vertex, particle_fragment_code,particle_fragment, veil_vertex_code,veil_vertex, veil_fragment_code,veil_fragment, backdrop_vertex_code,backdrop_vertex, backdrop_fragment_code,backdrop_fragment
 	align 4
 	name file 'build\myhits_game_' bappend `module bappend '.spv'
 	name.size = $ - name

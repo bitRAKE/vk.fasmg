@@ -91,7 +91,7 @@ foreach ($module in $modules) {
     # pointer. (One that only computes, like a plot of a curve, reaches none.)
     Assert-True ($code -notmatch 'OpTypeImage|OpTypeSampler|DescriptorSet|OpVariable %\S+ (Uniform|StorageBuffer|UniformConstant)\b') "$($module.Name) binds a descriptor"
     if ($code -match 'OpCapability PhysicalStorageBufferAddresses') { $pulling++ }
-    else { Assert-True ($module.Name -match '_plot_|_particle_fragment|_veil_fragment') "$($module.Name) reaches no memory, and is not one of the shaders known to need none" }
+    else { Assert-True ($module.Name -match '_plot_|_particle_fragment|_veil_fragment|_backdrop_fragment') "$($module.Name) reaches no memory, and is not one of the shaders known to need none" }
     $names = @{}
     foreach ($match in [regex]::Matches($code, 'OpMemberName (%\S+) (\d+) "(\w+)"')) { $names["$($match.Groups[1].Value) $($match.Groups[2].Value)"] = $match.Groups[3].Value }
     foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census|Tables|Move|Kind|Style|Recipe|Wave)(?:_\w+)?) (\d+) Offset (\d+)')) {
@@ -214,7 +214,18 @@ try {
         $frames = [int]$state.frames
         Assert-True ($frames -eq 640 -and [int]$state.events -eq $frames) 'The game did not run its script'
         $voices = if ([int]$state.device) { "$($state.plays) sounds to voices" } else { 'no audio device here' }
-        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through two games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on; {8}; {9} passes and {10} draws a frame" -f `
+        # The backdrop is the level's, and this is held on the pictures themselves. Along the top rail,
+        # frames 300 and 320 are the same to the pixel: the level stood still between them. Frames 235
+        # and 300 are not: it moved.
+        $rail = @{}
+        foreach ($frame in 235, 300, 320) {
+            $picture = New-Object System.Drawing.Bitmap (Join-Path $BuildDir "myhits_checks\$mode\game\frame_$frame.png")
+            $rail[$frame] = -join (0..($picture.Width - 1) | ForEach-Object { '{0:x8}' -f $picture.GetPixel($_, 8).ToArgb() })
+            $picture.Dispose()
+        }
+        Assert-True ($rail[300] -eq $rail[320]) 'The backdrop moved while the level stood still'
+        Assert-True ($rail[235] -ne $rail[300]) 'The backdrop stood still while the level moved'
+        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through two games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; {9} passes and {10} draws a frame" -f `
             $frames, $state.ticks_a_frame, ([int]$state.kinds - 1), $state.moves, $state.squads, [int]([int]$state.world_bytes / 1024), $state.head_died_frame, $state.hurts_heard, $voices,
             ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
     }

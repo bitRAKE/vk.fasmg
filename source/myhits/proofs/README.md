@@ -19,7 +19,7 @@ build.cmd myhits-survey
 
 So do pictures. A scripted run draws to a window nobody sees, so proofs 04
 to 07 each leave `frame_NNN.png` there: the whole playfield at 1920×1080, at
-the frames of the script worth looking at. The game's thirteen are its swoopers,
+the frames of the script worth looking at. The game's fourteen are its swoopers,
 its weavers, the worm coming and then turned back on itself, the turrets
 firing with the level stopped, the run over; and of the second game three
 volleys with RAPID and SPREAD in force, the nova going off, the shield about
@@ -200,7 +200,7 @@ memory only shaders touch: `develop` writes every texel (copying the cut
 ones, computing the rest), `chart` derives every mask word from the texels'
 alpha, and `census` counts each frame and compares it with what the packer
 said. Then the packer's block is let go. A frame of the proof is one compute
-pass, which sets down all 89 sprites, and one draw, which pulls sprite, frame,
+pass, which sets down all 101 sprites, and one draw, which pulls sprite, frame,
 texels and normals through the root pointer.
 
 **The checks**, on 120 scripted frames:
@@ -213,18 +213,18 @@ texels and normals through the root pointer.
 | 4 | A frame said to be symmetric is | Its mask equals its mirror, bit for bit |
 | 5 | The masks are what is drawn | At half size the gallery's masks cover a quarter of all solid texels in pixels, and its pictures, by their own filtered alpha, cover the same, each within a sixteenth |
 | 6 | Controls read for frame N move the ship in frame N | As in the spine |
-| 7 | One pass set down every sprite the draw pulls | It reports 89 |
+| 7 | One pass set down every sprite the draw pulls | It reports 101 |
 | 8 | The light stays put while the pictures turn | Summed over the run, at least 85% of the chain's brightened fragments lie on the lit side of their sprite, and at most 70% would have with the light turned with the picture |
 | 9 | The traffic is Root down and Events up | Byte counters, as in the spine |
 | 10 | Three passes make the pictures; a frame is one pass and one draw | Command counters |
 | 11 | The pad maps as designed | Six made-up pad states through `pad_apply`: nothing inside the dead zone, 1 at the rim, a half halfway, up is up, the d-pad and buttons |
 
 Last result here, GTX 1080 Ti, default and validation alike: all eleven hold.
-32 frames (18 cut, 2 made, 12 drawn), 146,305 texels and 4,331 mask words;
-429 KB goes up once and the pictures take 590 KB on the device. The device
+38 frames (18 cut, 2 made, 18 drawn), 165,201 texels and 5,059 mask words;
+430 KB goes up once and the pictures take 666 KB on the device. The device
 counts 52,469 solid texels in the cut frames, as the packer did. The gallery's
-masks cover 14,752 pixels and its pictures 14,757, against a quarter of the
-solid texels at 14,833. Of the chain's brightened fragments 89% lie on the lit
+masks cover 15,564 pixels and its pictures 15,589, against a quarter of the
+solid texels at 15,643. Of the chain's brightened fragments 89% lie on the lit
 side; with the light turned with the pictures it would be 50%.
 
 **Check 2 bites.** Flipping one bit of one texel in the embedded block, in a
@@ -472,9 +472,9 @@ thousandth of them may differ by more, since a square or a saw has edges and
 a sample on one can fall either side in single precision.
 
 Last result here, GTX 1080 Ti, default and validation alike: all seven hold.
-5 sounds, 78,240 samples, 1.63 seconds. None differs from the second
+7 sounds, 102,240 samples, 2.13 seconds. None differs from the second
 implementation by more than the allowance; the difference is 8.7 × 10⁻⁷ rms.
-25 sounds went to 16 voices and were played out. The engine reports 1,912
+25 sounds went to 16 voices and were played out. The engine reports 1,935
 samples of its own latency, 40 ms.
 
 **The checks bite.** Swapping left and right fails check 4 at frame 30.
@@ -532,6 +532,13 @@ a flash; DOUBLE doubles what a kill is worth. Each has a slot along the
 bottom of the screen that jumps when it is taken, each in its own way, shows
 its time running out in pips, and blinks before it goes.
 
+Behind it all is the backdrop: clouds far off, a lattice of diamonds, a
+ridge along the bottom with its echo along the top, and rails at the very
+edges, each passing at its own rate, the nearer the faster. It is the
+level's: when the level slows for the turrets all of it slows, and when the
+level stops it stands. Each time the table of squads has been gone through
+its inks change, from blue to magenta to green.
+
 And you do not stay alone. Kill the worm's head and something comes out of
 where it died: a companion, joined to the ship by a thread of light. At
 first it is only where you were: it keeps 150 behind you along your own
@@ -567,7 +574,7 @@ companion.
 | 9 | Kill the head and the chain goes with it | In the second game the worm's head is shot as it comes; five frames after the frame it dies in, at least ten fewer are alive |
 | 10 | Those things were seen | The rise and the falls of rank were each checked at least once, and the head did die |
 | 11 | The sounds are the events | Each sound a frame asked for went to a voice once, none was refused, and every hurt was heard |
-| 12 | The traffic is Root down and Events up; a frame of eight ticks is 41 passes and three draws | Counters |
+| 12 | The traffic is Root down and Events up; a frame of eight ticks is 41 passes and four draws | Counters |
 | 13 | The score on the screen chases the real one | It is never more than the real one, and by the end of the run it is the same |
 | 14 | A hurt is felt | Each stopped the world for exactly four ticks; and what the pad is told is what the events say: all of the heavy motor is 65535, half of the light one 32768 |
 | 15 | A bonus is taken by coming near it, once | The second game is given one of each in front of the ship; each is in hand, and only one of it, a few frames after it was set down |
@@ -575,10 +582,11 @@ companion.
 | 17 | RAPID halves the wait and SPREAD makes each shot three | Three frames of fire are four shots plain; they are eight with RAPID, and twenty-four with both |
 | 18 | A nova strikes everything, and DOUBLE doubles exactly | In the frame the nova is taken or the next, the drone set down for it dies with whatever swoopers were left; nothing that can be hit is alive after; and the score has grown by exactly twice their worth at the rank of the moment |
 | 19 | The companion comes as a surprise, and grows | None until the worm's head is killed, and one two frames after. It is where the ship was: the first point of the ship's trail while the ship has not gone 150, then 10 past the corner once the ship has gone 160 on; and it has fired with the ship. Made more, its guard stops a pellet sent at it and its gun's shots strike while the player fires nothing. Made more again, its gun points from where it is to the crosshair, to a hundredth of a radian |
+| 20 | The backdrop is the level's | Held on the pictures themselves, by the proof runner: along the top rail, frames 300 and 320 are the same to the pixel, the level having stood still between them; frames 235 and 300 are not |
 
-Last result here, GTX 1080 Ti, default and validation alike: all nineteen
-hold. The run is 5,120 ticks, 26,240 passes and 1,920 draws, and takes five
-seconds. The world is 755 KB on the device. The nova went off in frame 468
+Last result here, GTX 1080 Ti, default and validation alike: all twenty
+hold. The run is 5,120 ticks, 26,240 passes and 2,560 draws, and takes five
+seconds. The world is 756 KB on the device. The nova went off in frame 468
 and the head died in frame 557; 109 sounds went to voices.
 
 **The checks bite.** Each of these was made and seen to fail the check it
@@ -603,6 +611,14 @@ hurt was expected: a weaver clips the ship there, and had done since the
 game first ran. The check compares the head "a tick ago" with a segment now,
 and in a tick the world stands still the head a tick ago is where it is. The
 check skips frames that held a stop; the chain was never wrong.
+
+**Finding: a check that cannot fail is not one.** The backdrop's first check
+ran on the device: each layer, asked for a point with the level farther on,
+against the same layer asked for the point moved that far. It passed, and
+would have passed whatever the layers did, because both sides were the same
+sum. It was taken out. What holds the backdrop to the level now is the
+pictures: the same row of two frames, the same to the pixel when the level
+stood still between them and different when it did not.
 
 **Finding: an angle that only ever turns can end up anywhere.** The
 companion's gun was turned a quarter of the way to its target each tick, by

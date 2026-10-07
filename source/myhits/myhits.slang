@@ -114,6 +114,8 @@ struct Game
     uint guarded;           // shots its guard stopped
     uint ship_laid;         // the ship's own trail, as a head's
     float ship_carried;
+    uint stage;             // times the table of squads has been gone through: the backdrop's inks
+    uint stage_tick;        // when it last was
 };
 struct Request { uint kind; float2 at; float angle; uint seed; };
 // The header the CPU writes once: GameWorld in myhits.asm.
@@ -127,6 +129,7 @@ struct World
 #include "particles.slang"
 #include "chains.slang"
 #include "sounds.slang"
+#include "backdrop.slang"
 
 Sprite ship_pose(float2 at)
 {
@@ -160,6 +163,7 @@ void new_game(Game* game)
     fresh.companion = 0; fresh.promoted = 0; fresh.promoted_at = fresh.ship; fresh.mate = fresh.ship; fresh.mate_before = fresh.ship;
     fresh.mate_gun = 0.0; fresh.mate_guard = 3.14159265; fresh.mate_cooldown = 0; fresh.mate_fired = 0; fresh.mate_struck = 0; fresh.guarded = 0;
     fresh.ship_laid = 0; fresh.ship_carried = 0.0;
+    fresh.stage = 0; fresh.stage_tick = game.tick;
     *game = fresh;
 }
 
@@ -487,7 +491,16 @@ void direct()
             game.member += 1;
             game.member_tick = tick + next.stagger;
             game.members -= 1;
-            if (game.members == 0) game.wave += 1;
+            if (game.members == 0)
+            {
+                game.wave += 1;
+                // The table gone through, the place changes: the backdrop takes its next inks.
+                if (game.wave % world.tables.wave_count == 0)
+                {
+                    game.stage += 1;
+                    game.stage_tick = tick;
+                }
+            }
         }
     }
 
@@ -850,6 +863,7 @@ void report()
     events.report[14] = game.mate_fired;
     events.report[15] = game.mate_struck;
     events.report[16] = game.guarded;
+    events.report[17] = game.stage;
     events.multiplier = game.until[BONUS_DOUBLE] > game.tick ? 2 : 1;
     events.shield = float(game.shield);
 }
@@ -1096,4 +1110,37 @@ float4 veil_fragment(VeilVertex input) : SV_Target0
     // A nova is a flash of white light over everything: it adds.
     float white = input.nova * input.nova * 0.6;
     return float4(red * 0.9 + white, red * 0.05 + white, red * 0.02 + white, saturate(red * 0.5 + dim));
+}
+
+struct BackdropVertex
+{
+    float4 position : SV_Position;
+    float2 at : TEXCOORD0;                  // on the playfield
+    nointerpolation float scroll : COLOR0;
+    nointerpolation float fade : COLOR1;
+    nointerpolation uint stage : COLOR2;
+};
+
+// The first thing drawn, under everything: the backdrop, where the level has
+// come to between its last two ticks, and shaken with the rest when the
+// ship is hurt.
+[shader("vertex")]
+BackdropVertex backdrop_vertex(uint vertex : SV_VulkanVertexID)
+{
+    static const uint corners[6] = { 0, 1, 2, 2, 1, 3 };
+    Game game = *root.world.game;
+    float2 corner = float2(corners[vertex] & 1, corners[vertex] >> 1);
+    BackdropVertex result;
+    result.position = float4(corner * 2.0 - 1.0, 0.0, 1.0);
+    result.at = corner * float2(PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT) - shake_of(game) * 0.5;
+    result.scroll = lerp(game.scroll_before, game.scroll, root.blend);
+    result.fade = saturate(float(game.tick - game.stage_tick) / 480.0);
+    result.stage = game.stage;
+    return result;
+}
+
+[shader("fragment")]
+float4 backdrop_fragment(BackdropVertex input) : SV_Target0
+{
+    return float4(backdrop(input.at, input.scroll, input.stage == 0 ? 0 : input.stage - 1, input.stage, input.fade), 1.0);
 }
