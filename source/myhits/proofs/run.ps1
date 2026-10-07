@@ -53,6 +53,14 @@ function Run-Proof([string]$mode, [string]$tag, [hashtable]$checks, [string]$pro
     }
     $state = Read-State (Join-Path $BuildDir "myhits_$tag.report.txt")
     Copy-Item -LiteralPath (Join-Path $BuildDir "myhits_$tag.report.txt") -Destination $logRoot
+    # Pictures the run left of itself: as PNGs beside its log.
+    Add-Type -AssemblyName System.Drawing
+    foreach ($picture in @(Get-ChildItem -LiteralPath $BuildDir -Filter "myhits_$tag.*.bmp")) {
+        $bitmap = New-Object System.Drawing.Bitmap $picture.FullName
+        $bitmap.Save((Join-Path (Resolve-Path -LiteralPath $logRoot).Path ("frame_{0:000}.png" -f [int]($picture.BaseName -replace '^.*\.', ''))), [System.Drawing.Imaging.ImageFormat]::Png)
+        $bitmap.Dispose()
+        [IO.File]::Delete($picture.FullName)
+    }
     $failure = [int]$state.failure
     Assert-True ($failure -eq 0) "$tag check $failure failed at frame $($state.failure_frame): $($checks[$failure])"
     Assert-True ([int]$state.gpu_error -eq 0 -and [int]$state.failure_stage -eq 0) "A device failure was hidden in the $tag proof"

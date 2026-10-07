@@ -12,6 +12,7 @@
 ; What each check settles is in ..\README.md.
 MACHINE_NAME equ 'myhits proof 06: sound'
 MACHINE_TAG equ 'sound'
+MACHINE_SNAPSHOT := 1
 include '..\..\machine.inc'
 include '..\..\tables.inc'
 include '..\..\audio.inc'
@@ -154,13 +155,26 @@ proc play_frame
 	jne .skipped
 	fastcall machine_dispatch,[direct_pipeline],1
 	fastcall machine_canvas
-	fastcall machine_draw,[wave_pipeline],6,TABLE_SOUNDS
+	fastcall draw_world
+	; The scripted run leaves a picture of itself: the bank, with the hit just asked for.
+	iterate when, 31
+		cmp dword [root+Root.frame],when
+		jne .no_#when
+		fastcall snapshot_take,when
+	.no_#when:
+	end iterate
 	fastcall machine_close
 	ret
 .skipped:
 	; 2: no image this turn, which is not a failure.
 	shr eax,1
 .stopped:
+	ret
+endp
+
+; Everything a frame draws.
+proc draw_world
+	fastcall machine_draw,[wave_pipeline],6,TABLE_SOUNDS
 	ret
 endp
 
@@ -339,6 +353,7 @@ proc mainCRTStartup
 	fastcall audio_start,[test_mode]
 	cmp [test_mode],0
 	je .show
+	fastcall snapshot_start
 	fastcall scripted_run
 	jmp .finish
 .show:

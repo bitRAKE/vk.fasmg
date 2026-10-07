@@ -81,6 +81,9 @@ include '..\..\examples\common\vulkan_memory.inc'
 include '..\..\examples\common\vulkan_commands.inc'
 include '..\..\examples\common\vulkan_barriers.inc'
 include 'input.inc'
+if definite MACHINE_SNAPSHOT
+	include 'snapshot.inc'
+end if
 
 ; A VkResult in EAX: on failure record it and leave.
 macro require_vk line&
@@ -399,6 +402,9 @@ endp
 ; instead keeps both at one frame, and reads the controls as late as can be.
 proc machine_await
 	require_vk fastcall wait_retirement,[last_retirement]
+	if definite MACHINE_SNAPSHOT
+		fastcall snapshot_save
+	end if
 	require_ok fastcall machine_events
 	mov eax,1
 	ret
@@ -707,6 +713,12 @@ endp
 ; Close the frame: present it, and remember when its events may be read.
 proc machine_close
 	vkCmdEndRendering [command_buffer]
+	if definite MACHINE_SNAPSHOT
+		cmp [snapshot_wanted],0
+		je .present
+		fastcall snapshot_record
+	.present:
+	end if
 	fastcall transition_image,[draw_image],VK_IMAGE_ASPECT_COLOR_BIT,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,0
 	fastcall wsi_submit_frame
 	test eax,eax
@@ -731,6 +743,9 @@ endp
 ; Everything submitted is finished and its events handed over.
 proc machine_drain
 	require_vk fastcall wsi_wait_work
+	if definite MACHINE_SNAPSHOT
+		fastcall snapshot_save
+	end if
 	require_ok fastcall machine_events
 	mov eax,1
 	ret
@@ -747,6 +762,9 @@ proc machine_stop
 	mov [wsi_shutdown],1
 	mov [wsi_replacement_hold],0
 	fastcall wsi_drain
+	if definite MACHINE_SNAPSHOT
+		fastcall snapshot_stop
+	end if
 	fastcall release_world
 	fastcall wsi_destroy_swapchain
 	fastcall destroy_buffer,addr events_buffer

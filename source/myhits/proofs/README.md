@@ -17,6 +17,12 @@ build.cmd myhits-survey
 `check-myhits` is part of `build.cmd check`. Reports and debugger logs land in
 `build\myhits_checks\<mode>\<proof>\`.
 
+So do pictures. A scripted run draws to a window nobody sees, so proofs 04
+to 07 each leave `frame_NNN.png` there: the whole playfield at 1920×1080, at
+the frames of the script worth looking at. The game's seven are its swoopers,
+its weavers, the worm coming and then turned back on itself, the turrets
+firing with the level stopped, the run over, and the worm's head under fire.
+
 | # | Proof | Claim | State |
 | --- | --- | --- | --- |
 | 00 | [survey](00_survey/survey.ps1) | The target GPU, the system libraries and the shader compiler offer what the plan uses | Passes here |
@@ -564,7 +570,11 @@ frames.
 
 A proof is a directory here, a row in the table above, and a section saying
 what it claims, what to look at and what its checks are. It should fail by
-number, as the spine does, so a report says which claim broke.
+number, as the spine does, so a report says which claim broke. And it should
+leave pictures: define MACHINE_SNAPSHOT, keep the frame's draws in
+`draw_world`, and ask for the frames worth seeing
+([snapshot.inc](../snapshot.inc)). The one kind of proof that cannot is one
+whose fragments count themselves, as 02's and 03's do.
 
 These assembler traps have cost time; each now has a comment where it bit:
 
@@ -577,3 +587,6 @@ These assembler traps have cost time; each now has a comment where it bit:
 - `frame` is proc64's, in any case: no symbol may be called `Frame`.
 - A macro takes every line that begins with its name, in every source. Name
   table macros with words nothing else begins a line with.
+- An included file with no `section` of its own goes into whatever section
+  is open. `bitmap.inc` included after a data section put its code there, and
+  the first call to it was an access violation.

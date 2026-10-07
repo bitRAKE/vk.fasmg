@@ -349,6 +349,7 @@ buttons. Rumble goes back out from the events.
 | --- | --- | --- |
 | `shared.inc`, `shared.asm` | The boundary blocks; the generated shader header | Built |
 | `machine.inc` | Window, contract, pipelines, the frame, events | Built; proved by the spine |
+| `snapshot.inc` | Pictures of chosen frames of a scripted run, as files | Built; used by proofs 04 to 07 |
 | `proofs\` | Each proof, its checks, and what to look at | Eight so far, the last the game itself |
 | `art\art.txt`, `art\*.png` | Every frame, whatever its source; the cut ones | 22 frames |
 | `tools\art.cs`, `cut-art.ps1`, `pack-art.ps1` | Cutting sprites out of sheets (authoring); packing the art (build) | Built |

@@ -9,6 +9,7 @@
 ; What each check settles is in ..\README.md.
 MACHINE_NAME equ 'myhits proof 04: motion'
 MACHINE_TAG equ 'motion'
+MACHINE_SNAPSHOT := 1
 include '..\..\machine.inc'
 include '..\..\pictures.inc'
 include '..\..\tables.inc'
@@ -203,14 +204,27 @@ proc play_frame uses rbx
 .ticked:
 	fastcall machine_dispatch,[report_pipeline],1
 	fastcall machine_canvas
-	fastcall machine_draw,[plot_pipeline],6,EASE_CURVES
-	fastcall machine_draw,[scene_pipeline],6,INSTANCES
+	fastcall draw_world
+	; The scripted run leaves pictures of itself: the missiles turned to the crosshair, shots in flight, the level stopped.
+	iterate when, 45,62,100
+		cmp dword [root+Root.frame],when
+		jne .no_#when
+		fastcall snapshot_take,when
+	.no_#when:
+	end iterate
 	fastcall machine_close
 	ret
 .skipped:
 	; 2: no image this turn, which is not a failure.
 	shr eax,1
 .stopped:
+	ret
+endp
+
+; Everything a frame draws.
+proc draw_world
+	fastcall machine_draw,[plot_pipeline],6,EASE_CURVES
+	fastcall machine_draw,[scene_pipeline],6,INSTANCES
 	ret
 endp
 
@@ -516,6 +530,7 @@ proc mainCRTStartup
 	jz .failed
 	cmp [test_mode],0
 	je .show
+	fastcall snapshot_start
 	fastcall scripted_run
 	jmp .finish
 .show:
