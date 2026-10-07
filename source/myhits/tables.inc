@@ -172,9 +172,6 @@ macro game_waves
 	; nothing more comes until it is dead; the table begins again from there.
 	squad 6.0,DRAGON,1,0,540,0,0.0,3.0,1
 	TABLE_WAVES := table.waves
-	repeat 1, waves:table.waves
-		table_line 'static const uint TABLE_WAVES = ',`waves,';'
-	end repeat
 end macro
 
 macro game_styles
@@ -212,9 +209,8 @@ macro game_sounds
 	tone BLAST,0.9,SINE,120,28,OUT_CUBIC,0.003,OUT_QUAD,0.9,0.9
 	TABLE_SOUNDS := table.sounds
 	BANK_SAMPLES := table.samples
-	repeat 1, sounds:table.sounds, samples:table.samples
+	repeat 1, sounds:table.sounds
 		table_line 'static const uint TABLE_SOUNDS = ',`sounds,';'
-		table_line 'static const uint BANK_SAMPLES = ',`samples,';'
 	end repeat
 end macro
 
@@ -242,6 +238,9 @@ macro game_says
 	say PAUSE_PLAY,'MOVE: ARROWS   FIRE: SPACE   MISSILES: SHIFT   DASH: CTRL'
 	say OVER,'THE RUN IS OVER'
 	say OVER_KEYS,'ENTER BEGINS ANOTHER'
+	; A game that is watching its tables' file says what became of a change.
+	say TABLES_TAKEN,'TABLES TAKEN'
+	say TABLES_REFUSED,'TABLES REFUSED: THEY WANT A BUILD'
 	TABLE_SAYS := table.says
 	repeat 1, says:table.says
 		table_line 'static const uint TABLE_SAYS = ',`says,';'

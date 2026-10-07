@@ -29,6 +29,7 @@ addresses.
 | [work.inc](work.inc) | One command buffer and one timeline. A submission's name is the value it raises the timeline to; whether it is done is two numbers compared. The barriers between passes |
 | [present.inc](present.inc) | The surface, and a swapchain for the window as it is: an image to draw to, and the frame's work and that image to the monitor |
 | [memory.inc](memory.inc) | Buffers, asked for by who touches them: `MEMORY_DEVICE`, `MEMORY_UPLOAD`, `MEMORY_READBACK`. Each is its own allocation; nothing pools or defers. An image, for the snapshots |
+| [reload.inc](reload.inc) | What a running program can take again from a file: whether a file has been written since it was last looked at, the whole of it into memory, and for tables, whether an image of them is one this program can take, where its tables lie, and a sum of them a device can be held to |
 | [state.inc](state.inc) | What a program remembers between runs: values by name in the registry, under `HKEY_CURRENT_USER\Software\vk.fasmg\<program>` |
 | [input.inc](input.inc) | A pad by XInput, over the keys and the mouse; rumble |
 | [audio.inc](audio.inc) | XAudio2 called from assembly: sixteen voices for sounds asked for by count and place, looping voices for stems of music mixed by a level, and where the music is in its beat |
@@ -36,7 +37,7 @@ addresses.
 | [strings.inc](strings.inc), [options.inc](options.inc) | Text written in the middle of a call; what the command line asks for |
 | [shared.inc](shared.inc), [shared.asm](shared.asm) | The blocks both sides of the boundary read, written once: the assembly takes their offsets from here, and the shaders a header assembled from here. Every shader module's offsets are checked against it |
 | [pictures.inc](pictures.inc), [pictures.slang](pictures.slang) | Pictures cut, made or drawn; their masks and normals made on the device; drawn by pulling texels through addresses, sharp at any angle |
-| [tables.inc](tables.inc) | The words a game's tables are written in: kinds and their programs of moves, particles, sounds, music, squads. None of it is code |
+| [tables.inc](tables.inc) | The words a game's tables are written in: kinds and their programs of moves, particles, sounds, music, squads, things said. None of it is code. Laid down as an image, with a print of the names the shaders know, the tables can be a file as well as part of a program |
 | [common.slang](common.slang) | The root, a hash, a frame's events and how a sound is asked for |
 | [ease.slang](ease.slang) | Thirty-one easing curves, held to a second implementation |
 | [motion.slang](motion.slang) | A body, and one tick of the program its kind gives it; marks; how it is shown between two ticks |
@@ -92,6 +93,8 @@ question for the projection, the examples or the tools.
 | The presentation module takes a table from the startup arena, so a program must make an arena to present | `vulkan_wsi.inc` | `present.inc` keeps its eight images where they are |
 | The loader's lazy binding finds the instance and the device by the names `instance` and `device` | `vk\loader\static.inc` | They are called that |
 | A parameter of `iterate` is replaced after a dot too: one named `format` turns `VkSurfaceFormatKHR.format` into something else | fasmg | Parameters are given names no member has |
+| A constant with a dot in its name is found from inside a procedure only if the part before the dot is itself defined | fasm2's `proc`, fasmg's namespaces | `TableImage := 0` before `TableImage.bytes := 8` |
+| A voice told to stop and to empty still holds its old run of samples until the engine next comes round to it: for a moment it holds two, and a check that asks at once is told so | XAudio2 | `audio_music_at` waits for the engine, a quarter of a second at most |
 | `GWL_STYLE`, `SWP_FRAMECHANGED` and `SWP_NOOWNERZORDER` are not in the 64-bit equates | fasm2's `equates\user64.inc` | Defined in the machine |
 | A structure or variable may not have a name the assembler has a use for: `Frame` is proc64's `frame`, `monitor` is an instruction, and a macro named `kind` takes every `kind dd ?` in the tree | fasm2 | Other names; a note where each bit |
 | `SV_VertexID` and `SV_InstanceID` bring in a capability the contract does not ask for | Slang to SPIR-V | `SV_VulkanVertexID`, `SV_VulkanInstanceID` |

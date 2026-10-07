@@ -26,7 +26,7 @@ build.cmd myhits-survey
 
 So do pictures. A scripted run draws to a window nobody sees, so proofs 04
 to 07 each leave `frame_NNN.png` there: the whole playfield at 1920×1080, at
-the frames of the script worth looking at. The game's twenty-three are its swoopers,
+the frames of the script worth looking at. The game's twenty-five are its swoopers,
 its weavers, the worm coming and then turned back on itself, the turrets
 firing with the level stopped, the run over; and of the second game three
 volleys with RAPID and SPREAD in force, the nova going off, the shield about
@@ -37,7 +37,8 @@ two bars; and of the third game, on its bare stage, the dash through a shot,
 a diver's fix shaking round the ship, its lock, its heavy shot on the way
 with the crosshairs fading, the burst, the second's shot coming for where
 the ship no longer is, and the third's, loosed as the diver died, coming for
-a ship that killed it and stayed.
+a ship that killed it and stayed; and of the fourth, TABLES TAKEN along the
+top of an empty field, and the five that then came where three had been.
 
 | # | Proof | Claim | State |
 | --- | --- | --- | --- |
@@ -523,6 +524,8 @@ build\myhits.exe
 build\myhits.exe --windowed
 build\myhits.exe --fullscreen
 build\myhits.exe --self-test
+rem Change the tables under a running game (see "Reloading", below):
+powershell -File source\myhits\tools\watch.ps1 -Play
 build\myhits_music.wav
 ```
 
@@ -643,10 +646,21 @@ except one of a squad, which waits. A chain's head lays its path into a ring of 
 apart; a segment reads its head as the head stood last tick and takes the
 point its own distance back.
 
-**The checks**, on 1,250 scripted frames of eight ticks: a first game played
+**Reloading.** The tables are also a file, `build\myhits_tables.bin`, and a
+game started with `--watch` takes them from it whenever it is written:
+`source\myhits\tools\watch.ps1` writes it whenever `tables.inc` is saved.
+A number changed there is on the screen a second or two later. The game says
+TABLES TAKEN along the top, everything that was running by the old tables
+goes, and the squad that was on the screen comes again from its first. What
+cannot be taken so is a change to the names the shaders know: the game says
+TABLES REFUSED and goes on with what it had. A watched game does not pause
+when it is left for the editor. [plan2.md](../plan2.md) has the whole of it.
+
+**The checks**, on 1,330 scripted frames of eight ticks: a first game played
 badly to its end; a second that is given every bonus, earns the companion,
-and is left to run until the dragon has come and gone; and a third on a bare
-stage, with no squads, where the script sets down what it wants seen.
+and is left to run until the dragon has come and gone; a third on a bare
+stage, with no squads, where the script sets down what it wants seen; and a
+short fourth, like the first, for the tables to be changed under.
 
 | # | Claim | How it is held |
 | --- | --- | --- |
@@ -681,6 +695,7 @@ stage, with no squads, where the script sets down what it wants seen.
 | 29 | A tick is within its budget | Held by the proof runner, from what the game measured of itself: the device's own clock, stamped after every pass, and its mean over the run for each of a tick's five passes held to a budget several times what it was when the budget was written. Under validation the numbers are shown and not held |
 | 30 | The level's distance is exact however far it has come | Asked by the device at start, of the functions the backdrop is drawn by, with the level three thousand million units on: five months at full pace. The layers that repeat are, to the bit, what they are at the start. The layers that do not still move as the level does: twenty-five units more of travel is the far layer one unit to the left, and ten is the ridge three. Every speck is where it would be |
 | 31 | A pause is in words | Held on the pictures, by the proof runner: where the line that says what the keys do is drawn, the frame drawn as a paused one has letters, pale on the dimmed picture, and a frame that is not paused has none |
+| 32 | The tables are taken again while the game runs | Images of the tables are offered from files, between frames, as a watched game is offered them. One with the game's names and two things changed (`07_game\tables_alt.asm`) is taken: the frame after says so, the device's own sum of the tables it holds is the file's, the bank is another bank in which the music is sample for sample what it was, further in, and the music is playing from there. One with a kind the game was not built with (`07_game\tables_bad.asm`) is refused, which is said, and nothing changes. The game's own, by the watcher: the device holds it and the bank is to the bit the bank made at start. The watcher again: the file is as it was and is not looked into. The game's own outright: no change. All of that is in the first game's first frames, before anything has come, and the three games after it sum to what they always did. In the fourth game, with three swoopers out and their squad done, the changed image again: within the frame the three are gone and the squad has begun again, and five come. Before the run, images spoiled five ways are each told for what they are. And on the pictures: the frame after has words along its top, and a frame long before has none |
 
 Last result here, GTX 1080 Ti, default and validation alike: all thirty-one
 hold. A tick costs the device 62 microseconds: 15 for the director, 8 for
@@ -694,6 +709,28 @@ and the head died in frame 557; 186 sounds went to voices. In the third
 game the first diver's shot burst in frame 1090 and cost a life; the
 second's burst in 1145 with the ship 320 away; the third diver was struck
 dead in frame 1164, and its shot burst in 1187 and cost another.
+
+**Where claim 32 stands.** It is new. It has held in the game's own run, in
+the default mode; the run of every proof under validation with it in is
+still owed. Twelve ways of breaking it were each seen to fail it: bodies not
+let go, and a squad not brought again (frame 1289); tables not laid down
+(7); a bank not rendered again, music not begun again, voices not stopped
+first, and the same tables taken for a change (11); other names taken, and
+too large an image taken (before the run); a refusal not said (5); a watcher
+that forgets what it saw (9); and a device never told (3). Three more were
+not: a file cut short is caught by another test than the one meant for it;
+nothing in the run offers tables in the very tick a squad is due; and
+tables whose counts are never written.
+
+**Finding: a broken program can break more than itself.** That last was run
+three times, to see why it seemed to pass. It did not pass: the game could
+not start, left no report, and the harness read the report of the run
+before. What it did do was leave the device reading counts that were never
+written, and each of the three runs put an error from the display driver in
+the system's log and, in the end, cost a restart of the machine. So: a
+change that leaves the device with garbage is reasoned about and not run; a
+harness deletes the last report before it runs anything; and a program that
+dies is not run again to see.
 
 **The checks bite.** Each of these was made and seen to fail the check it
 should: segments a tenth too far apart (5, at frame 150); the director

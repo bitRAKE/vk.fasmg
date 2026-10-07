@@ -49,16 +49,17 @@ is now the first rule of every choreography here.
 - The game runs: squads from a table, chains, a boss the level waits for,
   rank that reads the shooting, bonuses, a companion in three stages, a
   backdrop that is the level's, music that listens; and now charge, a dash,
-  the near miss, and the first choreographed attack. Thirty-one numbered
-  claims hold on a scripted run of three games, under validation too.
+  the near miss, and the first choreographed attack. Thirty-two numbered
+  claims hold on a scripted run of four games, under validation too.
 - Milestone 8, the ground, is built: each of its problems below is done, or
   was measured and found not to need doing. Its list for a hand is untried.
 - Its content is thin: 24 kinds, 6 squads in one loop, 14 sounds, 3 stems of
   two bars, 4 particle styles, 41 pictures, one place in three inks.
 - It has never been tuned. The author of its code has not heard it or played
   it.
-- Changing anything costs a rebuild and a restart, and seeing the result
-  means playing to it.
+- Changing a number in the tables no longer costs a rebuild and a restart:
+  a watched game takes it in a second. Changing a picture, a shader or a
+  name still does; and seeing a late squad still means playing to it.
 
 ## Done since plan 1
 
@@ -93,6 +94,9 @@ is now the first rule of every choreography here.
 - **Letters.** `letters.slang` in the layer: twenty strokes to a letter and
   no texels. What is said is `say` lines in the tables. A pause says what
   the keys do and a run that is over says how to begin another. Claim 31.
+- **Reloading the tables.** `--watch`, `build\myhits_tables.bin` and
+  `source\myhits\tools\watch.ps1`; `reload.inc` in the layer. Claim 32.
+  The first of milestone 9's tools, and the one the others stand on.
 
 ## Choreography
 
@@ -257,23 +261,54 @@ thing is made, by one addition they share.
 
 ### Reloading
 
-Today the tables are assembled into the program. They will also be written as
-a file, `build\myhits_tables.bin`, with a fingerprint of the names the
-shaders know them by. A running program started with `--watch` looks at that
-file once a second. When it has changed and its fingerprint matches, the CPU
-copies it to the upload buffer and one pass settles it into the device's
-tables: movers, squads, styles, recipes, notes. A changed recipe renders
-again; the voices are stopped first. `tools\watch.ps1` reassembles the file
-when `tables.inc` is saved, which takes about a second. The packed art gets
-the same treatment.
+Built, for the tables. They are assembled into the game as before, and they
+are also a file, `build\myhits_tables.bin`: the same image, a few numbers
+that say what follows and then the tables. A game started with `--watch`
+looks at the file once a second. When it has been written since, and is an
+image the game can take, the CPU lays it down beside the header and one pass
+settles both into the device's tables; the voices are stopped, the bank is
+rendered again from the new recipes and notes, and the music begins again
+from wherever the sounds' new lengths have put it.
+`source\myhits\tools\watch.ps1` assembles the file again whenever
+`tables.inc` is saved, which takes about a second.
 
 So a number changed in `tables.inc` is on the screen, or in the speakers,
-about a second after it is saved, in the program that was already running.
-A change the fingerprint does not cover, such as a new kind the shaders
-name, says so and waits for a build.
+a second or two after it is saved, in the game that was already running.
+
+**What goes when the tables change.** A body half-way through a program
+that has changed under it is a state no fresh start would reach. So in the
+tick the device is told, every body goes: hostiles, their shots, the
+player's shots in flight, which are counted as having got away. The squad
+that was on the screen, or on its way, comes again from its first: that is
+what someone changing a squad wants to see. The game says TABLES TAKEN along
+the top for two seconds.
+
+**What may change, and what may not.** Every number; every program of moves,
+longer or shorter; every squad, and how many squads; every recipe, and so
+how long each sound is; every note; everything said. Not the names: the
+kinds, styles, sounds, stems and things said, in their order, are what the
+shaders know by number. An image carries a print made of those names, and a
+game takes no image whose print is not its own: it says TABLES REFUSED, goes
+on with what it had, and waits for a build. The tables may grow to twice
+what the game was built with and the sounds to twice and two seconds more;
+past that is a build too.
+
+**A watched game goes on when it is left.** An ordinary game pauses when
+another program comes in front, and someone changing a table is in an
+editor. Started with `--watch` it does not pause; it takes no key or button
+while it is behind, so its ship stands still, and a run that is over is
+still a world for squads to come to.
 
 This is startup traffic, not a frame's: the claim that a frame is the root
-down and the events up stays as it is.
+down and the events up stays as it is, and what a reload sends is counted
+apart. Claim 32 holds all of it, in the scripted run.
+
+Still to come: the packed art by the same road; the gallery, the range and
+the board watching as the game does; and the theatre, which will bring a
+changed squad back without playing to it.
+
+The game's tools are in `source\myhits\tools`, beside the art packer. The
+repository's own `tools\` is the projection's.
 
 ### Art
 
@@ -310,7 +345,7 @@ sound is too loud against the rest; the music is one two-bar loop.
 | Echo | The recipe evaluated again at earlier times and added, quieter: a few taps make a tail | No state: a recipe can be asked for any sample |
 | Loops | `loop` lines: a sound whose length is a whole number of its periods. Events carry a level for each: an engine by speed, a fix being held on the ship, a boss's presence, an alarm at the last life | Problem 15 |
 | Songs | Patterns of notes and an order to play them in, a section to a stage and one for a boss; a stinger that waits for the next sixteenth, so a bonus rings in time | More than two bars |
-| `tools\notes.ps1` | Reads a MIDI file's track into `notes` lines | Music from any editor |
+| `tools\notes.ps1`, with the game's tools | Reads a MIDI file's track into `notes` lines | Music from any editor |
 | The mix | The scripted run's events played into a file: every sound and stem at the level and time the game asked | `build\myhits_run.wav`: the game can be listened to without playing it |
 | The loudness report | Level and peak of every sound and of the mix; how many samples clip; which sound stands furthest from the rest | A table the author can check without ears; a sound 12 dB hot fails |
 
@@ -352,7 +387,7 @@ level that can slow or stop, carried through.
 | Tab and a click | A kind, by name; one of it where the crosshair is. H hurts it to half, which is how a choreography is rehearsed |
 | The overlay | The squad's name, what is alive, the budget, what was refused; for a marked thing, the time from its tell |
 
-**The strip.** `tools\strip.ps1` runs a stage unseen and tiles a picture every
+**The strip.** `strip.ps1`, with the game's tools, runs a stage unseen and tiles a picture every
 two seconds into one wide image with the squads' names: a level on a page,
 to be read, compared before and after an edit, and looked at by someone who
 cannot play it.

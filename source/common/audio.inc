@@ -17,6 +17,13 @@
 ;			and go out with it, a little at a time.
 ;	audio_beat	Returns in XMM0 where the music is in its beat, 0..1, or
 ;			less than none where there is no music to ask.
+;	audio_hush	Every voice stopped and emptied: before the bank they play
+;			from is made again. audio_music then begins the music again.
+;	audio_music_at	Waits, a quarter of a second at most, until every stem's
+;			voice holds one run of samples and is playing it; returns
+;			where the first stem's is, as audio_music was given it. A
+;			voice is emptied when the engine next comes round to it,
+;			not when it is told to be: until then it holds two.
 ;	audio_stop
 iterate function, XAudio2Create,CoInitializeEx,CoUninitialize,Sleep
 	extrn function:qword
@@ -238,6 +245,7 @@ proc audio_music uses rbx rsi,stems
 	mov rax,[rax+rbx*8+AUDIO_VOICES*8]
 	mov [audio_voice],rax
 	mov [audio_loop.data],rsi
+	mov [audio_loop.context],rsi
 	method [audio_voice],SOURCE_SubmitSourceBuffer,addr audio_loop,0
 	test eax,eax
 	js .failed
@@ -256,6 +264,71 @@ proc audio_music uses rbx rsi,stems
 	ret
 .failed:
 	inc [audio_failures]
+	ret
+endp
+
+proc audio_hush uses rbx
+	cmp [audio_ready],0
+	je .done
+	xor ebx,ebx
+.voice:
+	lea rax,[audio_voices]
+	mov rax,[rax+rbx*8]
+	mov [audio_voice],rax
+	method [audio_voice],SOURCE_Stop,0,0
+	method [audio_voice],SOURCE_FlushSourceBuffers
+	inc ebx
+	cmp ebx,AUDIO_VOICES+AUDIO_STEMS
+	jb .voice
+	mov [audio_playing],0
+.done:
+	ret
+endp
+
+; How many runs of samples the stems' voices hold between them: one each,
+; while the music plays.
+proc audio_queued uses rbx rsi
+	xor esi,esi
+	cmp [audio_ready],0
+	je .done
+	xor ebx,ebx
+.stem:
+	lea rax,[audio_voices]
+	mov rax,[rax+rbx*8+AUDIO_VOICES*8]
+	mov [audio_voice],rax
+	method [audio_voice],SOURCE_GetState,addr audio_state,XAUDIO2_VOICE_NOSAMPLESPLAYED
+	add esi,dword [audio_state+8]
+	inc ebx
+	cmp ebx,AUDIO_STEMS
+	jb .stem
+.done:
+	mov eax,esi
+	ret
+endp
+
+proc audio_music_at uses rbx rdi
+	cmp [audio_playing],0
+	je .none
+	mov edi,50
+.again:
+	fastcall audio_queued
+	cmp eax,AUDIO_STEMS
+	jne .wait
+	lea rax,[audio_voices]
+	mov rax,[rax+AUDIO_VOICES*8]
+	mov [audio_voice],rax
+	method [audio_voice],SOURCE_GetState,addr audio_state,XAUDIO2_VOICE_NOSAMPLESPLAYED
+	mov rax,qword [audio_state]
+	test rax,rax
+	jnz .done
+.wait:
+	dec edi
+	jz .none
+	fastcall Sleep,5
+	jmp .again
+.none:
+	xor eax,eax
+.done:
 	ret
 endp
 
@@ -414,7 +487,7 @@ audio_loop:
 	dd XAUDIO2_END_OF_STREAM,MUSIC_SAMPLES*4
 audio_loop.data dq 0
 	dd 0,0,0,0,XAUDIO2_LOOP_INFINITE
-	dq 0
+audio_loop.context dq 0			; what its voice will say it is playing: where it is
 audio_state:
 	rb 24
 audio_performance:

@@ -69,6 +69,7 @@ proc create_world uses rsi rdi
 	add rax,sizeof.BoardWorld
 	mov [rdi+BoardWorld.tables+Tables.sounds],rax
 	mov dword [rdi+BoardWorld.tables+Tables.sound_count],TABLE_SOUNDS
+	mov dword [rdi+BoardWorld.tables+Tables.sound_samples],BANK_SAMPLES
 	mov rax,[bank_buffer.address]
 	mov [rdi+BoardWorld.bank],rax
 	mov rax,[state_buffer.address]

@@ -84,7 +84,9 @@ GAME_SHADERS = $(BUILD)\myhits_game_develop.spv $(BUILD)\myhits_game_chart.spv $
 	$(BUILD)\myhits_game_drift.spv $(BUILD)\myhits_game_report.spv $(BUILD)\myhits_game_render.spv $(BUILD)\myhits_game_scene_vertex.spv \
 	$(BUILD)\myhits_game_scene_fragment.spv $(BUILD)\myhits_game_particle_vertex.spv $(BUILD)\myhits_game_particle_fragment.spv \
 	$(BUILD)\myhits_game_veil_vertex.spv $(BUILD)\myhits_game_veil_fragment.spv $(BUILD)\myhits_game_backdrop_vertex.spv $(BUILD)\myhits_game_backdrop_fragment.spv
-MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe $(BUILD)\myhits_motion.exe $(BUILD)\myhits_hits.exe $(BUILD)\myhits_sound.exe $(BUILD)\myhits.exe
+MYHITS_TABLE_SOURCES = $(MYHITS)\tables_image.inc $(MYHITS)\tables.inc $(COMMON)\tables.inc $(COMMON)\shared.inc $(MYHITS_ART) tools\assemble.ps1
+MYHITS_TABLE_FILES = $(BUILD)\myhits_tables.bin $(BUILD)\myhits_tables_alt.bin $(BUILD)\myhits_tables_bad.bin
+MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe $(BUILD)\myhits_motion.exe $(BUILD)\myhits_hits.exe $(BUILD)\myhits_sound.exe $(BUILD)\myhits.exe $(MYHITS_TABLE_FILES)
 
 VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
@@ -590,8 +592,20 @@ $(BUILD)\myhits_game_backdrop_fragment.spv: $(GAME_SOURCES)
 	$(MYHITS_SLANG) -entry backdrop_fragment -stage fragment -o $@ $(GAME_SLANG)
 	$(MYHITS_VALIDATE) $@
 
-$(BUILD)\myhits.obj: $(MYHITS)\myhits.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\audio.inc $(GAME_SHADERS)
+$(BUILD)\myhits.obj: $(MYHITS)\myhits.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\audio.inc $(COMMON)\reload.inc $(MYHITS)\tables_image.inc $(GAME_SHADERS)
 	$(ASSEMBLE) -Source $(MYHITS)\myhits.asm -Output $@
+
+# The game's tables as a file: what a game started with --watch takes again
+# whenever it changes. And two more for the scripted run to be offered: the
+# same with two things changed, and one with a kind the game was not built with.
+$(BUILD)\myhits_tables.bin: $(MYHITS)\tables_file.asm $(MYHITS_TABLE_SOURCES)
+	$(ASSEMBLE) -Source $(MYHITS)\tables_file.asm -Output $@
+
+$(BUILD)\myhits_tables_alt.bin: $(MYHITS)\proofs\07_game\tables_alt.asm $(MYHITS_TABLE_SOURCES)
+	$(ASSEMBLE) -Source $(MYHITS)\proofs\07_game\tables_alt.asm -Output $@
+
+$(BUILD)\myhits_tables_bad.bin: $(MYHITS)\proofs\07_game\tables_bad.asm $(MYHITS_TABLE_SOURCES)
+	$(ASSEMBLE) -Source $(MYHITS)\proofs\07_game\tables_bad.asm -Output $@
 
 $(BUILD)\myhits.exe: $(BUILD)\myhits.obj
 	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib

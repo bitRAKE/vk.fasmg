@@ -52,6 +52,54 @@
 ;
 ; The game's tables.asm assembles the same lines into build\myhits_tables.slang,
 ; which gives the shaders the KIND_ numbers.
+;
+; Laid down between `table_image` and `end table_image`, the tables are an
+; image: a few numbers that say what follows (TableImage), and then the
+; tables, in the order above, which is the order Tables has them in. An image
+; can be assembled into a program, or to a file, and a program that is
+; running can take one in place of the one it has (reload.inc):
+;
+;	table_image moves, kinds, styles, sounds, waves, stems, says
+;						how many lines of each; none for a table it has not
+;		...
+;	end table_image
+;
+; What may differ between the image a program was built with and one it takes
+; is every number, every program of moves and every squad. What may not is
+; what the shaders know by name: the kinds, styles, sounds, stems and things
+; said, in their order. The image's print is made of those names and of the
+; sizes of the lines, and a program takes no image whose print is not its own.
+TABLE_MAGIC := 'TBLS'
+TABLE_SORTS := 7
+TableImage := 0				; (so that what follows is found from inside a procedure)
+TableImage.magic := 0
+TableImage.print := 4
+TableImage.bytes := 8			; of the tables, which follow at once
+TableImage.samples := 12		; what the sounds come to in the bank
+TableImage.counts := 16			; lines of each table, in order
+TableImage.spare := 44
+sizeof.TableImage := 48
+
+table.print = 2166136261
+; A name the shaders know goes into the print.
+macro table_name text*
+	table.print = ((table.print xor ((text) mod 4294967291)) * 16777619) and 0FFFFFFFFh
+end macro
+macro table_image counts*&
+	dd TABLE_MAGIC,TABLE_PRINT,TABLE_IMAGE_BYTES,TABLE_SAMPLES
+	dd counts
+	dd 0
+	table.image = $
+end macro
+macro end?.table_image!
+	TABLE_IMAGE_BYTES := $ - table.image
+	TABLE_SAMPLES := table.samples
+	; And the lines' sizes, and what a second and a step of the music are.
+	iterate size, sizeof.Move,sizeof.Kind,sizeof.Style,sizeof.Recipe,sizeof.Wave,sizeof.Stem,sizeof.Say,TICK_RATE,SOUND_RATE,MUSIC_STEPS,MUSIC_STEP_SAMPLES
+		table.print = ((table.print xor (size)) * 16777619) and 0FFFFFFFFh
+	end iterate
+	TABLE_PRINT := table.print
+end macro
 
 macro table_line text&
 	if definite TABLE_HEADER
@@ -86,6 +134,7 @@ macro mover name*,art*,size:1.0,bits:0,toughness:0,prize:0
 		table.spacing_#n = 0.0
 		table.wounded_first_#n = 0
 		table.wounded_#n = 0.0
+		table_name `name
 		table_line 'static const uint KIND_',`name,' = ',`n,';'
 	end repeat
 end macro
@@ -137,9 +186,10 @@ macro kinds_table
 	end repeat
 	TABLE_KINDS := table.kinds + 1
 	TABLE_MOVES := table.moves
-	repeat 1, kinds:table.kinds+1, moves:table.moves
+	; (The shaders are told how many kinds there are, which their names
+	; settle, and not how many moves: that is the image's to say.)
+	repeat 1, kinds:table.kinds+1
 		table_line 'static const uint TABLE_KINDS = ',`kinds,';'
-		table_line 'static const uint TABLE_MOVES = ',`moves,';'
 	end repeat
 end macro
 
@@ -147,6 +197,7 @@ table.styles = 0
 macro spray name*,tint_from*,tint_to*,wide_from*,wide_to*,curve*,seconds*,more_seconds*,pace*,more_pace*,degrees*,slowing*,falling*,drawn*,limit*
 	repeat 1, n:table.styles
 		STYLE_#name := n
+		table_name `name
 		table_line 'static const uint STYLE_',`name,' = ',`n,';'
 	end repeat
 	table_data tint_from,tint_to,1.0*(wide_from),1.0*(wide_to),EASE_#curve,trunc ((seconds)*TICK_RATE+0.5),trunc ((more_seconds)*TICK_RATE+0.5), \
@@ -160,6 +211,7 @@ table.samples = 0
 macro tone name*,seconds*,shape*,pitch_from*,pitch_to*,curve*,rise*,fall*,hiss*,loud*
 	repeat 1, n:table.sounds
 		SOUND_#name := n
+		table_name `name
 		table_line 'static const uint SOUND_',`name,' = ',`n,';'
 	end repeat
 	table_data trunc ((seconds)*SOUND_RATE+0.5),table.samples,WAVE_#shape,EASE_#curve,1.0*(pitch_from),1.0*(pitch_to),1.0*(rise),EASE_#fall,1.0*(hiss),1.0*(loud)
@@ -172,6 +224,7 @@ table.stems = 0
 macro stem name*,shape*,loud*,fall*
 	repeat 1, n:table.stems
 		STEM_#name := n
+		table_name `name
 		table_line 'static const uint STEM_',`name,' = ',`n,';'
 	end repeat
 	table_data WAVE_#shape,1.0*(loud),EASE_#fall
@@ -191,6 +244,7 @@ macro say name*,text*
 	local start,size
 	repeat 1, n:table.says
 		SAY_#name := n
+		table_name `name
 		table_line 'static const uint SAY_',`name,' = ',`n,';'
 	end repeat
 	if ~ definite TABLE_HEADER

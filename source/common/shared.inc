@@ -112,6 +112,8 @@ shared BUTTON_THIRD,8
 ; Root.flags
 shared ROOT_PAUSED,1
 shared ROOT_SCRIPTED,2
+shared ROOT_RELOADED,4			; the tables were laid down again before this frame: what ran by the old ones goes
+shared ROOT_REFUSED,8			; tables were offered that this program cannot take: it says so
 
 ; CPU to GPU, every frame, as push constants.
 boundary Root
@@ -378,5 +380,5 @@ boundary Tables
 	u32 wave_count
 	u32 stem_count
 	u32 say_count
-	u32 spare
+	u32 sound_samples		; what the sounds come to in the bank: the stems begin there
 end boundary

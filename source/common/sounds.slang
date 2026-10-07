@@ -55,21 +55,23 @@ float stem_sample(Stem stem, uint which, uint index)
     return stem.gain * level * wave_at(stem.wave, 440.0 * exp2((float(note) - 69.0) / 12.0) * seconds);
 }
 
-// Once, over every sample of the bank: the sounds, and after them the stems
-// of the music where a program has any.
+// Over every sample of the bank: the sounds, and after them the stems of the
+// music where a program has any. Once; and again when the tables are laid
+// down again, which is why where the stems begin is a number of the tables
+// and not of the build.
 [shader("compute")]
 [numthreads(64, 1, 1)]
 void render(uint3 id : SV_DispatchThreadID)
 {
     World* world = root.world;
     uint index = id.x;
-    if (index >= BANK_SAMPLES)
+    Tables tables = world.tables;
+    if (index >= tables.sound_samples)
     {
-        uint which = (index - BANK_SAMPLES) / MUSIC_SAMPLES;
-        if (which < world.tables.stem_count) world.bank[index] = stem_sample(world.tables.stems[which], which, (index - BANK_SAMPLES) % MUSIC_SAMPLES);
+        uint which = (index - tables.sound_samples) / MUSIC_SAMPLES;
+        if (which < tables.stem_count) world.bank[index] = stem_sample(tables.stems[which], which, (index - tables.sound_samples) % MUSIC_SAMPLES);
         return;
     }
-    Tables tables = world.tables;
     uint low = 0, high = tables.sound_count - 1;
     while (low < high)
     {

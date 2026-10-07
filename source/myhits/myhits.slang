@@ -58,6 +58,7 @@ static const uint FLASH_TICKS = 10;
 static const uint SPRITE_FLASH = 8;             // a sprite's flags above this are how white it is
 static const uint STATE_PLAY = 0;
 static const uint STATE_OVER = 1;
+static const uint STAGE_TICKS = 2000;           // how long a scripted run's third game is given
 
 struct Game
 {
@@ -154,14 +155,19 @@ struct Game
     uint refused_hostiles;
     uint near_hostile;      // the companion's nearest of each, as near_key, from the last tick's passes
     uint near_pellet;
+    uint reload_tick;       // the tick the tables were last laid down again before, plus one: what ran by the old ones goes in it
+    uint reloads;           // times they have been
+    uint notice;            // what is being said of that, as a SAY_ plus one,
+    uint notice_tick;       // and since when
 };
+static const uint NOTICE_TICKS = 240;
 struct Request { uint kind; float2 at; float angle; uint seed; float2 mark; uint marking; };
 // The header the CPU writes once: GameWorld in myhits.asm.
 struct World
 {
     Pictures pictures; Tables tables; Body* bodies; Game* game; uint* damage; Particle* particles; ParticlePool* pool;
     float2* trails; Request* queue; float* bank; float2* ship_trail; uint capacity; uint particle_capacity;
-    uint* staged; uint* home; uint words; uint spare;
+    uint* staged; uint* home; uint words; uint table_words;     // the last of the words are the tables
     uint* asking;           // a bit for each hostile that has asked the director for something
 };
 
@@ -228,14 +234,16 @@ void new_game(Game* game)
     fresh.blasts = 0; fresh.blast_hits = 0; fresh.blast_at = float2(0.0, 0.0); fresh.raider = 0; fresh.heavy = 0;
     fresh.refused_shots = 0; fresh.refused_pellets = 0; fresh.refused_hostiles = 0;
     fresh.near_hostile = NOBODY; fresh.near_pellet = NOBODY;
+    fresh.reload_tick = game.reload_tick; fresh.reloads = game.reloads; fresh.notice = game.notice; fresh.notice_tick = game.notice_tick;
     *game = fresh;
 }
 
-// First of all, once: the header and the tables, word for word, from the
-// memory the CPU wrote them into to memory only the device touches. Every
-// pass reads them, the director a hundred times a tick, and memory the CPU
-// can see is slow for the device to read. Root.world is the CPU's copy for
-// this pass alone.
+// First of all: the header and the tables, word for word, from the memory
+// the CPU wrote them into to memory only the device touches. Every pass reads
+// them, the director a hundred times a tick, and memory the CPU can see is
+// slow for the device to read. Root.world is the CPU's copy for this pass
+// alone. Once at start; and again whenever a running game takes its tables
+// from a file.
 [shader("compute")]
 [numthreads(64, 1, 1)]
 void settle(uint3 id : SV_DispatchThreadID)
@@ -250,6 +258,7 @@ void settle(uint3 id : SV_DispatchThreadID)
 void begin()
 {
     World* world = root.world;
+    world.game.reload_tick = 0; world.game.reloads = 0; world.game.notice = 0; world.game.notice_tick = 0;
     world.game.tick = 0;
     world.game.opened = 0;
     world.game.level_units = 0;
@@ -264,7 +273,7 @@ void begin()
     for (uint which = 0; which < world.tables.stem_count; ++which)
     {
         float peak = 0.0, gain = world.tables.stems[which].gain;
-        for (uint index = 0; index < MUSIC_SAMPLES; index += 3) peak = max(peak, abs(world.bank[BANK_SAMPLES + which * MUSIC_SAMPLES + index]));
+        for (uint index = 0; index < MUSIC_SAMPLES; index += 3) peak = max(peak, abs(world.bank[world.tables.sound_samples + which * MUSIC_SAMPLES + index]));
         if (peak > gain * 1.0001 || peak < gain * 0.5) ++faults;
     }
     world.game.music_faults = faults;
@@ -276,6 +285,15 @@ void begin()
     for (uint particle = 0; particle < PARTICLES; ++particle) world.particles[particle].life = 0;
     world.pool.asked = 0;
     open_particles(world);
+}
+
+// What the device holds of the tables, summed as the CPU sums an image
+// (tables_sum in reload.inc): the one is to be the other.
+uint tables_held(World* world)
+{
+    uint sum = 0;
+    for (uint word = world.words - world.table_words; word < world.words; ++word) sum = (sum * 16777619u) ^ world.home[word];
+    return sum;
 }
 
 // A new body goes into last tick's copy: this tick's update is its first.
@@ -380,19 +398,59 @@ void direct()
     game.tick = tick + 1;
     open_particles(world);
 
-    // A run that is over waits for Enter, and begins again.
-    if (game.state == STATE_OVER)
+    // A run that is over waits for Enter, and begins again. (A scripted run's
+    // third game is not over when its time is up: it is ended for it, since
+    // the script has a fourth to get to.)
+    bool ended = game.state == STATE_OVER && tick - game.over_tick > 60;
+    if ((root.flags & ROOT_SCRIPTED) != 0 && game.runs == 2 && tick + 1 - game.began >= STAGE_TICKS) ended = true;
+    if (ended && first && (root.pressed & BUTTON_START) != 0)
     {
-        if (first && (root.pressed & BUTTON_START) != 0 && tick - game.over_tick > 60)
-        {
-            game.runs += 1;
-            new_game(game);
-            for (uint body = 0; body < 2 * BODIES; ++body) world.bodies[body].kind = 0;
-            for (uint cell = 0; cell < REQUESTS; ++cell) world.queue[cell].kind = 0;
-            for (uint word = 0; word < HOSTILES / 32; ++word) world.asking[word] = 0;
-        }
+        game.runs += 1;
+        new_game(game);
+        for (uint body = 0; body < 2 * BODIES; ++body) world.bodies[body].kind = 0;
+        for (uint cell = 0; cell < REQUESTS; ++cell) world.queue[cell].kind = 0;
+        for (uint word = 0; word < HOSTILES / 32; ++word) world.asking[word] = 0;
     }
     bool playing = game.state == STATE_PLAY;
+
+    // The tables have been laid down again. Whatever was running by the old
+    // ones goes, in this tick: a body half-way through a program that has
+    // changed under it is a state no fresh start would reach. The squad that
+    // was here, or on its way, comes again from its first, which is what
+    // someone changing a squad wants to see. And it is said, for a moment;
+    // as it is when tables were offered that could not be taken.
+    bool relaid = first && (root.flags & ROOT_RELOADED) != 0;
+    if (relaid)
+    {
+        game.reload_tick = tick + 1;
+        game.reloads += 1;
+        game.notice = SAY_TABLES_TAKEN + 1;
+        game.notice_tick = tick;
+        if (game.members != 0 || game.alive != 0)
+        {
+            // All of it sent: then it is the one before the one that is next.
+            if (game.members == 0 && game.wave != 0)
+            {
+                if (game.wave % world.tables.wave_count == 0 && game.stage != 0) game.stage -= 1;
+                game.wave -= 1;
+            }
+            game.members = 0;
+            game.member = 0;
+            // It is due in the next tick.
+            uint wait = world.tables.waves[game.wave % world.tables.wave_count].after;
+            game.wave_tick = tick + 1 >= wait ? tick + 1 - wait : 0;
+        }
+        for (uint cell = 0; cell < REQUESTS; ++cell) world.queue[cell].kind = 0;
+        for (uint word = 0; word < HOSTILES / 32; ++word) world.asking[word] = 0;
+        game.probe = 0;
+        game.raider = 0;
+        game.heavy = 0;
+    }
+    if (first && (root.flags & ROOT_REFUSED) != 0)
+    {
+        game.notice = SAY_TABLES_REFUSED + 1;
+        game.notice_tick = tick;
+    }
 
     // A hurt stops the world for a few ticks. Nothing moves, nothing comes,
     // nothing is fired; only the clock, the HUD and the veil go on.
@@ -552,7 +610,7 @@ void direct()
     // pass close; and three divers, each hurt to half as soon as it is there,
     // the third struck dead while it is still fixing on the ship, which does
     // not save the ship from it.
-    bool staged = (root.flags & ROOT_SCRIPTED) != 0 && game.runs >= 2;
+    bool staged = (root.flags & ROOT_SCRIPTED) != 0 && game.runs == 2;
     if (staged && !frozen)
     {
         uint since = tick - game.began;
@@ -690,7 +748,7 @@ void direct()
     // What comes next, by the table; and the table again when it runs out.
     // Rank adds to a squad: one more for every third of it. They come whether
     // or not anyone is playing: a run that is over is still a world.
-    if (!frozen && !staged)
+    if (!frozen && !staged && !relaid)
     {
         Wave next = world.tables.waves[game.wave % world.tables.wave_count];
         // After a squad that holds the level, nothing comes while anything is
@@ -814,6 +872,13 @@ void update(uint3 id : SV_DispatchThreadID)
     Game game = *world.game;
     uint now = (game.tick & 1) * BODIES, before = ((game.tick & 1) ^ 1) * BODIES;
     Body body = world.bodies[before + slot];
+    // The tables were laid down again before this tick: what ran by the old
+    // ones is gone. A shot of the player's in flight got away.
+    if (game.reload_tick == game.tick && body.kind != 0)
+    {
+        if (slot < SHOTS && body.seed != MATE_SHOT) InterlockedAdd(world.game.escaped, 1);
+        body.kind = 0;
+    }
     if (body.kind != 0 && game.frozen == 0)
     {
         Kind kind = world.tables.kinds[body.kind];
@@ -1218,9 +1283,14 @@ void report()
         sum += hash(slot ^ hash(body.kind ^ hash(asuint(body.position.x) ^ hash(asuint(body.position.y) ^ hash(asuint(body.health) ^ hash(body.move * 65536 + body.elapsed))))));
     }
     events.debug[3] = sum;
+    // How often the tables have been taken again, and what is being said of
+    // it; and, in the frame a scripted run is told of it, the device's own
+    // sum of the tables it holds.
+    events.flags = (game.reloads & 255) | (game.notice << 8);
+    if (scripted && (root.flags & (ROOT_RELOADED | ROOT_REFUSED)) != 0) events.debug[1] = tables_held(world);
     // On the stage, where no chain is being watched: how full the hostiles'
     // pool is and with what, and what has been refused.
-    if ((root.flags & ROOT_SCRIPTED) != 0 && game.runs >= 2)
+    if ((root.flags & ROOT_SCRIPTED) != 0 && game.runs == 2)
     {
         uint occupied = 0, drones = 0, seeds = 0, worms = 0;
         for (uint slot = HOSTILE_FIRST; slot < HOSTILE_FIRST + HOSTILES; ++slot)
@@ -1546,9 +1616,11 @@ float4 particle_fragment(ParticleVertex input) : SV_Target0
 }
 
 // What the veil says, over everything: where its lines are, and how tall.
-float veil_words(Tables tables, float2 at, bool paused, bool over)
+float veil_words(Tables tables, float2 at, bool paused, bool over, uint notice)
 {
     float ink = 0.0;
+    // What is being said of the tables, along the top, whatever else is.
+    if (notice != 0) ink = max(ink, say_ink(tables, notice - 1, at, float2(960.0, 70.0), 30.0));
     if (paused)
     {
         ink = max(ink, say_ink(tables, SAY_PAUSED, at, float2(960.0, 330.0), 96.0));
@@ -1572,6 +1644,7 @@ struct VeilVertex
     nointerpolation float over : COLOR1;
     nointerpolation float nova : COLOR2;
     nointerpolation float paused : COLOR3;
+    nointerpolation uint notice : COLOR4;   // what is being said of the tables, as a SAY_ plus one
 };
 
 // The last thing drawn, over everything: being hurt reddens the edges of
@@ -1589,8 +1662,9 @@ VeilVertex veil_vertex(uint vertex : SV_VulkanVertexID)
     result.over = game.state == STATE_OVER ? saturate(float(game.tick - game.over_tick) / 120.0) : 0.0;
     result.nova = game.nova_tick == 0 ? 0.0 : saturate(1.0 - float(game.tick + 1 - game.nova_tick) / 24.0);
     result.paused = (root.flags & ROOT_PAUSED) != 0 ? 1.0 : 0.0;
+    result.notice = game.notice != 0 && game.tick - game.notice_tick < NOTICE_TICKS ? game.notice : 0;
     // With nothing to show it covers nothing.
-    result.position = float4(result.hurt + result.over + result.nova + result.paused > 0.0 ? result.at : float2(0.0, 0.0), 0.0, 1.0);
+    result.position = float4(result.hurt + result.over + result.nova + result.paused > 0.0 || result.notice != 0 ? result.at : float2(0.0, 0.0), 0.0, 1.0);
     return result;
 }
 
@@ -1606,7 +1680,7 @@ float4 veil_fragment(VeilVertex input) : SV_Target0
     // Words, where there are any: a run that is over says so, once its veil
     // has come down, and a pause says what the keys do.
     float2 place_of = (input.at * 0.5 + 0.5) * float2(PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT);
-    float words = veil_words(root.world.tables, place_of, input.paused != 0.0, input.over >= 1.0);
+    float words = veil_words(root.world.tables, place_of, input.paused != 0.0, input.over >= 1.0, input.notice);
     if (input.paused == 0.0) return float4(veil.rgb * (1.0 - words) + float3(1.0, 0.86, 0.55) * words, saturate(veil.a + words));
     // Paused: darker than a run that is over, and the bars, with soft edges.
     float2 place = float2(abs(input.at.x) * float(PLAYFIELD_WIDTH) / float(PLAYFIELD_HEIGHT), abs(input.at.y));

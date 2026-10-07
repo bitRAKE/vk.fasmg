@@ -210,8 +210,11 @@ proc window_proc hwnd,message,wparam,lparam
 	if definite MACHINE_BARE
 		; Left for another program, a bare window pauses: what is come back to
 		; is a held picture and a free pointer, not a fight already going on.
+		; (Unless it is being watched from the other program: machine_stays.)
 		test r8d,r8d
 		jnz .default
+		cmp [machine_stays],0
+		jne .default
 		fastcall machine_pause,1
 	end if
 	jmp .default
@@ -1330,6 +1333,7 @@ stale dd 1				; the window shows something other than the last frame
 paused dd 0				; no ticks are paid out: P, or a bare window left for another
 fullscreen dd 0				; the window has the whole of its monitor
 confined dd 0				; the pointer is hidden and held to the client area
+machine_stays dd 0			; a program sets it to go on when it is left: for one being looked at while something else is worked in
 test_mode dd 0
 gpu_error dd 0
 failure_stage dd 1
