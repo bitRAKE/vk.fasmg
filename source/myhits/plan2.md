@@ -49,7 +49,7 @@ is now the first rule of every choreography here.
 - The game runs: squads from a table, chains, a boss the level waits for,
   rank that reads the shooting, bonuses, a companion in three stages, a
   backdrop that is the level's, music that listens; and now charge, a dash,
-  the near miss, and the first choreographed attack. Thirty-five numbered
+  the near miss, and the first choreographed attack. Thirty-six numbered
   claims hold on a scripted run of four games, under validation too.
 - Milestone 8, the ground, is built: each of its problems below is done, or
   was measured and found not to need doing. Its list for a hand is untried.
@@ -94,7 +94,7 @@ is now the first rule of every choreography here.
 - **A sweep that cannot slip through a corner.** Proof 05, claim 12.
 - **The header and the tables in device memory.**
 - **The level's distance, exact however far.** Claim 30.
-- **Letters.** `letters.slang` in the layer: twenty strokes to a letter and
+- **Letters.** (Gone again: see the type, below.) `letters.slang` in the layer: twenty strokes to a letter and
   no texels. What is said is `say` lines in the tables. A pause says what
   the keys do and a run that is over says how to begin another. Claim 31.
 - **Reloading the tables.** `--watch`, `build\myhits_tables.bin` and
@@ -106,14 +106,20 @@ is now the first rule of every choreography here.
 - **The mix and the loudness report.** The scripted run, as it sounded, in
   `build\myhits_run.wav`, and every sound's level in a table. Claim 33. It
   found the mix a decibel over full scale in five samples.
-- **Text, as a side quest.** `text.inc` and `text.slang` in the layer:
-  strings shaped by DirectWrite in any script and drawn from their outlines
-  on the device by the Slug algorithm, at any size and angle, with no
-  texels. Proof 08, thirteen claims, its pictures held to GDI+. The game
-  does not use it yet: its words are still the letters of twenty strokes.
-  Where it would earn its place is the things said in a language, a title,
-  and a score table; a number that changes every frame wants glyphs set
-  down by the device first.
+- **Type.** `text.inc` and `text.slang` in the layer: strings shaped by
+  DirectWrite in any script and drawn from their outlines on the device by
+  the Slug algorithm, at any size and angle, with no texels; glyphs of
+  colors as their font's layers; lines laid out once and said by the device;
+  numbers set down by it from the ten digits. Proof 08, seventeen claims,
+  its pictures held to GDI+ and to the fonts' own tables.
+- **The game is set in it.** What the tables say is UTF-8 now, in any
+  script, and a taking of the tables lays it out again: a word changed in
+  `tables.inc` is on the screen of a watched game a second later, mark,
+  burst and all. The score is eight wheels that turn over, each in its
+  cell. The letters of twenty strokes are gone. Claim 36. What is said is
+  still a handful of lines in the middle of the screen: a title, a table of
+  scores, the names of things as they come, and words that belong to a
+  choreography are what the type is now there for.
 
 ## Choreography
 

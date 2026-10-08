@@ -244,6 +244,7 @@ try {
             26='the window was not remembered: its place, or whether it had the whole monitor'
             27='something alive was written over, or what there was no room for was not refused and counted, or segments followed a stranger'
             30='with the level very far on, a layer of the backdrop that repeats would not be what it was, or one that does not would stand in steps'
+            36='what is said is not all in type: a saying of the tables has no line, or the ten digits are not ten, or something was left out for want of room, or the device has not taken all of it into memory of its own'
             32='tables offered from a file were not taken, refused or left alone as they should be; or the device did not hold what was taken, or the bank or the music was not made again from it; or what was running was not let go, or the squad did not come again as the new tables have it' } 'myhits.exe'
         $frames = [int]$state.frames
         Assert-True ($frames -eq 1330 -and [int]$state.events -eq $frames) 'The game did not run its script'
@@ -271,7 +272,9 @@ try {
             if ($mode -eq 'default') { Assert-True ($mean -le $budget[$pass][1]) "game check 29 failed: the $pass pass takes $mean ns a tick; its budget is $($budget[$pass][1])" }
             $tick += $mean
         }
-        $picture = 0; foreach ($stamp in 7, 8, 9, 10, 15) { $picture += [int]$measured["stamp_$stamp"][0] }
+        $picture = 0; foreach ($stamp in 7, 8, 9, 10, 11, 15) { $picture += [int]$measured["stamp_$stamp"][0] }
+        $type = [int]$measured['stamp_11'][0]
+        Assert-True ($type -gt 0) 'game check 29 failed: the draw of what is said in type was never timed'
         $costs = "a tick costs the device {0:0} microseconds, its director {1:0}; a picture {2:0}" -f ($tick / 1000), ([int]$measured['stamp_1'][0] / 1000), ($picture / 1000)
         $voices = if ([int]$state.device) { "$($state.plays) sounds to voices" } else { 'no audio device here' }
         # The music the device rendered is the notes of tables.inc, by a second synthesis; and it is written out to be listened to.
@@ -307,8 +310,8 @@ try {
         }
         Assert-True ($rail[300] -eq $rail[320]) 'The backdrop moved while the level stood still'
         Assert-True ($rail[235] -ne $rail[300]) 'The backdrop stood still while the level moved'
-        # 31: a pause is in words. Where the line that says what the keys do is drawn, the paused
-        # frame has letters, pale on the dimmed picture, and a frame that is not paused has none.
+        # 31: a pause is in words. Where the line that says what the keys do is set, in type, the
+        # paused frame has letters, pale on the dimmed picture, and a frame that is not paused has none.
         $pale = @{}
         foreach ($frame in 900, 950) {
             $picture = New-Object System.Drawing.Bitmap (Join-Path $BuildDir "myhits_checks\$mode\game\frame_$frame.png")
@@ -323,7 +326,7 @@ try {
         foreach ($frame in 900, 1290) {
             $picture = New-Object System.Drawing.Bitmap (Join-Path $BuildDir "myhits_checks\$mode\game\frame_$frame.png")
             $count = 0
-            foreach ($y in 52..88) { foreach ($x in 760..1160) { $pixel = $picture.GetPixel($x, $y); if ($pixel.R -gt 200 -and $pixel.G -gt 170 -and $pixel.B -gt 90 -and $pixel.R -gt $pixel.B + 30) { ++$count } } }
+            foreach ($y in 40..110) { foreach ($x in 760..1160) { $pixel = $picture.GetPixel($x, $y); if ($pixel.R -gt 200 -and $pixel.G -gt 170 -and $pixel.B -gt 90 -and $pixel.R -gt $pixel.B + 30) { ++$count } } }
             $picture.Dispose()
             $said[$frame] = $count
         }
@@ -398,7 +401,7 @@ try {
             Assert-True ($lives.ghost -eq 3 -and $lives.mortal -lt 3) "game check 35 failed: after forty seconds of doing nothing a ghost has $($lives.ghost) lives and a ship that can be hurt has $($lives.mortal)"
             $read = " a run is read on a page of nine pictures, and comes to the same pictured; a ghost keeps its three lives where a ship keeps $($lives.mortal);"
         }
-        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through four games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; the run as it sounded is $BuildDir\myhits_run.wav, $($mix.seconds) seconds at $($mix.level) dB, its peak $($mix.peak) dB with $($mix.clipped) samples cut off, and $($mix.furthest) the sound furthest from the rest, by $($mix.apart) dB; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks and bursts where it locked, is dodged by moving and not stopped by killing; the window pauses, moves, takes its monitor and is remembered; nothing alive is written over, and what there is no room for is refused; its tables are taken again from a file as it runs ($($state.reload_bytes) bytes in five takings), and refused when their names are not its own; two runs sum to the same ($gameSums);$kept$read $costs; {9} passes and {10} draws a frame" -f `
+        Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through four games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; the run as it sounded is $BuildDir\myhits_run.wav, $($mix.seconds) seconds at $($mix.level) dB, its peak $($mix.peak) dB with $($mix.clipped) samples cut off, and $($mix.furthest) the sound furthest from the rest, by $($mix.apart) dB; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks and bursts where it locked, is dodged by moving and not stopped by killing; the window pauses, moves, takes its monitor and is remembered; nothing alive is written over, and what there is no room for is refused; its tables are taken again from a file as it runs ($($state.reload_bytes) bytes in five takings), and refused when their names are not its own; two runs sum to the same ($gameSums);$kept$read what is said and the score are in type, the system's, kept and said by the device, at $([int]($type / 1000)) microseconds a picture; $costs; {9} passes and {10} draws a frame" -f `
             $frames, $state.ticks_a_frame, ([int]$state.kinds - 1), $state.moves, $state.squads, [int]([int]$state.world_bytes / 1024), $state.head_died_frame, $state.hurts_heard, $voices,
             ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
 

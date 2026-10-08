@@ -78,12 +78,14 @@ BOARD_SLANG = $(MYHITS)\proofs\06_sound\board.slang
 BOARD_SOURCES = $(BOARD_SLANG) $(COMMON)\common.slang $(COMMON)\ease.slang $(COMMON)\sounds.slang $(MYHITS_TABLES) $(MYHITS_HEADER)
 BOARD_SHADERS = $(BUILD)\myhits_sound_render.spv $(BUILD)\myhits_sound_examine.spv $(BUILD)\myhits_sound_direct.spv $(BUILD)\myhits_sound_wave_vertex.spv $(BUILD)\myhits_sound_wave_fragment.spv
 GAME_SLANG = $(MYHITS)\myhits.slang
-GAME_SOURCES = $(GAME_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\hits.slang $(COMMON)\particles.slang $(COMMON)\chains.slang $(COMMON)\sounds.slang $(COMMON)\letters.slang $(MYHITS)\backdrop.slang $(MYHITS_HEADER)
+GAME_SOURCES = $(GAME_SLANG) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\hits.slang $(COMMON)\particles.slang $(COMMON)\chains.slang $(COMMON)\sounds.slang $(COMMON)\text.slang $(MYHITS)\backdrop.slang $(MYHITS_HEADER)
 GAME_SHADERS = $(BUILD)\myhits_game_develop.spv $(BUILD)\myhits_game_chart.spv $(BUILD)\myhits_game_census.spv $(BUILD)\myhits_game_settle.spv $(BUILD)\myhits_game_begin.spv \
 	$(BUILD)\myhits_game_direct.spv $(BUILD)\myhits_game_update.spv $(BUILD)\myhits_game_collide.spv $(BUILD)\myhits_game_resolve.spv \
 	$(BUILD)\myhits_game_drift.spv $(BUILD)\myhits_game_report.spv $(BUILD)\myhits_game_render.spv $(BUILD)\myhits_game_scene_vertex.spv \
 	$(BUILD)\myhits_game_scene_fragment.spv $(BUILD)\myhits_game_particle_vertex.spv $(BUILD)\myhits_game_particle_fragment.spv \
-	$(BUILD)\myhits_game_veil_vertex.spv $(BUILD)\myhits_game_veil_fragment.spv $(BUILD)\myhits_game_backdrop_vertex.spv $(BUILD)\myhits_game_backdrop_fragment.spv
+	$(BUILD)\myhits_game_veil_vertex.spv $(BUILD)\myhits_game_veil_fragment.spv $(BUILD)\myhits_game_backdrop_vertex.spv $(BUILD)\myhits_game_backdrop_fragment.spv \
+	$(BUILD)\myhits_game_text_take.spv $(BUILD)\myhits_game_text_count.spv $(BUILD)\myhits_game_text_place.spv $(BUILD)\myhits_game_text_fill.spv \
+	$(BUILD)\myhits_game_type_vertex.spv $(BUILD)\myhits_game_type_fragment.spv
 PAGE_SLANG = $(MYHITS)\proofs\08_text\page.slang
 PAGE_SOURCES = $(PAGE_SLANG) $(COMMON)\common.slang $(COMMON)\text.slang $(MYHITS_HEADER)
 PAGE_SHADERS = $(BUILD)\myhits_text_text_take.spv $(BUILD)\myhits_text_text_count.spv $(BUILD)\myhits_text_text_place.spv $(BUILD)\myhits_text_text_fill.spv $(BUILD)\myhits_text_text_examine.spv $(BUILD)\myhits_text_text_judge.spv \
@@ -639,7 +641,32 @@ $(BUILD)\myhits_game_backdrop_fragment.spv: $(GAME_SOURCES)
 	$(MYHITS_SLANG) -entry backdrop_fragment -stage fragment -o $@ $(GAME_SLANG)
 	$(MYHITS_VALIDATE) $@
 
-$(BUILD)\myhits.obj: $(MYHITS)\myhits.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\audio.inc $(COMMON)\files.inc $(COMMON)\reload.inc $(MYHITS)\tables_image.inc $(GAME_SHADERS)
+# What the game says and counts in type: text.slang's building passes, and its own draw.
+$(BUILD)\myhits_game_text_take.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry text_take -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_text_count.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry text_count -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_text_place.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry text_place -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_text_fill.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry text_fill -stage compute -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_type_vertex.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry type_vertex -stage vertex -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_game_type_fragment.spv: $(GAME_SOURCES)
+	$(MYHITS_SLANG) -entry type_fragment -stage fragment -o $@ $(GAME_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits.obj: $(MYHITS)\myhits.asm $(MYHITS_MACHINE) $(MYHITS_PICTURES) $(MYHITS_MOTION) $(COMMON)\audio.inc $(COMMON)\files.inc $(COMMON)\reload.inc $(COMMON)\text.inc $(MYHITS)\tables_image.inc $(GAME_SHADERS)
 	$(ASSEMBLE) -Source $(MYHITS)\myhits.asm -Output $@
 
 # The game's tables as a file: what a game started with --watch takes again
@@ -655,12 +682,12 @@ $(BUILD)\myhits_tables_bad.bin: $(MYHITS)\proofs\07_game\tables_bad.asm $(MYHITS
 	$(ASSEMBLE) -Source $(MYHITS)\proofs\07_game\tables_bad.asm -Output $@
 
 $(BUILD)\myhits.exe: $(BUILD)\myhits.obj
-	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib
+	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib dwrite.lib
 
 # The same program under another name, for trying things out: the one someone
 # may be playing is not replaced by an experiment.
 $(BUILD)\myhits_try.exe: $(BUILD)\myhits.obj
-	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib
+	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib dwrite.lib
 
 
 

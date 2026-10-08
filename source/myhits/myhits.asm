@@ -45,6 +45,8 @@ include 'tables.inc'
 include '..\common\files.inc'
 include '..\common\reload.inc'
 include '..\common\audio.inc'
+include '..\common\text.inc'
+extrn MultiByteToWideChar:qword
 
 ; These are myhits.slang's.
 BODIES := 1024
@@ -54,17 +56,18 @@ HOSTILES := 384
 PARTICLES := 16384
 TRAILS := 32
 REQUESTS := HOSTILES * 6			; a hostile's own cells to ask the director from
-INSTANCES := 160 + BODIES + 16 + PELLETS + HOSTILES + 21 + 8 + 5 * 9
-GAME_BYTES := 512
+INSTANCES := 160 + BODIES + 16 + PELLETS + HOSTILES + 13 + 8 + 5 * 9
+TYPE_INSTANCES := 7 * 64 + 16		; what is said and counted in type: type_vertex
+GAME_BYTES := 640
 POOL_BYTES := 8 + STYLE_LIMIT * 4
 WORLD_BYTES := GAME_BYTES + POOL_BYTES + 2 * BODIES * BODY_BYTES + BODIES * 4 + (TRAILS + 1) * TRAIL_POINTS * 8 + REQUESTS * REQUEST_BYTES + HOSTILES / 8 + PARTICLES * PARTICLE_BYTES
 TICK_DISPATCHES := 5			; the director, the bodies, the shots, the struck, the particles
 ; What the measuring run tells apart: the five passes of a tick, the report,
 ; and the four draws.
-iterate name, DIRECT,UPDATE,COLLIDE,RESOLVE,DRIFT,REPORT,BACKDROP,SCENE,PARTICLES,VEIL
+iterate name, DIRECT,UPDATE,COLLIDE,RESOLVE,DRIFT,REPORT,BACKDROP,SCENE,PARTICLES,VEIL,TYPE
 	STAMP_#name := %
 end iterate
-STARTUP_DISPATCHES := PICTURES_PASSES + 3	; and the settling, the sounds, the beginning
+STARTUP_DISPATCHES := PICTURES_PASSES + 3 + TEXT_PASSES	; and the settling, the sounds, the beginning; and the type
 GAME_TICKS := 8				; a scripted frame of the game runs this many: it has far to go
 SCRIPT_FRAMES := 1330
 RESTART_FRAME := 400			; the script presses Enter here; the first game is over by then
@@ -99,6 +102,7 @@ boundary GameWorld
 	u32 words
 	u32 table_words			; the last of the words are the tables
 	ptr asking,uint
+	ptr text,Text
 end boundary
 
 section '.text$game' code readable executable align 16
@@ -162,12 +166,24 @@ proc create_world uses rsi rdi
 	mov [rdi+GameWorld.bank],rax
 	mov dword [rdi+GameWorld.capacity],BODIES
 	mov dword [rdi+GameWorld.particle_capacity],PARTICLES
+	; What is said and counted is in type: the system's, by way of text.inc.
+	require_ok fastcall text_start
+	fastcall text_create
+	test rax,rax
+	jz .failed
+	mov [rdi+GameWorld.text],rax
 	; The tables the game was built with, by the way any others would come.
 	require_ok fastcall machine_compute,addr settle_code,settle_code.size,addr settle_pipeline
 	require_ok fastcall lay_tables,addr game_image
-	iterate name, begin,direct,update,collide,resolve,drift,report,render
+	iterate name, begin,direct,update,collide,resolve,drift,report,render,text_take,text_count,text_place,text_fill
 		require_ok fastcall machine_compute,addr name#_code,name#_code.size,addr name#_pipeline
 	end iterate
+	require_ok fastcall machine_graphics,addr type_vertex_code,type_vertex_code.size,addr type_fragment_code,type_fragment_code.size,BLEND_PREMULTIPLIED,addr type_pipeline
+	fastcall text_format,addr type_family,[type_size],600,3
+	test rax,rax
+	jz .failed
+	mov [type_format],rax
+	require_ok fastcall keep_says
 	require_ok fastcall machine_graphics,addr scene_vertex_code,scene_vertex_code.size,addr scene_fragment_code,scene_fragment_code.size,BLEND_PREMULTIPLIED,addr scene_pipeline
 	require_ok fastcall machine_graphics,addr particle_vertex_code,particle_vertex_code.size,addr particle_fragment_code,particle_fragment_code.size,BLEND_PREMULTIPLIED,addr particle_pipeline
 	require_ok fastcall machine_graphics,addr veil_vertex_code,veil_vertex_code.size,addr veil_fragment_code,veil_fragment_code.size,BLEND_PREMULTIPLIED,addr veil_pipeline
@@ -233,6 +249,31 @@ proc lay_tables uses rsi rdi,image
 	mov [root+Root.world],rax
 	mov eax,1
 .failed:
+	ret
+endp
+
+; What the tables say, each laid out once by the system and kept as the line
+; of its own number, and after them the ten digits; and the device takes
+; them. The sayings are UTF-8 in the tables, in whatever script, with
+; whatever glyphs of colors: none of that is this program's to know.
+proc keep_says uses rbx rsi
+	fastcall text_lines_clear
+	mov rsi,qword [live_tables+Tables.says]
+	xor ebx,ebx
+.say:
+	cmp ebx,dword [live_tables+Tables.say_count]
+	jae .digits
+	cmp ebx,TEXT_LINES-1
+	jae .digits
+	fastcall MultiByteToWideChar,65001,0,rsi,dword [rsi+Say.count],addr say_units,SAY_LETTERS
+	fastcall text_keep,rbx,addr say_units,rax,[type_format]
+	add rsi,sizeof.Say
+	inc ebx
+	jmp .say
+.digits:
+	fastcall text_keep,rbx,addr type_digits,10,[type_format]
+	mov [type_digits_kept],eax
+	fastcall text_build
 	ret
 endp
 
@@ -334,6 +375,10 @@ proc take_tables uses rbx rsi rdi,image,bytes
 	test eax,eax
 	jz .done
 	fastcall invalidate_buffer,addr bank_buffer
+	; What the new tables say may not be what the old ones said.
+	fastcall keep_says
+	test eax,eax
+	jz .done
 	mov eax,[dispatch_count]
 	sub eax,esi
 	add [reload_dispatches],eax
@@ -627,13 +672,19 @@ endp
 
 proc release_world
 	fastcall audio_stop
-	iterate name, settle,begin,direct,update,collide,resolve,drift,report,render,scene,particle,veil,backdrop
+	iterate name, settle,begin,direct,update,collide,resolve,drift,report,render,scene,particle,veil,backdrop,type,text_take,text_count,text_place,text_fill
 		cmp [name#_pipeline],0
 		je .skip_#name
 		vkDestroyPipeline [device],[name#_pipeline],0
 		mov [name#_pipeline],0
 	.skip_#name:
 	end iterate
+	cmp [type_format],0
+	je .unformed
+	com [type_format],COM_Release
+	mov [type_format],0
+.unformed:
+	fastcall text_stop
 	fastcall pictures_release
 	fastcall destroy_buffer,addr bank_buffer
 	fastcall destroy_buffer,addr header_buffer
@@ -849,7 +900,8 @@ proc play_frame uses rbx
 endp
 
 ; Everything a frame draws: the backdrop; the sprites and the HUD among them;
-; the light; then the veil a hurt or the end of a run draws over it all.
+; the light; the veil a hurt or the end of a run draws over it all; and then
+; what is said, and the score, in type.
 proc draw_world
 	fastcall machine_draw,[backdrop_pipeline],6,1
 	fastcall machine_stamp,STAMP_BACKDROP
@@ -859,6 +911,8 @@ proc draw_world
 	fastcall machine_stamp,STAMP_PARTICLES
 	fastcall machine_draw,[veil_pipeline],6,1
 	fastcall machine_stamp,STAMP_VEIL
+	fastcall machine_draw,[type_pipeline],6,TYPE_INSTANCES
+	fastcall machine_stamp,STAMP_TYPE
 	ret
 endp
 
@@ -1574,7 +1628,8 @@ proc check_reload uses rbx rsi rdi,events,which
 	jne .wrong
 	cmp [reloads_refused],1
 	jne .wrong
-	cmp [reload_dispatches],4
+	; (Each taking is the settling, the sounds, and the device's taking of what the tables say.)
+	cmp [reload_dispatches],2*3
 	jne .wrong
 .later:
 	; The fourth game. Nothing has come when the tables are first taken, in
@@ -2116,7 +2171,7 @@ proc scripted_run uses rbx rsi
 	fail 11
 .sounds:
 	; 12: every frame's events were read; Root and Events were all the
-	; traffic; and a frame of eight ticks is forty-one passes and two draws.
+	; traffic; and a frame of eight ticks is forty-one passes and five draws.
 	cmp [events_seen],SCRIPT_FRAMES
 	jne .commands
 	cmp [traffic_down],SCRIPT_FRAMES*sizeof.Root
@@ -2127,11 +2182,43 @@ proc scripted_run uses rbx rsi
 	jne .commands
 	cmp [dispatch_count],SCRIPT_FRAMES*(GAME_TICKS*TICK_DISPATCHES+1)
 	jne .commands
-	cmp [draw_count],SCRIPT_FRAMES*4
+	cmp [draw_count],SCRIPT_FRAMES*5
 	je .manners
 .commands:
 	fail 12
 .manners:
+	; 36: what is said is in type. Every saying of the tables is a line the
+	; device has, with glyphs in it, and the ten digits are the line after
+	; them; nothing was left out for want of room; and the device has taken
+	; all there is, into memory of its own.
+	mov rdx,[text_line_buffer.mapped]
+	xor ecx,ecx
+.type_said:
+	cmp dword [rdx+Line.count],0
+	je .type_wrong
+	add rdx,sizeof.Line
+	inc ecx
+	cmp ecx,TABLE_SAYS
+	jb .type_said
+	cmp dword [rdx+Line.count],10
+	jne .type_wrong
+	cmp [type_digits_kept],10
+	jne .type_wrong
+	cmp [text_lost],0
+	jne .type_wrong
+	mov rax,[text_block]
+	iterate <from,count>, curve_from,curve_count, glyph_from,glyph_count, laid_from,laid_count, band_from,band_count
+		mov edx,[rax+Text.count]
+		cmp [rax+Text.from],edx
+		jne .type_wrong
+	end iterate
+	cmp dword [rax+Text.laid_from],100
+	jb .type_wrong
+	cmp [text_curve_home.mapped],0
+	je .type_held
+.type_wrong:
+	fail 36
+.type_held:
 	; 25, in part: all three divers had their turn, the dead one too; the fix
 	; was seen to follow the ship; and three shots burst, no more.
 	cmp [stage_round],3
@@ -2593,6 +2680,14 @@ bank_buffer GpuBuffer
 iterate name, settle,begin,direct,update,collide,resolve,drift,report,render,scene,particle,veil,backdrop
 	name#_pipeline dq 0
 end iterate
+type_pipeline dq 0
+type_format dq 0
+type_size dd 64.0			; what the lines are laid out at: they are kept in ems, and said at any size
+type_digits_kept dd 0
+type_family du 'Bahnschrift',0
+type_digits du '0123456789'
+say_units rw SAY_LETTERS+2
+	align 8
 iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,last_latency,worst_latency,title_rank,sounds_asked,heard_hurts, \
 	last_score,last_lives,last_wave,last_state,last_rank,last_fired,last_struck,last_kills,last_hurts,last_alive, \
 	hurts_before,rank_before,scroll_before,hurt_frame,hurts_total,rise_checked,falls_checked,chain_seen,head_died,alive_before,last_shown,last_stopped, \
@@ -2663,7 +2758,8 @@ run_path rw 260				; and the name of its file
 section '.rdata$game_spirv' data readable align 4
 iterate <name,module>, develop_code,develop, chart_code,chart, census_code,census, settle_code,settle, begin_code,begin, direct_code,direct, update_code,update, \
 	collide_code,collide, resolve_code,resolve, drift_code,drift, report_code,report, render_code,render, scene_vertex_code,scene_vertex, \
-	scene_fragment_code,scene_fragment, particle_vertex_code,particle_vertex, particle_fragment_code,particle_fragment, veil_vertex_code,veil_vertex, veil_fragment_code,veil_fragment, backdrop_vertex_code,backdrop_vertex, backdrop_fragment_code,backdrop_fragment
+	scene_fragment_code,scene_fragment, particle_vertex_code,particle_vertex, particle_fragment_code,particle_fragment, veil_vertex_code,veil_vertex, veil_fragment_code,veil_fragment, backdrop_vertex_code,backdrop_vertex, backdrop_fragment_code,backdrop_fragment, \
+	text_take_code,text_take, text_count_code,text_count, text_place_code,text_place, text_fill_code,text_fill, type_vertex_code,type_vertex, type_fragment_code,type_fragment
 	align 4
 	name file 'build\myhits_game_' bappend `module bappend '.spv'
 	name.size = $ - name

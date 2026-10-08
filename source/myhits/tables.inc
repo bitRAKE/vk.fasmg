@@ -232,15 +232,17 @@ end macro
 ; What is said on the screen. A pause says what the keys do, since the window
 ; has no caption to say it; a run that is over says how to begin another.
 macro game_says
+	; (They are set in type by the system, from UTF-8: any script will do, and
+	; a glyph from a font of colors keeps its colors. At most SAY_LETTERS bytes.)
 	say PAUSED,'PAUSED'
-	say PAUSE_KEYS,'P RESUMES    F11 WHOLE MONITOR    ESC ENDS'
-	say PAUSE_WINDOW,'HOLD AND DRAG TO MOVE THE WINDOW   ITS EDGES SIZE IT'
-	say PAUSE_PLAY,'MOVE: ARROWS   FIRE: SPACE   MISSILES: SHIFT   DASH: CTRL'
-	say OVER,'THE RUN IS OVER'
+	say PAUSE_KEYS,'P RESUMES · F11 WHOLE MONITOR · ESC ENDS'
+	say PAUSE_WINDOW,'HOLD AND DRAG TO MOVE THE WINDOW · ITS EDGES SIZE IT'
+	say PAUSE_PLAY,'MOVE: ARROWS · FIRE: SPACE · MISSILES: SHIFT · DASH: CTRL'
+	say OVER,'💥 THE RUN IS OVER'
 	say OVER_KEYS,'ENTER BEGINS ANOTHER'
 	; A game that is watching its tables' file says what became of a change.
-	say TABLES_TAKEN,'TABLES TAKEN'
-	say TABLES_REFUSED,'TABLES REFUSED: THEY WANT A BUILD'
+	say TABLES_TAKEN,'✅ TABLES TAKEN'
+	say TABLES_REFUSED,'⛔ TABLES REFUSED: THEY WANT A BUILD'
 	TABLE_SAYS := table.says
 	repeat 1, says:table.says
 		table_line 'static const uint TABLE_SAYS = ',`says,';'

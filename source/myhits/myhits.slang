@@ -22,7 +22,7 @@ static const uint BONUS_NOVA = 3;               // everything on the playfield i
 static const uint BONUS_DOUBLE = 4;             // kills are worth twice
 static const uint BONUS_TICKS = 960;            // how long one lasts, before rank adds to it
 static const uint CHARGE_PIPS = 8;
-static const uint HUD = 21 + CHARGE_PIPS + BONUSES * 9; // eight digits, three lives, ten pips of rank, eight of charge; an icon and eight pips a bonus
+static const uint HUD = 13 + CHARGE_PIPS + BONUSES * 9; // three lives, ten pips of rank, eight of charge; an icon and eight pips a bonus. (The score is in type.)
 static const uint MARKS = PELLETS + HOSTILES;   // what a hostile or its shot means to strike, shown
 static const uint TETHER = 8;                   // points of light between the ship and its companion
 static const uint SHIP_PARTS = 8 + TETHER;      // flare, muzzle, ship, shield, crosshair; the companion, its gun, its guard; the tether
@@ -159,6 +159,8 @@ struct Game
     uint reloads;           // times they have been
     uint notice;            // what is being said of that, as a SAY_ plus one,
     uint notice_tick;       // and since when
+    uint digit_tick[8];     // when each wheel of the score last turned, plus one: the units first
+    uint digit_was;         // and the digit each turned from, four bits to a wheel
 };
 static const uint NOTICE_TICKS = 240;
 struct Request { uint kind; float2 at; float angle; uint seed; float2 mark; uint marking; };
@@ -169,6 +171,7 @@ struct World
     float2* trails; Request* queue; float* bank; float2* ship_trail; uint capacity; uint particle_capacity;
     uint* staged; uint* home; uint words; uint table_words;     // the last of the words are the tables
     uint* asking;           // a bit for each hostile that has asked the director for something
+    Text* text;             // what is said and counted in type: text.inc's
 };
 
 // A lone thread on the device is slow: a quarter of a microsecond for every
@@ -185,7 +188,7 @@ uint near_key(float2 from, float2 to, uint who) { return (uint(min(distance(from
 #include "chains.slang"
 #include "sounds.slang"
 #include "backdrop.slang"
-#include "letters.slang"
+#include "text.slang"
 
 // The level's travel as a picture shows it: between its last two ticks.
 Travel level_shown(Game game)
@@ -222,6 +225,8 @@ void new_game(Game* game)
     fresh.pace_due = 0; fresh.pace_wanted = 1.0;
     fresh.requested = 0; fresh.alive = 0; fresh.probe = 0;
     fresh.shown = 0; fresh.score_seen = 0; fresh.score_tick = 0; fresh.stop = 0; fresh.frozen = 0; fresh.stopped = game.stopped;
+    for (uint wheel = 0; wheel < 8; ++wheel) fresh.digit_tick[wheel] = 0;
+    fresh.digit_was = 0;
     fresh.began = game.tick; fresh.runs = game.runs; fresh.life_tick = 0;
     for (uint bonus = 0; bonus < BONUSES; ++bonus) { fresh.until[bonus] = 0; fresh.got[bonus] = 0; fresh.collected[bonus] = 0; fresh.taken[bonus] = 0; }
     fresh.shield = 0; fresh.blocked = 0; fresh.nova_tick = 0;
@@ -469,7 +474,22 @@ void direct()
         game.score_seen = game.score;
         game.score_tick = tick + 1;
     }
-    if (game.shown < game.score) game.shown += max((game.score - game.shown) / 8, 1u);
+    if (game.shown < game.score)
+    {
+        // Each wheel that turns remembers when, and what from.
+        uint before = game.shown, place_of = 1;
+        game.shown += max((game.score - game.shown) / 8, 1u);
+        for (uint wheel = 0; wheel < 8; ++wheel)
+        {
+            uint was = (before / place_of) % 10;
+            if (was != (game.shown / place_of) % 10)
+            {
+                game.digit_tick[wheel] = tick + 1;
+                game.digit_was = (game.digit_was & ~(15u << (wheel * 4))) | (was << (wheel * 4));
+            }
+            place_of *= 10;
+        }
+    }
 
     float2 ship = game.ship;
     game.ship_before = ship;
@@ -1518,19 +1538,7 @@ SpriteVertex scene_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_Vu
             }
         }
     }
-    else if ((index -= MARKS) < 8)
-    {
-        // The score, eight digits, the greatest first. Those before its first
-        // are dim; all of them jump when it grows.
-        uint place_of = 1;
-        for (uint power = index; power < 7; ++power) place_of *= 10;
-        float jump = game.score_tick == 0 ? 0.0 : saturate(1.0 - float(game.tick + 1 - game.score_tick) / 30.0);
-        sprite.position = float2(70.0 + 34.0 * index, 56.0 - 10.0 * jump * jump);
-        sprite.axis = float2(1.0 + 0.3 * jump * jump, 0.0);
-        sprite.frame = FRAME_DIGIT_0 + (game.shown / place_of) % 10;
-        sprite.flags = (game.shown < place_of && index != 7 ? 5 : jump > 0.0 ? 2 : 1) << SPRITE_INK;
-    }
-    else if ((index -= 8) < 3)
+    else if ((index -= MARKS) < 3)
     {
         // The lives, as ships. One just lost shrinks away, red.
         uint since = game.tick + 1 - game.life_tick;
@@ -1620,27 +1628,6 @@ float4 particle_fragment(ParticleVertex input) : SV_Target0
     return particle_light(input);
 }
 
-// What the veil says, over everything: where its lines are, and how tall.
-float veil_words(Tables tables, float2 at, bool paused, bool over, uint notice)
-{
-    float ink = 0.0;
-    // What is being said of the tables, along the top, whatever else is.
-    if (notice != 0) ink = max(ink, say_ink(tables, notice - 1, at, float2(960.0, 70.0), 30.0));
-    if (paused)
-    {
-        ink = max(ink, say_ink(tables, SAY_PAUSED, at, float2(960.0, 330.0), 96.0));
-        ink = max(ink, say_ink(tables, SAY_PAUSE_KEYS, at, float2(960.0, 730.0), 34.0));
-        ink = max(ink, say_ink(tables, SAY_PAUSE_WINDOW, at, float2(960.0, 800.0), 26.0));
-        ink = max(ink, say_ink(tables, SAY_PAUSE_PLAY, at, float2(960.0, 860.0), 26.0));
-    }
-    else if (over)
-    {
-        ink = max(ink, say_ink(tables, SAY_OVER, at, float2(960.0, 450.0), 80.0));
-        ink = max(ink, say_ink(tables, SAY_OVER_KEYS, at, float2(960.0, 580.0), 36.0));
-    }
-    return ink;
-}
-
 struct VeilVertex
 {
     float4 position : SV_Position;
@@ -1649,12 +1636,11 @@ struct VeilVertex
     nointerpolation float over : COLOR1;
     nointerpolation float nova : COLOR2;
     nointerpolation float paused : COLOR3;
-    nointerpolation uint notice : COLOR4;   // what is being said of the tables, as a SAY_ plus one
 };
 
-// The last thing drawn, over everything: being hurt reddens the edges of
-// the picture for a moment, a run that is over dims all of it, and a pause
-// dims it and puts its two bars in the middle.
+// Over everything but the words: being hurt reddens the edges of the picture
+// for a moment, a run that is over dims all of it, and a pause dims it and
+// puts its two bars in the middle.
 [shader("vertex")]
 VeilVertex veil_vertex(uint vertex : SV_VulkanVertexID)
 {
@@ -1667,9 +1653,8 @@ VeilVertex veil_vertex(uint vertex : SV_VulkanVertexID)
     result.over = game.state == STATE_OVER ? saturate(float(game.tick - game.over_tick) / 120.0) : 0.0;
     result.nova = game.nova_tick == 0 ? 0.0 : saturate(1.0 - float(game.tick + 1 - game.nova_tick) / 24.0);
     result.paused = (root.flags & ROOT_PAUSED) != 0 ? 1.0 : 0.0;
-    result.notice = game.notice != 0 && game.tick - game.notice_tick < NOTICE_TICKS ? game.notice : 0;
     // With nothing to show it covers nothing.
-    result.position = float4(result.hurt + result.over + result.nova + result.paused > 0.0 || result.notice != 0 ? result.at : float2(0.0, 0.0), 0.0, 1.0);
+    result.position = float4(result.hurt + result.over + result.nova + result.paused > 0.0 ? result.at : float2(0.0, 0.0), 0.0, 1.0);
     return result;
 }
 
@@ -1682,17 +1667,131 @@ float4 veil_fragment(VeilVertex input) : SV_Target0
     // A nova is a flash of white light over everything: it adds.
     float white = input.nova * input.nova * 0.6;
     float4 veil = float4(red * 0.9 + white, red * 0.05 + white, red * 0.02 + white, saturate(red * 0.5 + dim));
-    // Words, where there are any: a run that is over says so, once its veil
-    // has come down, and a pause says what the keys do.
-    float2 place_of = (input.at * 0.5 + 0.5) * float2(PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT);
-    float words = veil_words(root.world.tables, place_of, input.paused != 0.0, input.over >= 1.0, input.notice);
-    if (input.paused == 0.0) return float4(veil.rgb * (1.0 - words) + float3(1.0, 0.86, 0.55) * words, saturate(veil.a + words));
+    if (input.paused == 0.0) return veil;
     // Paused: darker than a run that is over, and the bars, with soft edges.
     float2 place = float2(abs(input.at.x) * float(PLAYFIELD_WIDTH) / float(PLAYFIELD_HEIGHT), abs(input.at.y));
     float bar = saturate((0.028 - abs(place.x - 0.062)) * 220.0) * saturate((0.15 - place.y) * 220.0);
-    bar = max(bar, words);
     float shade = 0.55 * (1.0 - bar);
     return float4(veil.rgb * (1.0 - shade) + float3(0.82, 0.90, 1.0) * bar, saturate(veil.a + shade * (1.0 - veil.a) + bar));
+}
+
+// What is said and what is counted, in type: drawn last, over the veil.
+//
+// The tables' sayings are lines the system laid out once, in whatever script
+// they are written and with whatever glyphs of colors they have in them, and
+// the device says them. Each that may be on the screen has a slot of glyphs
+// here; which glyph an instance is, of which line, where and how, is decided
+// from its number and the game's state, and nothing is set down for it.
+//
+// The score is the ten digits and arithmetic: eight wheels, each of which
+// remembers when it last turned and what from, and turns over in its cell.
+static const uint TYPE_SLOTS = 7, TYPE_GLYPHS = 64;
+static const uint TYPE_INSTANCES = TYPE_SLOTS * TYPE_GLYPHS + 16;  // two to a wheel: the digit coming in, and the one going out
+static const uint LINE_DIGITS = TABLE_SAYS;             // kept after the sayings: keep_says in myhits.asm
+static const uint WHEEL_TICKS = 14;                     // how long a wheel takes to turn over
+static const uint TYPE_PALE = 0xfffff3e9u, TYPE_GOLD = 0xffc3efffu, TYPE_DIM = 0xff99867bu, TYPE_BRIGHT = 0xff89e4ffu;
+
+[shader("vertex")]
+TextVertex type_vertex(uint vertex : SV_VulkanVertexID, uint instance : SV_VulkanInstanceID)
+{
+    World* world = root.world;
+    Text text = *world.text;
+    Game game = *world.game;
+    bool paused = (root.flags & ROOT_PAUSED) != 0;
+    float over = game.state == STATE_OVER ? saturate(float(game.tick - game.over_tick) / 120.0) : 0.0;
+    // How tall a capital is, in ems: the digits stand as tall.
+    Line digits = text_line(text, LINE_DIGITS);
+    float capital = max(-digits.low.y, 0.1);
+    Placed placed = {};
+    float4 clip = TEXT_UNCLIPPED;
+    float light = 1.0, shown = 1.0;
+    bool there = false;
+    if (instance < TYPE_SLOTS * TYPE_GLYPHS)
+    {
+        // A saying: which, where its middle is, how tall its capitals are and
+        // what it is said in. No height, and the slot is empty.
+        uint slot = instance / TYPE_GLYPHS, glyph = instance % TYPE_GLYPHS;
+        uint which = 0, color = TYPE_PALE;
+        float middle = 0.0, high = 0.0, below = 0.0;
+        switch (slot)
+        {
+        case 0:
+            // What is being said of the tables, along the top: it drops in, and fades out.
+            if (game.notice != 0 && game.tick - game.notice_tick < NOTICE_TICKS)
+            {
+                uint since = game.tick - game.notice_tick;
+                which = game.notice - 1; middle = 70.0; high = 30.0; color = TYPE_GOLD;
+                below = -90.0 * (1.0 - ease(EASE_OUT_BACK, saturate((float(since) + root.blend) / 30.0)));
+                shown = saturate(float(NOTICE_TICKS - since) / 40.0);
+            }
+            break;
+        case 1: if (paused) { which = SAY_PAUSED; middle = 330.0; high = 96.0; } break;
+        case 2: if (paused) { which = SAY_PAUSE_KEYS; middle = 730.0; high = 34.0; } break;
+        case 3: if (paused) { which = SAY_PAUSE_WINDOW; middle = 800.0; high = 26.0; } break;
+        case 4: if (paused) { which = SAY_PAUSE_PLAY; middle = 860.0; high = 26.0; } break;
+        case 5: if (!paused && over >= 1.0) { which = SAY_OVER; middle = 450.0; high = 80.0; color = TYPE_GOLD; } break;
+        default: if (!paused && over >= 1.0) { which = SAY_OVER_KEYS; middle = 580.0; high = 36.0; color = TYPE_GOLD; } break;
+        }
+        if (high > 0.0)
+        {
+            // A run that is over says so a glyph at a time, once its veil is
+            // down, each rising into its place; the second line after the first.
+            if (slot >= 5)
+            {
+                float told = (float(game.tick - game.over_tick) - 120.0 - float(slot - 5) * 60.0) / 3.0 - float(glyph);
+                shown = saturate(told);
+                below = 14.0 * (1.0 - ease(EASE_OUT_CUBIC, saturate(told / 6.0)));
+            }
+            Said said;
+            said.line = which;
+            said.across = float2(high / capital, 0.0);
+            said.at = float2(960.0, middle + high * 0.5 + below);
+            said.align = 0.5;
+            said.color = color;
+            there = shown > 0.0 && text_said(text, said, glyph, placed);
+        }
+    }
+    else
+    {
+        // The score: eight cells, the greatest first. Those before its first
+        // digit are dim; all of them jump when it grows; and a wheel that has
+        // just turned shows the digit it turned from going out at the top
+        // and the one it turned to coming in from below, a little too far and
+        // back, with neither drawn outside the cell.
+        uint index = instance - TYPE_SLOTS * TYPE_GLYPHS, cell = index / 2, place = 7 - cell, place_of = 1;
+        for (uint power = 0; power < place; ++power) place_of *= 10;
+        uint digit = (game.shown / place_of) % 10;
+        uint turned = game.digit_tick[place], since = game.tick + 1 - turned;
+        float roll = turned != 0 && since < WHEEL_TICKS ? ease(EASE_OUT_BACK, saturate((float(since) + root.blend) / float(WHEEL_TICKS))) : 1.0;
+        float jump = game.score_tick == 0 ? 0.0 : saturate(1.0 - float(game.tick + 1 - game.score_tick) / 30.0);
+        float size = 56.0 * (1.0 + 0.25 * jump * jump), wide = digits.step * size;
+        // (They grow about the middle of the eight, and lift.)
+        float2 at = float2(54.0 + 4.0 * digits.step * 56.0 + (float(cell) - 4.0) * wide, 76.0 - 8.0 * jump * jump);
+        clip = float4(at.x, at.y + digits.low.y * size - 3.0, at.x + wide, at.y + digits.high.y * size + 3.0);
+        float travel = clip.w - clip.y;
+        if ((index & 1) == 0) at.y += (1.0 - roll) * travel;
+        else
+        {
+            digit = (game.digit_was >> (place * 4)) & 15;
+            at.y -= roll * travel;
+        }
+        uint color = game.shown < place_of && place != 0 ? TYPE_DIM : jump > 0.0 ? TYPE_BRIGHT : 0xffffffffu;
+        there = ((index & 1) == 0 || roll < 1.0) && text_one(text, LINE_DIGITS, min(digit, 9u), at, float2(size, 0.0), color, placed);
+        // It is of the HUD, which is under the veil: a pause dims it, and a run that is over.
+        light = paused ? 0.45 : 1.0 - 0.45 * over;
+    }
+    if (!there) placed.across = float2(0.0, 0.0);
+    TextVertex result = text_corner(text, placed, vertex, clip);
+    result.color.rgb *= light;
+    result.color.a *= shown;
+    return result;
+}
+
+[shader("fragment")]
+float4 type_fragment(TextVertex input) : SV_Target0
+{
+    float alpha = text_ink(*root.world.text, input) * input.color.a;
+    return float4(input.color.rgb * alpha, alpha);
 }
 
 struct BackdropVertex

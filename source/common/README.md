@@ -46,7 +46,6 @@ addresses.
 | [particles.slang](particles.slang) | A ring of particles in styles, with a cap a tick for each |
 | [chains.slang](chains.slang) | A head and segments that go exactly where it went |
 | [sounds.slang](sounds.slang) | Sounds and stems rendered from recipes, on the device |
-| [letters.slang](letters.slang) | Words with no texels behind them: a letter is some of twenty strokes in its cell, sharp at any size; what is said is in the tables |
 | [text.inc](text.inc), [text.slang](text.slang) | Text as the system has it: DirectWrite, called from assembly, shapes a string in any script and gives each glyph's outline once; the device takes the curves into memory of its own, makes bands of them and draws them by the Slug algorithm, at any size and angle, with no texels. A glyph of colors is its font's layers. A line laid out once is kept, and said wherever and however the device likes; a number is the ten digits and arithmetic. A program's own shapes go the same way |
 
 Each is proved by a program in [myhits\proofs](../myhits/proofs/README.md),
