@@ -392,6 +392,8 @@ shared TEXT_GLYPHS,4096			; so that a number can be made to fall inside by maski
 shared TEXT_BANDS,131072
 shared TEXT_LISTS,1048576
 shared TEXT_PLACED,16384
+shared TEXT_LAID,16384			; glyphs of lines that are kept
+shared TEXT_LINES,256			; lines that are kept
 shared TEXT_BANDS_MOST,32		; the most bands a glyph is cut into, each way
 shared TEXT_EXAMINED_MOST,160		; the most places, each way, a glyph is examined at: two and a half ems at the finer size
 boundary Curve
@@ -447,16 +449,50 @@ boundary Examined
 	u32 twice			; places enclosed more than once
 	u32 spare
 end boundary
+; A line that is kept: laid out once by the system, and then said as often
+; and wherever a program likes with nothing asked of the system again. A glyph
+; of it is where the system put it, from the left end of the line's baseline,
+; in ems of the line's own size.
+boundary Laid
+	f32x2 at
+	u32 glyph
+	u32 color			; R G B A, as a texel, if its font gave it one; nothing, and it takes the color it is said in
+end boundary
+boundary Line
+	u32 first			; its glyphs, among all that are laid
+	u32 count
+	f32 wide			; how far it advances, in ems
+	f32 step			; the furthest any one glyph of it advances: a cell, for a line that is the ten digits
+	f32x2 low			; the box of its ink, from the left end of its baseline, in ems
+	f32x2 high
+	f32 rise			; how far its baseline is below the top of the row the system gave it,
+	f32 tall			; and how tall that row is
+end boundary
+; What the CPU writes is staged, where it can see it; what is drawn from is
+; the device's own, and is taken from what is staged when text is built. Only
+; what is set down for the moment is read where the CPU wrote it.
 boundary Text
-	ptr curves,Curve
+	ptr curves,Curve		; the device's own
 	ptr glyphs,Glyph
+	ptr laid,Laid
+	ptr lines,Line
 	ptr bands,Band
 	ptr lists,uint
-	ptr placed,Placed
+	ptr placed,Placed		; staged, and read there
 	ptr census,TextCensus
 	ptr examined,Examined		; what examining each glyph came to, while it is being examined
+	ptr staged_curves,Curve
+	ptr staged_glyphs,Glyph
+	ptr staged_laid,Laid
+	ptr staged_lines,Line
+	u32 curve_count
+	u32 curve_from			; the first of each that the device has not yet taken:
 	u32 glyph_count
+	u32 glyph_from			; nothing at or past it is drawn
+	u32 laid_count
+	u32 laid_from
 	u32 band_count
 	u32 band_from			; the first band not yet built: what the building passes begin at
 	u32 placed_count
+	u32 taken			; how often the device has taken anything: until it has, no line is kept
 end boundary

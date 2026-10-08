@@ -26,7 +26,7 @@ build.cmd myhits-survey
 
 So do pictures. A scripted run draws to a window nobody sees, so proofs 04
 to 08 each leave `frame_NNN.png` there: the whole playfield at 1920×1080, at
-the frames of the script worth looking at. The text proof's three are its
+the frames of the script worth looking at. The text proof's four are its
 pages. The game's twenty-five are its swoopers,
 its weavers, the worm coming and then turned back on itself, the turrets
 firing with the level stopped, the run over; and of the second game three
@@ -51,7 +51,7 @@ top of an empty field, and the five that then came where three had been.
 | 05 | [hits](05_hits/arena.asm) | What is drawn is what is hit, by its mask, at any angle, size and speed; what is hit takes it and dies of it; a hit throws off exactly the particles and sounds it should; a touch hurts the ship and a near miss does not | Passes, with two findings |
 | 06 | [sound](06_sound/board.asm) | The bank the device renders is the recipes'; a sound asked for in one frame's events is on a voice as the next begins; many in a frame are one voice at their mean | Passes, with three findings |
 | 07 | [game](../myhits.asm) | The game itself: what comes is what the table says; a chain follows its head exactly and dies with it; only the director makes a body; rank reads the shooting; a hurt costs a life, once; the level stops for what is anchored to it and moves on | Passes, with two findings |
-| 08 | [text](08_text/page.asm) | Strings the system shaped are drawn from their outlines on the device, by the Slug algorithm, with no texels: the bands lose nothing; the ink is the outlines' at any size and angle; and it is what GDI+ makes of the same fonts | Passes, with seven findings |
+| 08 | [text](08_text/page.asm) | Strings the system shaped are drawn from their outlines on the device, by the Slug algorithm, with no texels: the bands lose nothing; the ink is the outlines' at any size and angle; it is what GDI+ makes of the same fonts; a glyph of colors is its font's layers; and a line laid out once is said, and a number set down, by the device alone | Passes, with eight findings |
 
 ## 00 survey
 
@@ -1030,7 +1030,7 @@ powershell -File source\myhits\proofs\08_text\pictures.ps1
 powershell -File source\myhits\proofs\08_text\bite.ps1
 ```
 
-**To look at.** Run it without arguments. Three pages turn by themselves,
+**To look at.** Run it without arguments. Four pages turn by themselves,
 every four seconds or so.
 
 - *Scripts.* `AVATAR` is kerned: the A and the V lean into each other.
@@ -1041,10 +1041,20 @@ every four seconds or so.
   has no Hebrew, Devanagari or Japanese in it: the system found fonts that
   do. Bottom right, two discs that are no font's, one over part of the
   other, drawn as the one shape they make, with no seam where they cross.
+  Top right, a face, a rocket, a heart, a rainbow and a mark, from a font
+  of colors: each is several outlines, one over another, in its font's own
+  colors.
 - *Sizes.* One sentence from 7 pixels to the em to 96, and two paragraphs
   at 9 and 7. The small ones are still letters.
 - *Angles.* One string at twelve angles about a point, a g seven hundred
   pixels tall, and a line of Times turned a little.
+- *Kept.* One line laid out once and said by the device five ways: as the
+  system set it, at twice the size, turned, about its middle in gold, and
+  with a face and a rocket in it that keep their colors whatever the line
+  is said in, even half there. Below, a number the device set down from ten
+  kept digits, beside the same digits as the system lays them out; and a
+  counter turning over, three of its wheels at once, each digit cut off at
+  the edge of its cell.
 
 Drag the window larger and smaller: the text is drawn again from its
 outlines at whatever size the window is, and is as sharp at any.
@@ -1074,15 +1084,37 @@ part of itself that an edge cuts off counted as a part. Nothing about a
 glyph's size or angle is kept: the same curves draw it at seven pixels and
 at seven hundred.
 
-A frame's traffic is what it was. Setting text down is what a program does
-when what it says changes, between frames.
+What the CPU writes is staged, where it can see it; and when text is built
+the device takes what is new into memory of its own, one pass, a thread to
+a curve. Everything a pixel reads is there. Nothing is drawn, and no line
+said, of what the device has not yet taken.
+
+A glyph whose font has colors is asked of the system as layers
+(`TranslateColorGlyphRun`, which is in every Windows since 8.1): each layer
+is a run of ordinary glyphs with a color from the font's palette, or with
+none, which means the text's own. They are set down one over another, and
+that is all a glyph of colors is.
+
+A line can be kept (`text_keep`): laid out once, and what the system made
+of it stored as where each glyph lies from the left end of its baseline, in
+ems, with its font's color if it has one. From then on the device says it:
+whatever draws fills in where, how large, turned how, in what color, asks
+for the glyph numbered so-and-so of the line (`text_said`), and may move,
+color or clip that glyph before it is drawn. No list of what is on the
+screen is kept anywhere. A number is the same with less: the ten digits are
+a kept line, and which of them stands in which cell is arithmetic
+(`text_one`).
+
+A frame's traffic is what it was. Setting text down, or keeping it, is what
+a program does when what it says changes, between frames.
 
 A program can also give a shape of its own to the same sink a font gives a
 glyph to (`text_shape`), and set it down where it likes (`text_put`).
 
-**The checks.** Nine the program makes of itself, on 60 scripted frames of
-three pages; four that [pictures.ps1](08_text/pictures.ps1) makes of the
-pictures the run leaves; and one of what it cost.
+**The checks.** Eleven the program makes of itself, on 80 scripted frames
+of four pages; seven that [pictures.ps1](08_text/pictures.ps1) makes of the
+pictures the run leaves, some of them the other half of one the program
+began; and one of what it cost.
 
 | # | Claim | How it is held |
 | --- | --- | --- |
@@ -1094,23 +1126,30 @@ pictures the run leaves; and one of what it cost.
 | 6 | The rays count what the curves enclose, and what lies over itself is drawn once | On the device, how often each place of a glyph is enclosed, summed, comes to the area the CPU found from the curves alone, within a fiftieth. What is drawn of it comes to the same where nothing is enclosed twice, and to less where something is. And the two discs, whose answer is known beforehand: 0.5655 of a square em enclosed, 0.4549 covered, each found within 0.005 |
 | 7 | A line's ink is its outlines' | On the picture, at 13 pixels to the em and more, the ink in a line's box is what its outlines enclose at its size, within a hundredth and a half. The Arabic, the Devanagari and the mixed line may have up to a twenty-fifth less: see the first finding |
 | 8 | Root goes down and Events come up, and nothing else | Counters |
-| 9 | Text is made ready in builds of three passes; a frame is one pass and one draw | Counters. Setting a page whose glyphs are all known builds nothing |
+| 9 | Text is made ready in builds of four passes; a frame is one pass and one draw | Counters. Setting a page whose glyphs are all known builds nothing, and takes nothing |
 | 10 | Small text loses nothing | Below 13 pixels to the em a line is never lighter than its outlines, and heavier by no more than a tenth |
 | 11 | Turned, a line weighs what it did | Every turned line has its outlines' ink inside its own box, turned as it is turned, within a hundredth and a half; and one string at twelve angles weighs the same at each within a hundredth |
 | 12 | It is what a second hand makes of the same fonts | [ink.cs](08_text/ink.cs) asks GDI+ for the pangram's outline at eleven sizes and finds its area from the corners of the path. text.inc's count is within a quarter of a hundredth of it at every size, and the picture's ink is held to it as it was to text.inc's. A bold g at 700 pixels to the em has GDI+'s ink within a hundredth, and the box of its ink on the picture is GDI+'s box of its outline within a quarter of a pixel, each edge |
 | 13 | A page costs the device little to draw | Each page's draw, by the device's clock, is within a millisecond: many times what it costs, so that only a regression fails |
+| 14 | A glyph of colors is its font's layers | A letter of Segoe UI comes in no layers; a grinning face comes in several, not all one color. The layers the system made of it, by glyph, color and place in the palette, are the ones ink.cs reads from the COLR and CPAL tables of the font's own file. On the picture at least three of the face's colors are there, each over thirty pixels and more, and the letters beside it, which have no color of their own, are the gold the line was said in |
+| 15 | A line that is kept is the line | It has as many glyphs as the same string set down; one with a face in it has glyphs of their font's colors and glyphs of none. On the picture, the kept line said by the device and the string set down by the CPU, 960 apart, are one picture within a two-hundredth of its ink; at twice the size it has four times the ink; turned, as much, in its own turned box; about its middle, as much about that middle, and nothing beside |
+| 16 | A number is the device's to set down | Eight digits set down from the ten that are kept, and the same digits laid out by the system as a string, in a font whose digits are one width, are one picture within a two-hundredth. A counter turning over has ink in its cells, and none above or below them |
+| 17 | What is drawn from is the device's own | The curves, the glyphs and the kept lines the device reads are in memory that was never mapped, and it has taken into it everything the CPU staged |
 
-Last result here, GTX 1080 Ti, default and validation alike: all thirteen
-hold. 152 glyphs of 8 fonts in 4,341 curves; 4,074 bands, the longest of 30
-curves; 148 glyphs examined at 226,941 places with no band at fault. The
+Last result here, GTX 1080 Ti, default and validation alike: all seventeen
+hold. 198 glyphs of 10 fonts in 5,265 curves; 4,978 bands, the longest of 30
+curves; 194 glyphs examined at 304,496 places with no band at fault. The
 rays' count is within 0.8% of the curves' area for every glyph. The two
-discs enclose 0.5657 and cover 0.4551. On the pictures, the 16 lines of
+discs enclose 0.5657 and cover 0.4551. On the pictures, the 18 lines of
 ordinary size that do not join are within 0.89% of their outlines; twelve
 angles weigh the same within 0.19%; GDI+ counts the pangram's outlines within
 0.11% of text.inc at every size; and the four edges of the 700 pixel g's ink
-are within 0.003 of a pixel of where GDI+ has its outline. The three pages
-cost the device about 50, 35 and 35 microseconds to draw: the first has 752
-glyphs on it.
+are within 0.003 of a pixel of where GDI+ has its outline. A grinning face
+is six layers in four colors, as its font's tables have it, and all four are
+on the picture. The kept line said by the device and the line set down, and
+the number set down by the device and the system's, differ by no pixel at
+all. The four pages cost the device about 40, 30, 30 and 25 microseconds to
+draw: the first has some eight hundred glyphs on it.
 
 **The checks bite.** [bite.ps1](08_text/bite.ps1) breaks one thing at a
 time, builds, runs and says what failed, then puts everything back. Each of
@@ -1128,6 +1167,10 @@ these fails the check it is listed under and no earlier one:
 | 10 | No margin round a glyph's box |
 | 11 | Glyphs moved round with their line and not turned with it |
 | 12 | A cubic's control point used as its quadratic's |
+| 14 | Every layer given the text's color; and a font's blue taken for its red |
+| 15 | A kept glyph measured from the top of its row, not its baseline; and a line said from its end whatever was asked |
+| 16 | Every cell given the first digit; and nothing cut off at a cell's edge |
+| 17 | The device given the staged curves to draw from |
 
 Every one of them changes arithmetic, an order, or what the CPU hands over.
 None leaves a shader reading what was never written: that kind is reasoned
@@ -1186,6 +1229,21 @@ a turn that is 1.4 times a pixel, so its edges are spread over that much.
 The weight is unchanged, which is what claim 11 measures; the softness was
 reasoned and looked at, not measured.
 
+**Finding: memory of its own is worth a tenth to a fifth of a page.** Text
+was first drawn from where the CPU wrote the curves, which on this device
+is the machine's memory and not the card's. With the curves, the glyphs and
+the kept lines taken into device memory, the three pages that were drawn
+both ways cost 46, 36 and 36 microseconds where they had cost 57, 39 and
+43, run turn and turn about four times; and the first of them had gained a
+line of five glyphs in fifty-six layers in between.
+
+**Finding: a font's digits are not all one width.** Bahnschrift's are not:
+its 1 is narrower than its 0, and the system closes them up. A number set
+in cells of the widest digit's width, each digit in the middle of its cell,
+does not jump about as it counts; the system's own layout of it would. The
+claim that the device's number is the system's picture is made in Segoe UI,
+whose digits are all one width.
+
 **Finding: what DirectWrite wants of a caller in assembly.** A float among
 the first four arguments goes in the XMM register of its position and
 nowhere else; one on the stack is its bits. A point passed by value is eight
@@ -1196,12 +1254,12 @@ address is only a name for it while the face is held. A run that goes
 backward begins at its right-hand end, and its pen moves before each glyph,
 not after.
 
-**Not done.** Colour glyphs, which are layers of outlines with a colour
-each. Underlines and strikings-through, which the layout offers and this
+**Not done.** Glyphs of colors that are more than layers of flat color:
+gradients, which newer fonts have and which need a later interface than the
+one used here; such a glyph is drawn as the flat layers its font also
+carries. Underlines and strikings-through, which the layout offers and this
 declines. Subpixel colour. A glyph, once known, is never forgotten: there is
-room for 4,096 of them in 65,536 curves. And a number that changes every
-frame should not be laid out by the system every frame: the score stays with
-the letters of twenty strokes until glyphs can be set down by the device.
+room for 4,096 of them in 65,536 curves. A kept line is one row.
 
 **For a hand.** Nobody has yet looked at it in a window but in pictures:
 whether the pages turn, whether resizing keeps it sharp, and how the small

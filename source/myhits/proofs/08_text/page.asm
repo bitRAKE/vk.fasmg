@@ -1,9 +1,10 @@
 ; Proof 08, text: strings the system shaped, drawn from their outlines on the
-; device, by the Slug algorithm. Three pages: one of scripts, one of sizes,
-; one of angles. And one shape that is no font's, on the first.
+; device, by the Slug algorithm. Four pages: one of scripts, one of sizes,
+; one of angles, and one of lines that are kept and numbers the device sets
+; down for itself. And one shape that is no font's, on the first.
 ;
 ;	build\myhits_text.exe			watch it; the pages turn by themselves
-;	build\myhits_text.exe --self-test	60 scripted frames, every claim checked
+;	build\myhits_text.exe --self-test	80 scripted frames, every claim checked
 ;
 ; What each check settles is in ..\README.md.
 MACHINE_NAME equ 'myhits proof 08: text'
@@ -13,16 +14,22 @@ include '..\..\..\common\machine.inc'
 include '..\..\..\common\files.inc'
 include '..\..\..\common\text.inc'
 
-PAGES := 3
+PAGES := 4
+KEPT_HELLO := 0				; the lines that are kept
+KEPT_COLOUR := 1
+KEPT_DIGITS := 2
+KEPT_FIGURES := 3
+KEPT_LINES := 4
+KEPT_INSTANCES := 6*64+8+16		; what the device says of them, on the last page: kept_corner in page.slang
 PAGE_FRAMES := 20			; a scripted run shows each page this long
 SCRIPT_FRAMES := PAGES * PAGE_FRAMES
 STAMP_DIRECT := 1
-STAMP_PAGE := 2				; and the two after it: what each page's draw cost
+STAMP_PAGE := 2				; and the three after it: what each page's draw cost
 public mainCRTStartup
 
 ; The world's header, which the CPU writes: World in page.slang.
 boundary PageWorld
-	block text,Text
+	ptr text,Text
 end boundary
 
 ; A line of a page, as the tables below have it.
@@ -39,11 +46,12 @@ LINE_BYTES := 40
 FACE_BYTES := 16
 page.faces = 0
 page.lines = 0
-macro page_face name*,family*,size*,weight:400
+macro page_face name*,family*,size*,weight:400,stretch:5
 	FACE_#name := page.faces
 	page.faces = page.faces + 1
 	dq family
-	dd size,weight
+	dd size
+	dw weight,stretch
 end macro
 macro page_line number*,face_name*,x*,y*,wide*,ink*,turn*,string*
 	dd number,FACE_#face_name
@@ -79,11 +87,15 @@ proc create_world uses rbx rsi rdi
 	mov [failure_stage],3
 	require_ok fastcall create_buffer,addr header_buffer,sizeof.PageWorld,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,MEMORY_UPLOAD
 	require_ok fastcall text_start
-	mov rcx,[header_buffer.mapped]
-	require_ok fastcall text_create,rcx,addr header_buffer
+	fastcall text_create
+	test rax,rax
+	jz .failed
+	mov rdx,[header_buffer.mapped]
+	mov [rdx+PageWorld.text],rax
+	require_ok fastcall flush_buffer,addr header_buffer
 	mov rax,[header_buffer.address]
 	mov [root+Root.world],rax
-	iterate name, text_count,text_place,text_fill,text_examine,text_judge,direct
+	iterate name, text_take,text_count,text_place,text_fill,text_examine,text_judge,direct
 		require_ok fastcall machine_compute,addr name#_code,name#_code.size,addr name#_pipeline
 	end iterate
 	require_ok fastcall machine_graphics,addr text_vertex_code,text_vertex_code.size,addr text_fragment_code,text_fragment_code.size,BLEND_PREMULTIPLIED,addr text_pipeline
@@ -92,7 +104,9 @@ proc create_world uses rbx rsi rdi
 	lea rdi,[formats]
 	mov ebx,FACES
 .format:
-	fastcall text_format,qword [rsi],dword [rsi+8],dword [rsi+12]
+	movzx r8d,word [rsi+12]
+	movzx r9d,word [rsi+14]
+	fastcall text_format,qword [rsi],dword [rsi+8],r8,r9
 	test rax,rax
 	jz .failed
 	mov [rdi],rax
@@ -108,6 +122,7 @@ proc create_world uses rbx rsi rdi
 	mov eax,[test_mode]
 	mov [text_checking],eax
 	fastcall check_shaping
+	fastcall check_colour
 	fastcall check_cubic
 	; A shape of this program's own, which the device will examine with the
 	; rest: its curves are cubics in earnest, and are cut.
@@ -118,6 +133,12 @@ proc create_world uses rbx rsi rdi
 	mov eax,[text_cut]
 	sub eax,[shape_cut]
 	mov [shape_cut],eax
+	; Four lines are kept: laid out once here, and said by the device from
+	; then on. The ten digits are two of them, in two fonts.
+	iterate <line,string,face>, KEPT_HELLO,said_kept,FACE_segoe40, KEPT_COLOUR,said_ready,FACE_segoe64, KEPT_DIGITS,said_digits,FACE_bahn64, KEPT_FIGURES,said_digits,FACE_segoe64
+		fastcall text_keep,line,addr string,string#.units,[formats+face*8]
+		mov [kept_glyphs+line*4],eax
+	end iterate
 	xor ebx,ebx
 .page:
 	fastcall page_set,rbx
@@ -140,7 +161,7 @@ proc create_world uses rbx rsi rdi
 endp
 
 proc release_world uses rbx
-	iterate name, text_count,text_place,text_fill,text_examine,text_judge,direct,text
+	iterate name, text_take,text_count,text_place,text_fill,text_examine,text_judge,direct,text
 		cmp [name#_pipeline],0
 		je .skip_#name
 		vkDestroyPipeline [device],[name#_pipeline],0
@@ -186,7 +207,7 @@ proc page_set uses rbx rsi rdi r12,number
 	mov [line_format],rax
 	fastcall text_set,qword [rsi+LINE_STRING],dword [rsi+LINE_UNITS],[line_format],dword [rsi+LINE_X],dword [rsi+LINE_Y],dword [rsi+LINE_WIDTH],dword [rsi+LINE_COLOR]
 	iterate <kept,value>, line_glyphs,eax, line_runs,[text_runs], line_backward,[text_backward], line_advance,[text_advance], line_wide,[text_metrics.width_with_trailing], \
-		line_rows,[text_metrics.lines], line_top,[text_metrics.top], line_tall,[text_metrics.height], line_ink,[text_ink]
+		line_rows,[text_metrics.lines], line_top,[text_metrics.top], line_tall,[text_metrics.height], line_ink,[text_ink], line_layers,[text_layered]
 		match =eax, value
 		else
 			mov eax,value
@@ -304,6 +325,46 @@ proc check_shaping
 	ret
 endp
 
+; 14, in part: a font of colors gives its glyphs in layers. A letter of Segoe
+; UI is no layers at all; a face from the font the system finds for it is
+; several, in more than one color. What they are is kept, for the proof
+; runner to hold to the font's own tables.
+proc check_colour uses rsi rdi
+	fastcall measure,addr said_a,1,FACE_segoe64
+	cmp [text_layered],0
+	jne .wrong
+	fastcall measure,addr said_grin,said_grin.units,FACE_segoe64
+	mov eax,[text_seen]
+	mov [colour_glyph],eax
+	mov eax,[text_layered]
+	mov [colour_layers],eax
+	cmp eax,2
+	jb .wrong
+	lea rsi,[text_layers_seen]
+	lea rdi,[colour_seen]
+	mov ecx,TEXT_LAYERS_SEEN*3
+	rep movsd
+	; Not all one color.
+	mov ecx,[colour_layers]
+	cmp ecx,TEXT_LAYERS_SEEN
+	jbe .listed
+	mov ecx,TEXT_LAYERS_SEEN
+.listed:
+	lea rsi,[colour_seen]
+	mov eax,[rsi+4]
+.each:
+	cmp eax,[rsi+4]
+	jne .colours
+	add rsi,12
+	dec ecx
+	jnz .each
+.wrong:
+	xor esi,esi
+	fail 14
+.colours:
+	ret
+endp
+
 ; 2, in part: a cubic that is no raised quadratic is cut in eight, and the
 ; eight lie on it. A quarter of a circle is given to the sink as the cubic
 ; that draws one, which is itself within three ten-thousandths of the circle:
@@ -384,7 +445,7 @@ proc play_frame
 	jz .turning
 	; The script: each page for twenty frames. Setting one is not a frame's
 	; traffic, and is not done in one: it is done between two.
-	iterate <when,number>, PAGE_FRAMES,1, 2*PAGE_FRAMES,2
+	iterate <when,number>, PAGE_FRAMES,1, 2*PAGE_FRAMES,2, 3*PAGE_FRAMES,3
 		cmp dword [root+Root.frame],when
 		jne .kept_#number
 		fastcall page_set,number
@@ -417,7 +478,7 @@ proc play_frame
 	fastcall machine_canvas
 	fastcall draw_world
 	; The scripted run leaves a picture of each page.
-	iterate when, 5,25,45
+	iterate when, 5,25,45,65
 		cmp dword [root+Root.frame],when
 		jne .no_#when
 		fastcall snapshot_take,when
@@ -432,10 +493,15 @@ proc play_frame
 	ret
 endp
 
-; Everything a frame draws: the glyphs that are set down, six vertices to each.
+; Everything a frame draws: the glyphs that are set down, six vertices to
+; each; and, on the last page, as many again as the device may say for itself.
 proc draw_world
 	mov rax,[text_block]
 	mov r8d,[rax+Text.placed_count]
+	cmp [page_now],3
+	jne .draw
+	add r8d,KEPT_INSTANCES
+.draw:
 	fastcall machine_draw,[text_pipeline],6,r8
 	mov ecx,[page_now]
 	add ecx,STAMP_PAGE
@@ -588,13 +654,18 @@ proc scripted_run uses rbx rsi rdi
 .traffic_wrong:
 	fail 8
 .traffic:
-	; 9: builds of three passes each, more than one of them, and two passes of
-	; examining made the text ready; after that a frame is one pass and one draw, and
+	; 9: the text was made ready in builds of four passes each, more than one
+	; of them, takings of one pass where there was no band to build, and two
+	; passes of examining; after that a frame is one pass and one draw, and
 	; setting a page whose glyphs are all known builds nothing.
 	cmp [text_builds],2
 	jb .commands
-	imul eax,[text_builds],TEXT_PASSES
+	mov eax,[text_builds]
+	imul eax,eax,TEXT_PASSES-1
+	add eax,[text_takes]
 	add eax,2
+	cmp eax,[text_dispatched]
+	jne .commands
 	cmp [startup_dispatches],eax
 	jne .commands
 	cmp [dispatch_count],SCRIPT_FRAMES
@@ -604,8 +675,73 @@ proc scripted_run uses rbx rsi rdi
 .commands:
 	fail 9
 .lines:
+	; 15, in part: a line that is kept is the line. It has as many glyphs as
+	; the same string has set down; the ten digits are ten glyphs; and the
+	; line with a face and a rocket in it has glyphs of their font's colors
+	; and glyphs of none.
+	mov eax,[kept_glyphs+KEPT_HELLO*4]
+	test eax,eax
+	jle .kept_wrong
+	cmp eax,[line_glyphs+LINE_KEPT*4]
+	jne .kept_wrong
+	cmp [kept_glyphs+KEPT_DIGITS*4],10
+	jne .kept_wrong
+	cmp [kept_glyphs+KEPT_FIGURES*4],10
+	jne .kept_wrong
+	mov rdx,[text_line_buffer.mapped]
+	mov ecx,[rdx+KEPT_COLOUR*sizeof.Line+Line.count]
+	mov eax,[rdx+KEPT_COLOUR*sizeof.Line+Line.first]
+	imul eax,eax,sizeof.Laid
+	add rax,[text_laid_buffer.mapped]
+	xor r8d,r8d
+	xor r9d,r9d
+.laid:
+	test ecx,ecx
+	jz .counted
+	cmp dword [rax+Laid.color],0
+	setne dl
+	movzx edx,dl
+	add r8d,edx
+	xor edx,1
+	add r9d,edx
+	add rax,sizeof.Laid
+	dec ecx
+	jmp .laid
+.counted:
+	mov [kept_coloured],r8d
+	mov [kept_plain],r9d
+	cmp r8d,4
+	jb .kept_wrong
+	cmp r9d,5
+	jae .kept
+.kept_wrong:
+	fail 15
+.kept:
+	; 17: what is drawn from is the device's own. The curves, the glyphs and
+	; the kept lines the device reads are in memory the CPU has no way to
+	; see, and the device has taken into it everything the CPU has staged.
+	mov rax,[text_block]
+	iterate <member,home>, curves,text_curve_home, glyphs,text_glyph_home, laid,text_laid_home, lines,text_line_home
+		cmp [home.mapped],0
+		jne .own_wrong
+		mov rdx,[home.address]
+		cmp [rax+Text.member],rdx
+		jne .own_wrong
+	end iterate
+	iterate <from,count>, curve_from,curve_count, glyph_from,glyph_count, laid_from,laid_count, band_from,band_count
+		mov edx,[rax+Text.count]
+		cmp [rax+Text.from],edx
+		jne .own_wrong
+	end iterate
+	cmp dword [rax+Text.curve_from],1000
+	jae .own
+.own_wrong:
+	fail 17
+.own:
 	fastcall write_lines
+	fastcall write_kept
 	fastcall write_glyphs
+	fastcall write_layers
 	jmp .report
 .broken:
 	mov [app_io_failed],1
@@ -634,6 +770,11 @@ proc scripted_run uses rbx rsi rdi
 		[text_raised],[text_cut],[cubic_pieces],[cubic_whole],[text_runs_held],[text_runs_apart],[apart_whole],[found_examined],[found_samples],[found_band_faults],[found_area_faults],[found_worst_area],[shaped], \
 		[shaped_av_whole],[shaped_a_whole],[shaped_fi],[shaped_ksha],[text_lost],[text_builds]
 	mov ebx,eax
+	lea rcx,[report_text]
+	lea rcx,[rcx+rbx*2]
+	fastcall wsprintfW,rcx,<W,'takes=%u',13,10,'layers_made=%u',13,10,'colour_layers=%u',13,10,'kept_glyphs=%u',13,10,'kept_coloured=%u',13,10,'kept_plain=%u',13,10,'laid=%u',13,10>, \
+		[text_takes],[text_layers_made],[colour_layers],[kept_glyphs+KEPT_HELLO*4],[kept_coloured],[kept_plain],[text_laid_count]
+	add ebx,eax
 	lea rcx,[report_text]
 	lea rcx,[rcx+rbx*2]
 	fastcall wsprintfW,rcx,<W,'cover_faults=%u',13,10,'overlapped=%u',13,10,'shape_cut=%u',13,10,'shape_area_millionths=%u',13,10,'shape_wound_millionths=%u',13,10,'shape_covered_millionths=%u',13,10, \
@@ -706,8 +847,11 @@ proc write_lines uses rbx rsi rdi r12
 	lea rdx,[faces]
 	cvtss2si eax,dword [rdx+rax+8]
 	mov [line_size],eax
-	fastcall wsprintfW,addr title_text,<W,'%u %u %d %d %d %d %d %u %u %u %u %u %d %u',13,10>,rbx,dword [rsi+LINE_PAGE],[line_x_whole],[line_y_whole],[line_top_whole],[line_tall_whole],[line_wide_whole], \
-		[line_ink_whole],[line_glyphs_now],[line_runs_now],[line_backward_now],[line_rows_now],[line_turned],[line_size]
+	lea rax,[line_layers]
+	mov eax,[rax+rbx*4]
+	mov [line_layers_now],eax
+	fastcall wsprintfW,addr title_text,<W,'%u %u %d %d %d %d %d %u %u %u %u %u %d %u %u',13,10>,rbx,dword [rsi+LINE_PAGE],[line_x_whole],[line_y_whole],[line_top_whole],[line_tall_whole],[line_wide_whole], \
+		[line_ink_whole],[line_glyphs_now],[line_runs_now],[line_backward_now],[line_rows_now],[line_turned],[line_size],[line_layers_now]
 	lea r8d,[eax*2]
 	fastcall file_more,r12,addr title_text,r8
 	add rsi,LINE_BYTES
@@ -726,9 +870,62 @@ proc write_lines uses rbx rsi rdi r12
 	cvtss2si eax,[shape_y]
 	sub eax,[line_tall_whole]
 	mov [line_y_whole],eax
-	fastcall wsprintfW,addr title_text,<W,'%u 0 %d %d 0 %d %d %u 1 0 0 1 0 %d',13,10>,rbx,[line_x_whole],[line_y_whole],[line_tall_whole],[line_tall_whole],[line_ink_whole],[line_tall_whole]
+	fastcall wsprintfW,addr title_text,<W,'%u 0 %d %d 0 %d %d %u 1 0 0 1 0 %d 0',13,10>,rbx,[line_x_whole],[line_y_whole],[line_tall_whole],[line_tall_whole],[line_ink_whole],[line_tall_whole]
 	lea r8d,[eax*2]
 	fastcall file_more,r12,addr title_text,r8
+	fastcall file_done,r12
+	ret
+endp
+
+; The lines that are kept, as the device has them: how many glyphs, and in
+; thousandths of an em how wide, the step, the box of the ink, how far the
+; baseline is below the top of its row, and how tall the row is.
+proc write_kept uses rbx rsi r12
+	fastcall file_begin,<W,'build\myhits_text.kept.txt'>
+	mov r12,rax
+	mov rsi,[text_line_buffer.mapped]
+	xor ebx,ebx
+.line:
+	iterate <whole,from>, kept_wide,Line.wide, kept_step,Line.step, glyph_left,Line.low, glyph_top,Line.low+4, glyph_right,Line.high, glyph_bottom,Line.high+4, kept_rise,Line.rise, kept_tall,Line.tall
+		movss xmm0,dword [rsi+from]
+		mulss xmm0,[thousand]
+		cvtss2si eax,xmm0
+		mov [whole],eax
+	end iterate
+	fastcall wsprintfW,addr title_text,<W,'%u %u %d %d %d %d %d %d %d %d',13,10>,rbx,dword [rsi+Line.count],[kept_wide],[kept_step],[glyph_left],[glyph_top],[glyph_right],[glyph_bottom],[kept_rise],[kept_tall]
+	lea r8d,[eax*2]
+	fastcall file_more,r12,addr title_text,r8
+	add rsi,sizeof.Line
+	inc ebx
+	cmp ebx,KEPT_LINES
+	jb .line
+	fastcall file_done,r12
+	ret
+endp
+
+; The layers the system made of one face: the glyph it is in its font and how
+; many layers; then each layer's glyph, its color as a texel's bytes, and
+; which of the font's colors that is.
+proc write_layers uses rbx rsi r12
+	fastcall file_begin,<W,'build\myhits_text.layers.txt'>
+	mov r12,rax
+	fastcall wsprintfW,addr title_text,<W,'%u %u',13,10>,[colour_glyph],[colour_layers]
+	lea r8d,[eax*2]
+	fastcall file_more,r12,addr title_text,r8
+	lea rsi,[colour_seen]
+	xor ebx,ebx
+.layer:
+	cmp ebx,[colour_layers]
+	jae .done
+	cmp ebx,TEXT_LAYERS_SEEN
+	jae .done
+	fastcall wsprintfW,addr title_text,<W,'%u %08X %u',13,10>,dword [rsi],dword [rsi+4],dword [rsi+8]
+	lea r8d,[eax*2]
+	fastcall file_more,r12,addr title_text,r8
+	add rsi,12
+	inc ebx
+	jmp .layer
+.done:
 	fastcall file_done,r12
 	ret
 endp
@@ -836,7 +1033,7 @@ proc mainCRTStartup
 	mov [stale],0
 	test dword [root+Root.frame],31
 	jnz .messages
-	fastcall wsprintfW,addr title_text,<W,'myhits proof 08: text | page %u of 3 | %u glyphs known, %u set down | %u curves in %u bands, at most %u to a band | Esc quits'>, \
+	fastcall wsprintfW,addr title_text,<W,'myhits proof 08: text | page %u of 0 to 3 | %u glyphs known, %u set down | %u curves in %u bands, at most %u to a band | Esc quits'>, \
 		[page_now],[found_glyphs],[found_placed],[text_curve_count],[found_bands],[found_longest]
 	fastcall SetWindowTextW,[window],addr title_text
 	jmp .messages
@@ -899,8 +1096,10 @@ measured_string dq 0
 direct_pipeline dq 0
 text_pipeline dq 0
 formats rq 32
+colour_seen rd TEXT_LAYERS_SEEN*3
+kept_glyphs rd KEPT_LINES
 iterate name, events_seen,proof_failure,proof_failure_frame,startup_dispatches,last_latency,worst_latency,page_now,examine_groups,measured_units, \
-	shape_glyph,shape_cut,shape_area,shape_wound,shape_covered,shape_area_whole,shape_wound_whole,shape_covered_whole,found_cover_faults,found_overlapped,glyph_wound,glyph_twice, \
+	colour_glyph,colour_layers,line_layers_now,kept_coloured,kept_plain,kept_wide,kept_step,kept_rise,kept_tall,shape_glyph,shape_cut,shape_area,shape_wound,shape_covered,shape_area_whole,shape_wound_whole,shape_covered_whole,found_cover_faults,found_overlapped,glyph_wound,glyph_twice, \
 	shaped,shaped_a,shaped_av,shaped_fi,shaped_lam,shaped_ksha,shaped_a_whole,shaped_av_whole,apart_whole,cubic_whole,cubic_first,cubic_cut,cubic_pieces,cubic_worst, \
 	found_listed,found_crowded,found_longest,found_unplaced,found_examined,found_band_faults,found_area_faults,found_worst_area,found_samples,found_glyphs,found_bands,found_placed,found_built, \
 	glyph_area,glyph_found,glyph_left,glyph_top,glyph_right,glyph_bottom,glyph_id,line_top_whole,line_tall_whole,line_ink_whole,line_wide_whole,line_x_whole,line_y_whole,line_glyphs_now,line_runs_now,line_backward_now,line_rows_now,line_turned,line_size
@@ -913,6 +1112,7 @@ family_segoe du 'Segoe UI',0
 family_arial du 'Arial',0
 family_calibri du 'Calibri',0
 family_times du 'Times New Roman',0
+family_bahn du 'Bahnschrift',0
 	align 8
 faces:
 	page_face segoe64,family_segoe,64.0
@@ -927,6 +1127,7 @@ faces:
 	end iterate
 	page_face times36,family_times,36.0
 	page_face segoe700,family_segoe,700.0,700
+	page_face bahn64,family_bahn,64.0,600,3
 FACES := page.faces
 assert FACES <= 32
 
@@ -957,6 +1158,13 @@ page_said said_huge,'g'
 ; twelve have a pixel between them and each can be measured by itself.)
 page_said said_turned,'            outlines, not texels'
 page_said said_serif,'Any angle, any size: Times, turned.'
+; a face, a rocket, a heart, a rainbow, a mark: none of them in Segoe UI
+page_said said_colour,0D83Dh,0DE00h,' ',0D83Dh,0DE80h,' ',2764h,0FE0Fh,' ',0D83Ch,0DF08h,' ',2705h
+page_said said_grin,0D83Dh,0DE00h
+page_said said_kept,'Kept once, said anywhere.'
+page_said said_ready,0D83Dh,0DE00h,' ready ',0D83Dh,0DE80h
+page_said said_digits,'0123456789'
+page_said said_number,'90817263'
 page_said said_a,'A'
 page_said said_v,'V'
 page_said said_av,'AV'
@@ -998,13 +1206,20 @@ lines:
 		page_line 2,segoe32,520.0,520.0,1800.0,ink,turn,said_turned
 	end iterate
 	page_line 2,times36,80.0,1010.0,1800.0,WHITE,-0.12,said_serif
+	; And on the first again: glyphs whose font has colors.
+	page_line 0,segoe64,1260.0,16.0,640.0,WHITE,0,said_colour
+	; The fourth: what the CPU sets down of it is only what the device's own
+	; are held to, 960 to one side of each.
+LINE_KEPT := page.lines
+	page_line 3,segoe40,60.0,80.0,900.0,WHITE,0,said_kept
+	page_line 3,segoe64,1020.0,640.0,800.0,WHITE,0,said_number
 LINES := page.lines
-iterate name, line_glyphs,line_runs,line_backward,line_advance,line_wide,line_rows,line_top,line_tall,line_ink
+iterate name, line_glyphs,line_runs,line_backward,line_advance,line_wide,line_rows,line_top,line_tall,line_ink,line_layers
 	name rd LINES
 end iterate
 
 section '.rdata$page_spirv' data readable align 4
-iterate <name,module>, text_count_code,text_count, text_place_code,text_place, text_fill_code,text_fill, text_examine_code,text_examine, text_judge_code,text_judge, direct_code,direct, \
+iterate <name,module>, text_take_code,text_take, text_count_code,text_count, text_place_code,text_place, text_fill_code,text_fill, text_examine_code,text_examine, text_judge_code,text_judge, direct_code,direct, \
 	text_vertex_code,text_vertex, text_fragment_code,text_fragment
 	align 4
 	name file 'build\myhits_text_' bappend `module bappend '.spv'

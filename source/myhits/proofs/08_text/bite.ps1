@@ -48,12 +48,12 @@ $mutations = @(
   @{ name = '6 a root counted wrongly'; file = $slang
      old = 'return (0x2E74u >> shift) & 0x0101u;'
      new = 'return (0x2E64u >> shift) & 0x0101u;' }
-  @{ name = '9 built again though known'; file = $inc
-     old = "	sub eax,[rbx+Text.band_from]`n	jz .built`n"
-     new = "	sub eax,[rbx+Text.band_from]`n" }
+  @{ name = '9 taken again though nothing is new'; file = $inc
+     old = "	inc [text_takes]`n	mov [text_dirty],0`n"
+     new = "	inc [text_takes]`n" }
   @{ name = '7 ink a fortieth thinner'; file = $page
-     old = 'float alpha = text_ink(root.world.text, input) * input.color.a;'
-     new = 'float alpha = text_ink(root.world.text, input) * input.color.a * 0.975;' }
+     old = 'float alpha = text_ink(*root.world.text, input) * input.color.a;'
+     new = 'float alpha = text_ink(*root.world.text, input) * input.color.a * 0.975;' }
   @{ name = '10 no margin round a box'; file = $slang
      old = 'float margin = 0.75 / max(pixels, 1e-3);'
      new = 'float margin = 0.0 / max(pixels, 1e-3);' }
@@ -63,11 +63,32 @@ $mutations = @(
   @{ name = '12 a cubic''s point for a quadratic''s'; file = $inc
      old = "	movaps xmm1,xmm4`n	addps xmm1,xmm5`n	mulps xmm1,xword [text_halves]`n	movaps xmm2,xmm3`n"
      new = "	movq xmm1,qword [rsi]`n	movaps xmm2,xmm3`n" }
+  @{ name = '14 every layer in the text''s color'; file = $inc
+     old = "	cmp word [rdi+LAYER_PALETTE],0FFFFh`n	je .hued`n"
+     new = "	cmp word [rdi+LAYER_PALETTE],0FFFFh`n	jmp .hued`n" }
+  @{ name = '14 a font''s blue for its red'; file = $inc
+     old = 'iterate <channel,place>, 0,0, 4,8, 8,16, 12,24'
+     new = 'iterate <channel,place>, 0,16, 4,8, 8,0, 12,24' }
+  @{ name = '15 kept from its top, not its baseline'; file = $inc
+     old = "	divss xmm3,xmm5`n	subss xmm4,[text_baseline]`n"
+     new = "	divss xmm3,xmm5`n" }
+  @{ name = '15 said from its end, wherever asked'; file = $slang
+     old = 'float2 from = laid.at - float2(line.wide * said.align, 0.0);'
+     new = 'float2 from = laid.at - float2(line.wide * 0.0, 0.0);' }
+  @{ name = '16 every cell the first digit'; file = $slang
+     old = "    Line line = text_line(text, from);`n    uint which = line.first + index;"
+     new = "    Line line = text_line(text, from);`n    uint which = line.first;" }
+  @{ name = '16 nothing cut off at a cell''s edge'; file = $slang
+     old = 'float kept = inside.x * inside.y;'
+     new = 'float kept = 1.0;' }
+  @{ name = '17 drawn from where the CPU wrote it'; file = $inc
+     old = 'iterate <member,buffer>, curves,text_curve_home, glyphs,text_glyph_home,'
+     new = 'iterate <member,buffer>, curves,text_curve_buffer, glyphs,text_glyph_home,' }
 )
 $utf8 = New-Object Text.UTF8Encoding($false)
 $reportPath = Join-Path $repoRoot 'build\myhits_text.report.txt'
 function Run-Once {
-    foreach ($left in $reportPath, (Join-Path $repoRoot 'build\myhits_text.lines.txt')) { if (Test-Path -LiteralPath $left) { [IO.File]::Delete($left) } }
+    foreach ($left in $reportPath, (Join-Path $repoRoot 'build\myhits_text.lines.txt'), (Join-Path $repoRoot 'build\myhits_text.layers.txt')) { if (Test-Path -LiteralPath $left) { [IO.File]::Delete($left) } }
     $process = Start-Process -FilePath (Join-Path $repoRoot 'build\myhits_text.exe') -ArgumentList '--self-test' -PassThru
     if (-not $process.WaitForExit(30000)) { $process.Kill(); return 'none: stopped after thirty seconds' }
     if (-not (Test-Path -LiteralPath $reportPath)) { return "none: no report, exit $('{0:X8}' -f $process.ExitCode)" }

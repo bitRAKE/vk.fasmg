@@ -7,7 +7,8 @@
 // to is asked of GDI+, which reads the font for itself, lays the string out
 // its own way and gives its outline as a path: the path is flattened and the
 // area inside it found from its corners. Nothing of DirectWrite, of text.inc
-// or of the device is in that number.
+// or of the device is in that number. And what layers a glyph of colors has
+// is read from its font's file, table by table.
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -21,6 +22,7 @@ namespace Myhits
     {
         public readonly int Width, Height;
         readonly float[] covered;
+        readonly int[] colors;
 
         public Ink(string path)
         {
@@ -29,6 +31,7 @@ namespace Myhits
                 Width = bitmap.Width;
                 Height = bitmap.Height;
                 covered = new float[Width * Height];
+                colors = new int[Width * Height];
                 float[] linear = new float[256];
                 for (int value = 0; value < 256; ++value)
                 {
@@ -40,7 +43,11 @@ namespace Myhits
                 for (int y = 0; y < Height; ++y)
                 {
                     Marshal.Copy(new IntPtr(data.Scan0.ToInt64() + (long)y * data.Stride), row, 0, Width);
-                    for (int x = 0; x < Width; ++x) covered[y * Width + x] = linear[Math.Max(Math.Max((row[x] >> 16) & 255, (row[x] >> 8) & 255), row[x] & 255)];
+                    for (int x = 0; x < Width; ++x)
+                    {
+                        covered[y * Width + x] = linear[Math.Max(Math.Max((row[x] >> 16) & 255, (row[x] >> 8) & 255), row[x] & 255)];
+                        colors[y * Width + x] = row[x] & 0xffffff;
+                    }
                 }
                 bitmap.UnlockBits(data);
             }
@@ -54,6 +61,67 @@ namespace Myhits
                 for (int x = Math.Max(left, 0); x < Math.Min(right, Width); ++x) sum += covered[y * Width + x];
             return sum;
         }
+
+        // How unlike a box of pixels is the box as far away as `across`: the
+        // differences of their ink, added up, in pixels.
+        public double Unlike(int left, int top, int right, int bottom, int across)
+        {
+            double sum = 0;
+            for (int y = top; y < bottom; ++y)
+                for (int x = left; x < right; ++x) sum += Math.Abs(covered[y * Width + x] - covered[y * Width + x + across]);
+            return sum;
+        }
+
+        // How many pixels of a box are a color, within `slack` in each of red, green and blue.
+        public int Count(int left, int top, int right, int bottom, int red, int green, int blue, int slack)
+        {
+            int count = 0;
+            for (int y = top; y < bottom; ++y)
+                for (int x = left; x < right; ++x)
+                {
+                    int color = colors[y * Width + x];
+                    if (Math.Abs(((color >> 16) & 255) - red) <= slack && Math.Abs(((color >> 8) & 255) - green) <= slack && Math.Abs((color & 255) - blue) <= slack) ++count;
+                }
+            return count;
+        }
+
+        // The layers a font of colors gives a glyph, read from the font's own
+        // file: its COLR table says which glyphs lie over one another to make
+        // it and which of the font's colors each is, and its CPAL table what
+        // those colors are. A line to a layer, as proof 08's program writes
+        // them: its glyph, its color as a texel's bytes, and which color.
+        public static string Layers(string path, int glyph)
+        {
+            byte[] font = System.IO.File.ReadAllBytes(path);
+            int colr = 0, cpal = 0;
+            for (int table = 0; table < Short(font, 4); ++table)
+            {
+                string tag = System.Text.Encoding.ASCII.GetString(font, 12 + table * 16, 4);
+                if (tag == "COLR") colr = Long(font, 12 + table * 16 + 8);
+                if (tag == "CPAL") cpal = Long(font, 12 + table * 16 + 8);
+            }
+            if (colr == 0 || cpal == 0) return "the font has no COLR or no CPAL";
+            int bases = colr + Long(font, colr + 4), layers = colr + Long(font, colr + 8);
+            int records = cpal + Long(font, cpal + 8), first = Short(font, cpal + 12);
+            System.Text.StringBuilder said = new System.Text.StringBuilder();
+            for (int each = 0; each < Short(font, colr + 2); ++each)
+            {
+                if (Short(font, bases + each * 6) != glyph) continue;
+                int from = Short(font, bases + each * 6 + 2), count = Short(font, bases + each * 6 + 4);
+                for (int layer = from; layer < from + count; ++layer)
+                {
+                    int palette = Short(font, layers + layer * 4 + 2), record = records + (first + palette) * 4;
+                    // (Blue, green, red, and how much of them; a layer of no color of the font's takes the text's.)
+                    uint texel = palette == 0xffff ? 0xffffffffu : (uint)(font[record + 2] | font[record + 1] << 8 | font[record] << 16) | (uint)font[record + 3] << 24;
+                    if (texel >> 24 == 0) continue;     // a layer there is nothing of is not one
+                    said.AppendFormat("{0} {1:X8} {2}\n", Short(font, layers + layer * 4), texel, palette);
+                }
+            }
+            return said.ToString();
+        }
+
+        static int Short(byte[] bytes, int at) { return bytes[at] << 8 | bytes[at + 1]; }
+        static int Long(byte[] bytes, int at) { return bytes[at] << 24 | bytes[at + 1] << 16 | bytes[at + 2] << 8 | bytes[at + 3]; }
 
         // The ink in a box that has been turned about a point: of every pixel
         // whose middle, turned back, lies in the box as it was before.

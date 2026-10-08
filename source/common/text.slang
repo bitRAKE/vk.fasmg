@@ -12,8 +12,9 @@
 // What is this layer's own is where everything lives. A curve, a band and a
 // list are memory reached through pointers, not texels; a glyph on the page
 // is pulled by the vertex shader, as a sprite is; and the bands are built on
-// the device, by the three passes at the end, from curves that are all that
-// ever comes up from the CPU.
+// the device, by the passes at the end, from curves that are all that ever
+// comes up from the CPU. What comes up is taken, once, into memory that is
+// the device's own, and drawn from there.
 //
 // A pixel's coverage by a glyph is found from two rays, one along x and one
 // along y, each through the pixel's middle. A ray counts the curves it
@@ -28,7 +29,8 @@
 // there is, and every loop has an end that no number sets: whatever is in
 // memory, nothing reads outside it and nothing goes on for ever.
 //
-// The including file defines World with `text`, and has included common.slang.
+// The including file has included common.slang, and defines World with
+// `text`, a pointer to the Text that text.inc made.
 
 static const float TEXT_BAND_OVERLAP = 1.0 / 1024.0;   // of an em: how far a band reaches into its neighbors
 static const uint TEXT_BAND_CURVES = 256;               // the most curves a band is walked for
@@ -160,19 +162,30 @@ struct TextVertex
 {
     float4 position : SV_Position;
     float2 em : TEXCOORD0;                      // where in the glyph, in its ems
+    float2 place : TEXCOORD1;                   // and where on the playfield
     nointerpolation uint glyph : COLOR0;
     nointerpolation float4 color : COLOR1;      // in linear light, not yet multiplied by its alpha
+    nointerpolation float4 clip : COLOR2;       // the box of the playfield it may be drawn in: its low corner, and its high
 };
+static const float4 TEXT_UNCLIPPED = float4(-1e9, -1e9, 1e9, 1e9);
 
-float3 text_linear(float3 color) { return pow(color, float3(2.2, 2.2, 2.2)); }
+// A color as a texel has it, in linear light: exactly, so that a font's own
+// colors come out on the screen as the font has them.
+float3 text_linear(float3 color)
+{
+    return lerp(color / 12.92, pow((color + 0.055) / 1.055, float3(2.4, 2.4, 2.4)), step(float3(0.04045, 0.04045, 0.04045), color));
+}
 
 // One corner of a glyph's box, pushed out by a little more than half a pixel
 // so that a pixel the outline only grazes is still drawn. No vertex buffer:
-// the glyph and its place are pulled.
-TextVertex text_corner(Text text, Placed placed, uint vertex)
+// the glyph and its place are pulled. A glyph the device has not yet taken is
+// not looked at, and not drawn.
+TextVertex text_corner(Text text, Placed placed, uint vertex, float4 clip = TEXT_UNCLIPPED)
 {
     static const uint corners[6] = { 0, 1, 2, 2, 1, 3 };
-    Glyph glyph = text_glyph(text, placed.glyph);
+    bool taken = placed.glyph < min(text.glyph_from, TEXT_GLYPHS);
+    Glyph glyph = {};
+    if (taken) glyph = text_glyph(text, placed.glyph);
     float size = length(placed.across);
     float pixels = size * root.view.x / float(PLAYFIELD_WIDTH);
     float margin = 0.75 / max(pixels, 1e-3);
@@ -182,11 +195,13 @@ TextVertex text_corner(Text text, Placed placed, uint vertex)
     float2 at = placed.at + placed.across * em.x + down * em.y;
     TextVertex result;
     result.em = em;
+    result.place = at;
+    result.clip = clip;
     result.glyph = placed.glyph;
     float4 color = float4(placed.color & 255, (placed.color >> 8) & 255, (placed.color >> 16) & 255, placed.color >> 24) * (1.0 / 255.0);
     result.color = float4(text_linear(color.rgb), color.a);
     // A glyph of nothing, or of no size, covers nothing.
-    bool drawn = glyph.curve_count != 0 && size > 0.0;
+    bool drawn = taken && glyph.curve_count != 0 && size > 0.0;
     result.position = float4(drawn ? at / float2(PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT) * 2.0 - 1.0 : float2(0.0, 0.0), 0.0, 1.0);
     return result;
 }
@@ -196,7 +211,82 @@ TextVertex text_corner(Text text, Placed placed, uint vertex)
 float text_ink(Text text, TextVertex input)
 {
     float2 pixels = 1.0 / max(fwidth(input.em), float2(1e-6, 1e-6));
-    return text_coverage(text, text_glyph(text, input.glyph), input.em, pixels);
+    // What lies outside its box is not drawn; the box's edge is a pixel soft.
+    float2 inside = saturate(input.place - input.clip.xy + 0.5) * saturate(input.clip.zw - input.place + 0.5);
+    float kept = inside.x * inside.y;
+    if (kept <= 0.0) return 0.0;
+    return text_coverage(text, text_glyph(text, input.glyph), input.em, pixels) * kept;
+}
+
+// Lines that are kept. The system laid each out once; from then on a glyph of
+// one is found from the line, where it is said and which glyph of it is
+// wanted, by whoever draws: nothing is set down for it and nothing is asked
+// of the CPU. What says a line is a program's to decide, a pixel at a time if
+// it likes: it fills in a Said, asks for a glyph of it, and may move, turn,
+// color or clip that glyph before it is drawn.
+struct Said
+{
+    float2 at;          // a point of its baseline: its left end, its middle or its right end
+    float2 across;      // one em along it there: its size, and its turn
+    float align;        // 0 from its left end, 0.5 about its middle, 1 to its right end
+    uint line;
+    uint color;         // R G B A: what its glyphs take that have no color of their own
+};
+
+// A line, or one of nothing if there is none such, or none has been taken yet.
+Line text_line(Text text, uint line)
+{
+    Line none = {};
+    if (text.taken == 0 || line >= TEXT_LINES) return none;
+    return text.lines[line];
+}
+
+// A glyph's own color, as faint as what it is said in; or that, if it has none.
+uint text_tint(uint own, uint said)
+{
+    if ((own >> 24) == 0) return said;
+    return (own & 0x00ffffffu) | ((((own >> 24) * (said >> 24) + 127) / 255) << 24);
+}
+
+// The glyph numbered `index` of a line that is said, as a glyph set down;
+// false, and nothing, when the line has no such glyph.
+bool text_said(Text text, Said said, uint index, out Placed placed)
+{
+    Placed none = {};
+    placed = none;
+    Line line = text_line(text, said.line);
+    uint which = line.first + index;
+    if (index >= line.count || which >= min(text.laid_from, TEXT_LAID)) return false;
+    Laid laid = text.laid[which];
+    float2 from = laid.at - float2(line.wide * said.align, 0.0);
+    placed.at = said.at + said.across * from.x + float2(-said.across.y, said.across.x) * from.y;
+    placed.across = said.across;
+    placed.glyph = laid.glyph;
+    placed.color = text_tint(laid.color, said.color);
+    return true;
+}
+
+// One glyph of a line, by itself, in the middle of a cell that begins at
+// `at` and is the line's step wide: a digit, of a line that is the ten of
+// them in order. A number is then the device's to set down: which digit
+// stands in which cell is arithmetic, and so is where a cell is, how large,
+// what color, and what it is doing.
+bool text_one(Text text, uint from, uint index, float2 at, float2 across, uint color, out Placed placed)
+{
+    Placed none = {};
+    placed = none;
+    Line line = text_line(text, from);
+    uint which = line.first + index;
+    if (index >= line.count || which >= min(text.laid_from, TEXT_LAID)) return false;
+    Laid laid = text.laid[which];
+    // How far it advances by itself: to the next of its line, or to the line's end.
+    float next = line.wide;
+    if (index + 1 < line.count) next = text.laid[(which + 1) & (TEXT_LAID - 1)].at.x;
+    placed.at = at + across * ((line.step - (next - laid.at.x)) * 0.5);
+    placed.across = across;
+    placed.glyph = laid.glyph;
+    placed.color = text_tint(laid.color, color);
+    return true;
 }
 
 // The bands. Each glyph's box is cut into rows and into columns; a row lists
@@ -205,10 +295,25 @@ float text_ink(Text text, TextVertex input)
 // first. A straight line along a row crosses no ray along it, and is left
 // out of the rows; one along a column, out of the columns.
 //
-// Three passes, over the bands from Text.band_from on. The first, a thread to
-// a band, counts its curves. The second, alone, gives each band its place in
-// the lists, which depends on every band before it. The third, a thread to a
-// band again, writes the curves' numbers there in order.
+// Before any of that, what is new is taken: each curve, glyph and kept glyph
+// the CPU has staged since the last time, and every line, a thread to one of
+// each, into memory that is the device's own.
+//
+// Then three passes, over the bands from Text.band_from on. The first, a
+// thread to a band, counts its curves. The second, alone, gives each band its
+// place in the lists, which depends on every band before it. The third, a
+// thread to a band again, writes the curves' numbers there in order.
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void text_take(uint3 id : SV_DispatchThreadID)
+{
+    Text text = *root.world.text;
+    uint curve = text.curve_from + id.x, glyph = text.glyph_from + id.x, laid = text.laid_from + id.x;
+    if (curve < min(text.curve_count, TEXT_CURVES)) text.curves[curve] = text.staged_curves[curve];
+    if (glyph < min(text.glyph_count, TEXT_GLYPHS)) text.glyphs[glyph] = text.staged_glyphs[glyph];
+    if (laid < min(text.laid_count, TEXT_LAID)) text.laid[laid] = text.staged_laid[laid];
+    if (id.x < TEXT_LINES) text.lines[id.x] = text.staged_lines[id.x];
+}
 
 // Whose band this is: the last glyph whose bands begin at or before it.
 uint text_owner(Text text, uint band)
@@ -242,7 +347,7 @@ bool text_reaches(Glyph glyph, uint which, Curve curve, out float reach)
 [numthreads(64, 1, 1)]
 void text_count(uint3 id : SV_DispatchThreadID)
 {
-    Text text = root.world.text;
+    Text text = *root.world.text;
     uint band = id.x + text.band_from;
     if (band >= min(text.band_count, TEXT_BANDS)) return;
     Glyph glyph = text_glyph(text, text_owner(text, band));
@@ -263,7 +368,7 @@ void text_count(uint3 id : SV_DispatchThreadID)
 [numthreads(1, 1, 1)]
 void text_place()
 {
-    Text text = root.world.text;
+    Text text = *root.world.text;
     TextCensus* census = text.census;
     uint listed = census.listed, longest = census.longest, crowded = census.crowded, unplaced = census.unplaced;
     uint end = min(text.band_count, TEXT_BANDS);
@@ -287,7 +392,7 @@ void text_place()
 [numthreads(64, 1, 1)]
 void text_fill(uint3 id : SV_DispatchThreadID)
 {
-    Text text = root.world.text;
+    Text text = *root.world.text;
     uint band = id.x + text.band_from;
     if (band >= min(text.band_count, TEXT_BANDS)) return;
     Band placed = text_band(text, band);
@@ -339,7 +444,7 @@ static const float TEXT_EXAMINED_PARTS = 4096.0; // what a pixel's coverage is c
 [numthreads(64, 1, 1)]
 void text_examine(uint3 id : SV_DispatchThreadID)
 {
-    Text text = root.world.text;
+    Text text = *root.world.text;
     uint which = id.x / TEXT_EXAMINED_MOST, row = id.x % TEXT_EXAMINED_MOST;
     if (which >= min(text.glyph_count, TEXT_GLYPHS)) return;
     Glyph glyph = text_glyph(text, which);
@@ -382,7 +487,7 @@ void text_examine(uint3 id : SV_DispatchThreadID)
 [numthreads(64, 1, 1)]
 void text_judge(uint3 id : SV_DispatchThreadID)
 {
-    Text text = root.world.text;
+    Text text = *root.world.text;
     if (id.x >= min(text.glyph_count, TEXT_GLYPHS)) return;
     Glyph glyph = text_glyph(text, id.x);
     if (glyph.curve_count == 0) return;

@@ -86,7 +86,7 @@ GAME_SHADERS = $(BUILD)\myhits_game_develop.spv $(BUILD)\myhits_game_chart.spv $
 	$(BUILD)\myhits_game_veil_vertex.spv $(BUILD)\myhits_game_veil_fragment.spv $(BUILD)\myhits_game_backdrop_vertex.spv $(BUILD)\myhits_game_backdrop_fragment.spv
 PAGE_SLANG = $(MYHITS)\proofs\08_text\page.slang
 PAGE_SOURCES = $(PAGE_SLANG) $(COMMON)\common.slang $(COMMON)\text.slang $(MYHITS_HEADER)
-PAGE_SHADERS = $(BUILD)\myhits_text_text_count.spv $(BUILD)\myhits_text_text_place.spv $(BUILD)\myhits_text_text_fill.spv $(BUILD)\myhits_text_text_examine.spv $(BUILD)\myhits_text_text_judge.spv \
+PAGE_SHADERS = $(BUILD)\myhits_text_text_take.spv $(BUILD)\myhits_text_text_count.spv $(BUILD)\myhits_text_text_place.spv $(BUILD)\myhits_text_text_fill.spv $(BUILD)\myhits_text_text_examine.spv $(BUILD)\myhits_text_text_judge.spv \
 	$(BUILD)\myhits_text_direct.spv $(BUILD)\myhits_text_text_vertex.spv $(BUILD)\myhits_text_text_fragment.spv
 MYHITS_TABLE_SOURCES = $(MYHITS)\tables_image.inc $(MYHITS)\tables.inc $(COMMON)\tables.inc $(COMMON)\shared.inc $(MYHITS_ART) tools\assemble.ps1
 MYHITS_TABLE_FILES = $(BUILD)\myhits_tables.bin $(BUILD)\myhits_tables_alt.bin $(BUILD)\myhits_tables_bad.bin
@@ -516,6 +516,10 @@ $(BUILD)\myhits_sound.exe: $(BUILD)\myhits_sound.obj
 	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib
 
 # Proof 08's passes. It asks DirectWrite, which is the system's, for its outlines.
+$(BUILD)\myhits_text_text_take.spv: $(PAGE_SOURCES)
+	$(MYHITS_SLANG) -entry text_take -stage compute -o $@ $(PAGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
 $(BUILD)\myhits_text_text_count.spv: $(PAGE_SOURCES)
 	$(MYHITS_SLANG) -entry text_count -stage compute -o $@ $(PAGE_SLANG)
 	$(MYHITS_VALIDATE) $@
