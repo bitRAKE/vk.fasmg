@@ -25,8 +25,9 @@ build.cmd myhits-survey
 `build\myhits_checks\<mode>\<proof>\`.
 
 So do pictures. A scripted run draws to a window nobody sees, so proofs 04
-to 07 each leave `frame_NNN.png` there: the whole playfield at 1920×1080, at
-the frames of the script worth looking at. The game's twenty-five are its swoopers,
+to 08 each leave `frame_NNN.png` there: the whole playfield at 1920×1080, at
+the frames of the script worth looking at. The text proof's three are its
+pages. The game's twenty-five are its swoopers,
 its weavers, the worm coming and then turned back on itself, the turrets
 firing with the level stopped, the run over; and of the second game three
 volleys with RAPID and SPREAD in force, the nova going off, the shield about
@@ -50,6 +51,7 @@ top of an empty field, and the five that then came where three had been.
 | 05 | [hits](05_hits/arena.asm) | What is drawn is what is hit, by its mask, at any angle, size and speed; what is hit takes it and dies of it; a hit throws off exactly the particles and sounds it should; a touch hurts the ship and a near miss does not | Passes, with two findings |
 | 06 | [sound](06_sound/board.asm) | The bank the device renders is the recipes'; a sound asked for in one frame's events is on a voice as the next begins; many in a frame are one voice at their mean | Passes, with three findings |
 | 07 | [game](../myhits.asm) | The game itself: what comes is what the table says; a chain follows its head exactly and dies with it; only the director makes a body; rank reads the shooting; a hurt costs a life, once; the level stops for what is anchored to it and moves on | Passes, with two findings |
+| 08 | [text](08_text/page.asm) | Strings the system shaped are drawn from their outlines on the device, by the Slug algorithm, with no texels: the bands lose nothing; the ink is the outlines' at any size and angle; and it is what GDI+ makes of the same fonts | Passes, with seven findings |
 
 ## 00 survey
 
@@ -1001,6 +1003,209 @@ was: an angle kept is an angle kept within a turn.
 the playfield is crossed by something. The script's checks of lives are
 therefore rules that hold whenever a hurt comes, not hurts expected at
 frames.
+
+## 08 text
+
+A side quest. The layer could say what twenty strokes spell
+([letters.slang](../../common/letters.slang)) and nothing else. This is text
+as a system has it: any script, any font the machine carries, at any size
+and any angle, with nothing rasterized on the CPU and no texels anywhere.
+
+The drawing is the Slug algorithm, which is Eric Lengyel's: *GPU-Centered
+Font Rendering Directly from Glyph Outlines*, Journal of Computer Graphics
+Techniques, 2017, and [A Decade of Slug](https://terathon.com/blog/decade-slug.html),
+2026, which gives its patent to the public domain. The shader here is written
+for this layer, with the [reference shaders](https://github.com/EricLengyel/Slug)
+(MIT) beside it: how a ray decides which crossings of a curve count, how it
+solves for them, and how two rays' coverage is made one are theirs.
+
+Nothing is linked for any of it that Windows does not carry. The shaping is
+DirectWrite's, which is in every Windows since 7; `dwrite.lib` is the only
+library added.
+
+```bat
+build\myhits_text.exe
+build\myhits_text.exe --self-test
+powershell -File source\myhits\proofs\08_text\pictures.ps1
+powershell -File source\myhits\proofs\08_text\bite.ps1
+```
+
+**To look at.** Run it without arguments. Three pages turn by themselves,
+every four seconds or so.
+
+- *Scripts.* `AVATAR` is kerned: the A and the V lean into each other.
+  `office` has one glyph where it has an f, an f and an i. The Arabic runs
+  from the right and its letters join; the Devanagari has a syllable whose
+  vowel is drawn before the consonant it follows; the Thai has marks set
+  above their letters. The line of mixed scripts is set in Segoe UI, which
+  has no Hebrew, Devanagari or Japanese in it: the system found fonts that
+  do. Bottom right, two discs that are no font's, one over part of the
+  other, drawn as the one shape they make, with no seam where they cross.
+- *Sizes.* One sentence from 7 pixels to the em to 96, and two paragraphs
+  at 9 and 7. The small ones are still letters.
+- *Angles.* One string at twelve angles about a point, a g seven hundred
+  pixels tall, and a line of Times turned a little.
+
+Drag the window larger and smaller: the text is drawn again from its
+outlines at whatever size the window is, and is as sharp at any.
+
+The title says how many glyphs are known and how many are set down, in how
+many curves and bands.
+
+**How it is made.** [text.inc](../../common/text.inc) asks DirectWrite to lay
+a string out, and DirectWrite answers by calling back with runs of glyphs:
+which font each run is in, which glyphs, how far each advances, how far each
+is set off from its place, and which way the run goes. A glyph not met before
+is asked of its font as an outline, an em to the unit, once. DirectWrite
+hands an outline over as lines and cubics, and a TrueType font's curves are
+quadratics that have been raised to cubics on the way: each is put back
+exactly. A cubic that is one in earnest is cut in eight, each piece a
+quadratic. Twenty-four bytes a curve go up to the device, and that is all
+that does.
+
+The device does the rest ([text.slang](../../common/text.slang)). Three
+passes, once for whatever glyphs are new, cut each glyph's box into rows and
+into columns, at most thirty-two each way, and give each row and column the
+list of the curves that reach into it, the one that reaches furthest first.
+Then a frame is one draw, six vertices to a glyph set down, with nothing
+bound: a pixel finds its glyph's band, and from two rays through its middle,
+one along x and one along y, how often the outline goes round it, with the
+part of itself that an edge cuts off counted as a part. Nothing about a
+glyph's size or angle is kept: the same curves draw it at seven pixels and
+at seven hundred.
+
+A frame's traffic is what it was. Setting text down is what a program does
+when what it says changes, between frames.
+
+A program can also give a shape of its own to the same sink a font gives a
+glyph to (`text_shape`), and set it down where it likes (`text_put`).
+
+**The checks.** Nine the program makes of itself, on 60 scripted frames of
+three pages; four that [pictures.ps1](08_text/pictures.ps1) makes of the
+pictures the run leaves; and one of what it cost.
+
+| # | Claim | How it is held |
+| --- | --- | --- |
+| 1 | Events arrive in order, one frame late | As in the spine |
+| 2 | An outline is put back as the font has it | Every cubic the system gave for these fonts is a quadratic raised, and is put back: 3,002 of them, and none cut. A quarter circle given as the cubic that draws one is cut in eight, and each piece's ends and middle lie on the circle within a thousandth. The eight cubics of the program's own two discs are cut, and nothing else is |
+| 3 | A run is set down where the system sets it | For every run, the system is asked for the outline of the whole run as it would draw it, and the box of that is the box of the run's glyphs as set down here, within a fiftieth of a pixel: forward and backward, with every glyph's offset |
+| 4 | The system shaped it | In Arial `AV` is narrower than an `A` and a `V`. In Calibri `fi` is one glyph. Three Arabic lams are three glyphs, not all the one a lam alone is, in a run that goes backward with its first glyph furthest right. Ka, a virama and ssa in Devanagari are fewer than three glyphs. Four families were asked for and at least five fonts were used. A line of one row is as wide as its glyphs' advances come to |
+| 5 | The bands lose nothing | The device examines every glyph, over its box and a margin, at 11 and at 64 pixels to the em: at every place, what the pixel's band gives is what all the glyph's curves give, within 1/256. No band has more curves than a band is walked for, and none went without room |
+| 6 | The rays count what the curves enclose, and what lies over itself is drawn once | On the device, how often each place of a glyph is enclosed, summed, comes to the area the CPU found from the curves alone, within a fiftieth. What is drawn of it comes to the same where nothing is enclosed twice, and to less where something is. And the two discs, whose answer is known beforehand: 0.5655 of a square em enclosed, 0.4549 covered, each found within 0.005 |
+| 7 | A line's ink is its outlines' | On the picture, at 13 pixels to the em and more, the ink in a line's box is what its outlines enclose at its size, within a hundredth and a half. The Arabic, the Devanagari and the mixed line may have up to a twenty-fifth less: see the first finding |
+| 8 | Root goes down and Events come up, and nothing else | Counters |
+| 9 | Text is made ready in builds of three passes; a frame is one pass and one draw | Counters. Setting a page whose glyphs are all known builds nothing |
+| 10 | Small text loses nothing | Below 13 pixels to the em a line is never lighter than its outlines, and heavier by no more than a tenth |
+| 11 | Turned, a line weighs what it did | Every turned line has its outlines' ink inside its own box, turned as it is turned, within a hundredth and a half; and one string at twelve angles weighs the same at each within a hundredth |
+| 12 | It is what a second hand makes of the same fonts | [ink.cs](08_text/ink.cs) asks GDI+ for the pangram's outline at eleven sizes and finds its area from the corners of the path. text.inc's count is within a quarter of a hundredth of it at every size, and the picture's ink is held to it as it was to text.inc's. A bold g at 700 pixels to the em has GDI+'s ink within a hundredth, and the box of its ink on the picture is GDI+'s box of its outline within a quarter of a pixel, each edge |
+| 13 | A page costs the device little to draw | Each page's draw, by the device's clock, is within a millisecond: many times what it costs, so that only a regression fails |
+
+Last result here, GTX 1080 Ti, default and validation alike: all thirteen
+hold. 152 glyphs of 8 fonts in 4,341 curves; 4,074 bands, the longest of 30
+curves; 148 glyphs examined at 226,941 places with no band at fault. The
+rays' count is within 0.8% of the curves' area for every glyph. The two
+discs enclose 0.5657 and cover 0.4551. On the pictures, the 16 lines of
+ordinary size that do not join are within 0.89% of their outlines; twelve
+angles weigh the same within 0.19%; GDI+ counts the pangram's outlines within
+0.11% of text.inc at every size; and the four edges of the 700 pixel g's ink
+are within 0.003 of a pixel of where GDI+ has its outline. The three pages
+cost the device about 50, 35 and 35 microseconds to draw: the first has 752
+glyphs on it.
+
+**The checks bite.** [bite.ps1](08_text/bite.ps1) breaks one thing at a
+time, builds, runs and says what failed, then puts everything back. Each of
+these fails the check it is listed under and no earlier one:
+
+| Check | Broken |
+| --- | --- |
+| 2 | A cubic in earnest taken for a raised quadratic |
+| 3 | The pen never moved on after a glyph |
+| 4 | Every run taken to go forward |
+| 5 | A band's curves sorted the other way, so that a ray stops looking too soon; and a band that leaves out a curve reaching only its upper half |
+| 6 | A sixth taken for a fifth in the area; the fill made even-odd; one bit of the table that says which crossings count |
+| 7 | The ink a fortieth thinner |
+| 9 | Bands built again for glyphs already known |
+| 10 | No margin round a glyph's box |
+| 11 | Glyphs moved round with their line and not turned with it |
+| 12 | A cubic's control point used as its quadratic's |
+
+Every one of them changes arithmetic, an order, or what the CPU hands over.
+None leaves a shader reading what was never written: that kind is reasoned
+about, not run (see the game's findings).
+
+**Finding: a font lays its contours over one another, and so do a script's
+glyphs.** Claim 6 was first that what a glyph covers comes to what its curves
+enclose. It failed for 2 glyphs of 147, both Devanagari conjuncts in Nirmala
+UI, each 4.5% short. The drawing was right and the claim was wrong: those two
+glyphs are made of parts that overlap, the area inside a curve counts an
+overlap twice, and a pixel can only be covered once. The claim is now about
+how often a place is enclosed, which does come to the area, to a thousandth
+for those two; and the two discs were added so that the case has an answer
+known beforehand. The same thing shows between glyphs: the Arabic line has
+1.8% less ink than its glyphs' outlines enclose and the Devanagari 2.4%,
+because joined letters reach into each other. A fill that counted crossings
+by parity would have cut a hole wherever they do.
+
+**Finding: small text comes out heavier than its outlines.** At 7 pixels to
+the em the pangram has 6.9% more ink than its outlines enclose, at 9, 4.5%,
+at 11, 3.0%, and from 13 up less than one; a paragraph at 7 has 8.3% more.
+A pixel's share of a straight edge
+is exact; its share of a corner is taken from two rays that each see only a
+line through the pixel, and comes out too large. Small text is mostly
+corners. Nothing is lost by it, and claim 10 is written to say which way the
+error may go.
+
+**Finding: the margin round a glyph's box is not only for small text.** A
+pixel is drawn if its middle is in the box, and a pixel the outline only
+grazes has its middle outside. Without the margin a line at 48 pixels to the
+em loses 1.8% of its ink and one at 7 loses 8%.
+
+**Finding: a mistake made consistently passes everything that is held only
+to itself.** The last mutation in the list puts a raised cubic back wrongly,
+with the cubic's control point where the quadratic's should be: every round
+letter is a little thinner. Claims 2 to 7 all hold with it, because the
+system's outline of a whole run comes through the same sink and is wrong the
+same way, the area is counted from the same curves, and the device draws
+what it is given. Only GDI+, which was never shown those curves, says that
+the pangram's outlines enclose 12,030 pixels at 64 to the em where text.inc
+had counted 11,821.
+
+**Finding: two of the system's own hands agree to thousandths of a pixel.**
+DirectWrite laid the g out and gave its outline; text.inc made quadratics of
+it; the device drew it at 700 pixels to the em. GDI+ read the same font
+itself and was asked only for a path. The box of the ink on the picture is
+the box of that path, from the corner the string was set at, within 0.005
+of a pixel on every edge. Where an outline is furthest out it runs along the
+edge, and the pixel it is furthest out in is covered by exactly as much as
+the outline is into it: which is what the two rays were said to do.
+
+**Finding: turned text is softer, though no lighter.** How large a pixel is
+in a glyph's ems is taken as the reference takes it, from how fast the ems
+change across the screen and down it, added. For a glyph turned an eighth of
+a turn that is 1.4 times a pixel, so its edges are spread over that much.
+The weight is unchanged, which is what claim 11 measures; the softness was
+reasoned and looked at, not measured.
+
+**Finding: what DirectWrite wants of a caller in assembly.** A float among
+the first four arguments goes in the XMM register of its position and
+nowhere else; one on the stack is its bits. A point passed by value is eight
+bytes in a register. The renderer a layout draws through must answer for
+`IDWritePixelSnapping` too, and the sink an outline is given to is Direct2D's
+interface, though nothing of Direct2D is needed to be one. A font face's
+address is only a name for it while the face is held. A run that goes
+backward begins at its right-hand end, and its pen moves before each glyph,
+not after.
+
+**Not done.** Colour glyphs, which are layers of outlines with a colour
+each. Underlines and strikings-through, which the layout offers and this
+declines. Subpixel colour. A glyph, once known, is never forgotten: there is
+room for 4,096 of them in 65,536 curves. And a number that changes every
+frame should not be laid out by the system every frame: the score stays with
+the letters of twenty strokes until glyphs can be set down by the device.
+
+**For a hand.** Nobody has yet looked at it in a window but in pictures:
+whether the pages turn, whether resizing keeps it sharp, and how the small
+sizes read on a real screen are for whoever runs it.
 
 ## Writing the next one
 

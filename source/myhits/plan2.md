@@ -106,6 +106,14 @@ is now the first rule of every choreography here.
 - **The mix and the loudness report.** The scripted run, as it sounded, in
   `build\myhits_run.wav`, and every sound's level in a table. Claim 33. It
   found the mix a decibel over full scale in five samples.
+- **Text, as a side quest.** `text.inc` and `text.slang` in the layer:
+  strings shaped by DirectWrite in any script and drawn from their outlines
+  on the device by the Slug algorithm, at any size and angle, with no
+  texels. Proof 08, thirteen claims, its pictures held to GDI+. The game
+  does not use it yet: its words are still the letters of twenty strokes.
+  Where it would earn its place is the things said in a language, a title,
+  and a score table; a number that changes every frame wants glyphs set
+  down by the device first.
 
 ## Choreography
 

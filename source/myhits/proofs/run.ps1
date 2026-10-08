@@ -15,6 +15,9 @@
      07 game    the game itself, through two scripted runs: waves by the
                 table, chains, hostile fire, rank, lives, the level's pace;
                 and its tables taken again from a file while it runs
+     08 text    strings the system shaped, drawn from their outlines on the
+                device: the bands lose nothing, the ink is the outlines' at
+                any size and angle, and is what GDI+ makes of the same fonts
 
    -Validation repeats the device runs under Khronos core and synchronization
    validation and rejects any diagnostic.
@@ -108,7 +111,7 @@ foreach ($module in $modules) {
     else { Assert-True ($module.Name -match '_plot_|_particle_fragment|_veil_fragment|_backdrop_fragment') "$($module.Name) reaches no memory, and is not one of the shaders known to need none" }
     $names = @{}
     foreach ($match in [regex]::Matches($code, 'OpMemberName (%\S+) (\d+) "(\w+)"')) { $names["$($match.Groups[1].Value) $($match.Groups[2].Value)"] = $match.Groups[3].Value }
-    foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census|Tables|Move|Kind|Style|Recipe|Wave|Stem)(?:_\w+)?) (\d+) Offset (\d+)')) {
+    foreach ($match in [regex]::Matches($code, 'OpMemberDecorate (%(Root|Events|Trigger|Pictures|Picture|Stroke|Census|Tables|Move|Kind|Style|Recipe|Wave|Stem|Curve|Glyph|Band|Placed|TextCensus|Examined|Text)(?:_\w+)?) (\d+) Offset (\d+)')) {
         $member = "$($match.Groups[2].Value).$($names["$($match.Groups[1].Value) $($match.Groups[3].Value)"])"
         Assert-True ($promised.ContainsKey($member)) "$($module.Name) has $member, which shared.inc does not"
         Assert-True ($promised[$member] -eq [int]$match.Groups[4].Value) "$($module.Name) puts $member at $($match.Groups[4].Value), shared.inc at $($promised[$member])"
@@ -395,6 +398,36 @@ try {
         }
         Write-Host ("[myhits] $mode/07 game: {0} frames of {1} ticks through four games; {2} kinds in {3} moves, {4} squads; a world of {5} KB on the device; waves by the table; a chain a spacing behind its head and dead with it (frame {6}); a FIRE a body one tick on; rank up for hits, down for misses and {7} hurts; the level stopped and moved on, and its backdrop with it, to the pixel; {8}; the music is its notes, written to $BuildDir\myhits_music.wav; the run as it sounded is $BuildDir\myhits_run.wav, $($mix.seconds) seconds at $($mix.level) dB, its peak $($mix.peak) dB with $($mix.clipped) samples cut off, and $($mix.furthest) the sound furthest from the rest, by $($mix.apart) dB; charge is earned and spent, and a dash slips a shot; a hail-mary fixes, locks and bursts where it locked, is dodged by moving and not stopped by killing; the window pauses, moves, takes its monitor and is remembered; nothing alive is written over, and what there is no room for is refused; its tables are taken again from a file as it runs ($($state.reload_bytes) bytes in five takings), and refused when their names are not its own; two runs sum to the same ($gameSums);$kept$read $costs; {9} passes and {10} draws a frame" -f `
             $frames, $state.ticks_a_frame, ([int]$state.kinds - 1), $state.moves, $state.squads, [int]([int]$state.world_bytes / 1024), $state.head_died_frame, $state.hurts_heard, $voices,
+            ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
+
+        # 08: text. The program checks what it can of itself; what is on the screen is held, in
+        # 08_text\pictures.ps1, to the outlines' own areas and to what GDI+ makes of the same fonts.
+        $state = Run-Proof $mode 'text' @{ 1='events out of order, or late'; 2='a cubic the system gave was cut, or too few were put back, or the shape''s eight were not cut, or a cubic''s pieces do not lie on it'
+            3='a run was not set down where the system sets it'
+            4='the system did not shape it: a kerned pair, a ligature, letters joined and right to left, a conjunct, a font found for a script, or a line as wide as its advances'
+            5='a glyph''s bands did not give what all its curves give, or a band was crowded or went without room'
+            6='how often a glyph''s places are enclosed did not come to what its curves enclose, or what is drawn of it is not that, less what is enclosed twice; or two discs were not found to be two discs'
+            8='more than Root went down or Events came back'; 9='the text was not made ready in builds of three passes and one examining of two, or a frame is not one pass and one draw' }
+        $frames = [int]$state.frames
+        Assert-True ($frames -eq 60 -and [int]$state.events -eq $frames) 'The text proof did not run its script'
+        Assert-True ([long]$state.bytes_down -eq $frames * 72 -and [long]$state.bytes_up -eq $frames * 512) 'The CPU traffic is not what the plan allows'
+        $logRoot = (Resolve-Path -LiteralPath (Join-Path $BuildDir "myhits_checks\$mode\text")).Path
+        foreach ($kept in 'lines', 'glyphs', 'measure') { Copy-Item -LiteralPath (Join-Path $BuildDir "myhits_text.$kept.txt") -Destination $logRoot }
+        # 7, 10, 11, 12: the pictures.
+        $seen = & (Join-Path $PSScriptRoot '08_text\pictures.ps1') -Lines (Join-Path $BuildDir 'myhits_text.lines.txt') -Pages (5, 25, 45 | ForEach-Object { Join-Path $logRoot ('frame_{0:000}.png' -f $_) })
+        # 13: what a page costs the device to draw is within its budget: a millisecond, which is
+        # many times what it was when this was written, so that only a real regression fails.
+        $measured = Read-Measure (Join-Path $BuildDir 'myhits_text.measure.txt')
+        $costs = @()
+        foreach ($page in 0..2) {
+            $mean = [int]$measured["stamp_$(2 + $page)"][0]
+            Assert-True ($mean -gt 0) "text check 13 failed: the draw of page $page was never timed"
+            if ($mode -eq 'default') { Assert-True ($mean -le 1000000) "text check 13 failed: page $page takes $mean ns to draw; its budget is 1000000" }
+            $costs += '{0:0}' -f ($mean / 1000)
+        }
+        Write-Host ("[myhits] $mode/08 text: {0} glyphs of {1} fonts in {2} curves, shaped by the system: {3} cubics put back as the quadratics they were and {4} of the program's own cut in eight; {5} runs set down where the system sets them; {6} bands made on the device in {7} builds of three passes, the longest of {8} curves; {9} glyphs examined at {10} places, their bands giving what all their curves give at every one; how often the rays find a glyph enclosed comes to what its curves enclose within {11:0.0}%, and {12} glyphs whose contours lie over one another are drawn as the one shape they make; two discs enclose {13:0.0000} of a square em and cover {14:0.0000}, which should be 0.5655 and 0.4549; $seen; the three pages cost the device {15} microseconds to draw; {16} pass and {17} draw a frame" -f `
+            $state.glyphs, $state.faces, $state.curves, $state.raised, $state.shape_cut, $state.runs_held, $state.bands, $state.builds, $state.longest, $state.examined, $state.samples,
+            ([int]$state.worst_area_thousandths / 10.0), $state.overlapped, ([int]$state.shape_wound_millionths / 1e6), ([int]$state.shape_covered_millionths / 1e6), ($costs -join ', '),
             ([int]$state.dispatches / $frames), ([int]$state.draws / $frames))
     }
 } finally {

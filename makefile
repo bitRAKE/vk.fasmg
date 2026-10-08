@@ -84,9 +84,13 @@ GAME_SHADERS = $(BUILD)\myhits_game_develop.spv $(BUILD)\myhits_game_chart.spv $
 	$(BUILD)\myhits_game_drift.spv $(BUILD)\myhits_game_report.spv $(BUILD)\myhits_game_render.spv $(BUILD)\myhits_game_scene_vertex.spv \
 	$(BUILD)\myhits_game_scene_fragment.spv $(BUILD)\myhits_game_particle_vertex.spv $(BUILD)\myhits_game_particle_fragment.spv \
 	$(BUILD)\myhits_game_veil_vertex.spv $(BUILD)\myhits_game_veil_fragment.spv $(BUILD)\myhits_game_backdrop_vertex.spv $(BUILD)\myhits_game_backdrop_fragment.spv
+PAGE_SLANG = $(MYHITS)\proofs\08_text\page.slang
+PAGE_SOURCES = $(PAGE_SLANG) $(COMMON)\common.slang $(COMMON)\text.slang $(MYHITS_HEADER)
+PAGE_SHADERS = $(BUILD)\myhits_text_text_count.spv $(BUILD)\myhits_text_text_place.spv $(BUILD)\myhits_text_text_fill.spv $(BUILD)\myhits_text_text_examine.spv $(BUILD)\myhits_text_text_judge.spv \
+	$(BUILD)\myhits_text_direct.spv $(BUILD)\myhits_text_text_vertex.spv $(BUILD)\myhits_text_text_fragment.spv
 MYHITS_TABLE_SOURCES = $(MYHITS)\tables_image.inc $(MYHITS)\tables.inc $(COMMON)\tables.inc $(COMMON)\shared.inc $(MYHITS_ART) tools\assemble.ps1
 MYHITS_TABLE_FILES = $(BUILD)\myhits_tables.bin $(BUILD)\myhits_tables_alt.bin $(BUILD)\myhits_tables_bad.bin
-MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe $(BUILD)\myhits_motion.exe $(BUILD)\myhits_hits.exe $(BUILD)\myhits_sound.exe $(BUILD)\myhits.exe $(MYHITS_TABLE_FILES)
+MYHITS_PROOFS = $(STYLE_SHADERS) $(BUILD)\myhits_spine.exe $(BUILD)\myhits_pictures.exe $(BUILD)\myhits_motion.exe $(BUILD)\myhits_hits.exe $(BUILD)\myhits_sound.exe $(BUILD)\myhits.exe $(MYHITS_TABLE_FILES) $(BUILD)\myhits_text.exe
 
 VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
@@ -510,6 +514,45 @@ $(BUILD)\myhits_sound.obj: $(MYHITS)\proofs\06_sound\board.asm $(MYHITS_MACHINE)
 
 $(BUILD)\myhits_sound.exe: $(BUILD)\myhits_sound.obj
 	$(LINK_WINDOW) xinput.lib xaudio2.lib ole32.lib
+
+# Proof 08's passes. It asks DirectWrite, which is the system's, for its outlines.
+$(BUILD)\myhits_text_text_count.spv: $(PAGE_SOURCES)
+	$(MYHITS_SLANG) -entry text_count -stage compute -o $@ $(PAGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_text_text_place.spv: $(PAGE_SOURCES)
+	$(MYHITS_SLANG) -entry text_place -stage compute -o $@ $(PAGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_text_text_fill.spv: $(PAGE_SOURCES)
+	$(MYHITS_SLANG) -entry text_fill -stage compute -o $@ $(PAGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_text_text_examine.spv: $(PAGE_SOURCES)
+	$(MYHITS_SLANG) -entry text_examine -stage compute -o $@ $(PAGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_text_text_judge.spv: $(PAGE_SOURCES)
+	$(MYHITS_SLANG) -entry text_judge -stage compute -o $@ $(PAGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_text_direct.spv: $(PAGE_SOURCES)
+	$(MYHITS_SLANG) -entry direct -stage compute -o $@ $(PAGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_text_text_vertex.spv: $(PAGE_SOURCES)
+	$(MYHITS_SLANG) -entry text_vertex -stage vertex -o $@ $(PAGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_text_text_fragment.spv: $(PAGE_SOURCES)
+	$(MYHITS_SLANG) -entry text_fragment -stage fragment -o $@ $(PAGE_SLANG)
+	$(MYHITS_VALIDATE) $@
+
+$(BUILD)\myhits_text.obj: $(MYHITS)\proofs\08_text\page.asm $(MYHITS_MACHINE) $(COMMON)\files.inc $(COMMON)\text.inc $(PAGE_SHADERS)
+	$(ASSEMBLE) -Source $(MYHITS)\proofs\08_text\page.asm -Output $@
+
+$(BUILD)\myhits_text.exe: $(BUILD)\myhits_text.obj
+	$(LINK_WINDOW) xinput.lib dwrite.lib
 
 # The game.
 $(BUILD)\myhits_game_develop.spv: $(GAME_SOURCES)

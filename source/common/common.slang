@@ -11,7 +11,6 @@ uint hash(uint x)
 }
 float unit(uint x) { return float(x >> 8) * (1.0 / 16777216.0); }
 
-// A frame's events, emptied: by the frame's first pass, whichever that is.
 // A number made of how many lines each table has and what the sounds come
 // to (tables_counted in reload.inc): a program that has taken tables again
 // can ask the device what it makes of its own.
@@ -28,6 +27,7 @@ uint tables_counted(Tables tables)
     return fold;
 }
 
+// A frame's events, emptied: by the frame's first pass, whichever that is.
 void open_events(Events* events)
 {
     events.frame = root.frame;

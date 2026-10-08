@@ -47,9 +47,17 @@ addresses.
 | [chains.slang](chains.slang) | A head and segments that go exactly where it went |
 | [sounds.slang](sounds.slang) | Sounds and stems rendered from recipes, on the device |
 | [letters.slang](letters.slang) | Words with no texels behind them: a letter is some of twenty strokes in its cell, sharp at any size; what is said is in the tables |
+| [text.inc](text.inc), [text.slang](text.slang) | Text as the system has it: DirectWrite, called from assembly, shapes a string in any script and gives each glyph's outline once; the device makes bands of the curves and draws them by the Slug algorithm, at any size and angle, with no texels. A program's own shapes go the same way |
 
 Each is proved by a program in [myhits\proofs](../myhits/proofs/README.md),
 which is also where to see it run.
+
+The text is drawn by the Slug algorithm, which is Eric Lengyel's
+([A Decade of Slug](https://terathon.com/blog/decade-slug.html)); its patent
+is in the public domain since March 2026 and its
+[reference shaders](https://github.com/EricLengyel/Slug) are under the MIT
+License. `text.slang` is written for this layer with those beside it, and
+says at its head which parts are theirs.
 
 ## What it is made of, and what it leaves out
 
@@ -100,3 +108,5 @@ question for the projection, the examples or the tools.
 | A structure or variable may not have a name the assembler has a use for: `Frame` is proc64's `frame`, `monitor` is an instruction, and a macro named `kind` takes every `kind dd ?` in the tree | fasm2 | Other names; a note where each bit |
 | `SV_VertexID` and `SV_InstanceID` bring in a capability the contract does not ask for | Slang to SPIR-V | `SV_VulkanVertexID`, `SV_VulkanInstanceID` |
 | The supplied clang compiles HLSL to SPIR-V but refuses pointers | the LLVM build | The SDK's `slangc` |
+| `fastcall` loads no XMM register, and a COM method that takes a float among its first four arguments takes it there | fasm2's `fastcall`; DirectWrite | `text.inc`'s `com` macro leaves the float's place empty, and the float is put in its register by hand first |
+| The interfaces of DirectWrite and of Direct2D's geometry sink are not in the equates | fasm2 | The few slots and GUIDs wanted are in `text.inc`, each checked against the SDK's headers |

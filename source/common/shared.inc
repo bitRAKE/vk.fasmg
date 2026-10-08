@@ -383,3 +383,80 @@ boundary Tables
 	u32 say_count
 	u32 sound_samples		; what the sounds come to in the bank: the stems begin there
 end boundary
+
+; Text, drawn from its outlines (text.inc, text.slang). A curve is a quadratic
+; in ems, y down as on the playfield; a straight line is one whose middle
+; point is its end.
+shared TEXT_CURVES,65536		; how many of each there is room for: all powers of two,
+shared TEXT_GLYPHS,4096			; so that a number can be made to fall inside by masking it
+shared TEXT_BANDS,131072
+shared TEXT_LISTS,1048576
+shared TEXT_PLACED,16384
+shared TEXT_BANDS_MOST,32		; the most bands a glyph is cut into, each way
+shared TEXT_EXAMINED_MOST,160		; the most places, each way, a glyph is examined at: two and a half ems at the finer size
+boundary Curve
+	f32x2 p1
+	f32x2 p2
+	f32x2 p3
+end boundary
+; A glyph: its curves, the box they lie in, and its bands: `rows` of them one
+; above another, each a list of the curves that reach into it, and then
+; `columns` side by side.
+boundary Glyph
+	u32 curves			; its first
+	u32 curve_count
+	f32x2 low			; the box, in ems
+	f32x2 high
+	u32 bands			; its first: the rows, then the columns
+	u32 rows
+	u32 columns
+	f32 area			; what its curves enclose, signed, in square ems
+end boundary
+boundary Band
+	u32 count			; curves that reach into it,
+	u32 first			; and where their numbers begin, among all lists
+end boundary
+; A glyph set down on the page.
+boundary Placed
+	f32x2 at			; where its origin is, on the playfield
+	f32x2 across			; one em along its baseline, there: its size, and its turn
+	u32 glyph
+	u32 color			; R G B A, as a texel
+end boundary
+; What the device found when it built the bands, and when it was asked to
+; examine them.
+boundary TextCensus
+	u32 listed			; how much of the lists is in use
+	u32 crowded			; bands with more curves than a band is walked for
+	u32 longest			; the most curves in any band
+	u32 unplaced			; bands there was no room in the lists for
+	u32 examined			; glyphs examined
+	u32 band_faults			; places where a glyph's bands did not give what all its curves give
+	u32 area_faults			; glyphs whose winding, summed, does not come to what their curves enclose
+	u32 worst_area			; the worst of those, in thousandths of the area
+	u32 samples			; places examined
+	u32 cover_faults		; glyphs that are not drawn as much as they should be, or are drawn more
+	u32 overlapped			; glyphs some place of which is enclosed twice
+	u32 spare
+end boundary
+; What examining a glyph came to: sums over the places it was examined at, at
+; the finer size, in 4096ths of a pixel.
+boundary Examined
+	u32 covered			; what is drawn of it
+	u32 wound			; what its curves enclose there, counted as often as they enclose it
+	u32 twice			; places enclosed more than once
+	u32 spare
+end boundary
+boundary Text
+	ptr curves,Curve
+	ptr glyphs,Glyph
+	ptr bands,Band
+	ptr lists,uint
+	ptr placed,Placed
+	ptr census,TextCensus
+	ptr examined,Examined		; what examining each glyph came to, while it is being examined
+	u32 glyph_count
+	u32 band_count
+	u32 band_from			; the first band not yet built: what the building passes begin at
+	u32 placed_count
+end boundary
