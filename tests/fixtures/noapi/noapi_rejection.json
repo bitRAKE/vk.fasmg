@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.khronos.org/vulkan/profiles-0.8-latest.json#",
+  "capabilities": {
+    "without_device_address": {
+      "features": {
+        "VkPhysicalDeviceVulkan12Features": { "bufferDeviceAddress": false }
+      }
+    }
+  },
+  "profiles": {
+    "VP_VKFASMG_noapi_rejection": {
+      "version": 1,
+      "api-version": "1.4.304",
+      "label": "NoAPI recipe rejection fixture",
+      "description": "Mask one required feature while preserving real device capabilities otherwise.",
+      "capabilities": [ "without_device_address" ]
+    }
+  }
+}

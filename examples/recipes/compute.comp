@@ -1,0 +1,11 @@
+#version 450
+// Replace this operation; the host keeps the upload/dispatch/readback plumbing.
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0, std430) buffer Data { uint values[]; } data;
+layout(push_constant) uniform Arguments { uint count; } args;
+void main()
+{
+    uint i = gl_GlobalInvocationID.x;
+    if (i < args.count)
+        data.values[2 * args.count + i] = data.values[i] + data.values[args.count + i];
+}

@@ -4,7 +4,7 @@ This is a minimal Windows x64 repository for projecting the Vulkan registry
 into fasmg/fasm2 includes and demonstrating how to bind the resulting functions.
 It contains the projection generator, ABI verification, six loader strategies
 and an explicit runtime bootstrap demonstrated by ten console programs,
-three debug-utils examples, a fractal
+two headless compute recipes, three debug-utils examples, a fractal
 explorer built under three contracts over Vulkan's legacy operations, and a
 GPU-only port of the NoGraphicsAPI textured cube, with focused tests.
 
@@ -16,13 +16,19 @@ GPU-only port of the NoGraphicsAPI textured cube, with focused tests.
 - [fasm2](https://github.com/tgrysztar/fasm2) with AMD64 NEWCOFF support.
 - A Vulkan 1.1 capable driver for running the loader examples, including
   `VK_KHR_surface` and, except for the IAT/thunk examples, `VK_EXT_debug_utils`.
+- For the headless compute recipe, a Vulkan 1.1 GPU with a compute queue.
+  It needs no surface, window, device extensions, or optional features.
+- For the NoAPI compute recipe, SDK Slang and a Vulkan 1.4 GPU with buffer
+  device address, scalar layout, timeline semaphores, synchronization2,
+  maintenance5, and coherent host-visible device-local memory. Its checks
+  also use the SDK API dump and Profiles layers.
 - The Vulkan SDK's `glslangValidator` and `spirv-val` for the explorer shaders.
   Running the explorer needs a Vulkan 1.1 device with Win32 presentation; its
   modern contract also needs the five promoted routes, core or KHR.
 - For the cube, a recent SDK with descriptor-heap/address-command registry
   entries and bundled Slang supporting `spvDescriptorHeapEXT` (tested with
   SDK 1.4.363.0). Running the cube's fallback paths needs a Vulkan 1.1 GPU.
-- The Vulkan SDK's Khronos validation layer for `check-debug`, `check-legacy`,
+- The Vulkan SDK's Khronos validation layer for `check-recipes`, `check-debug`, `check-legacy`,
   `check-noAPI_cube`, and `check`.
 
 The makefile defaults to `..\fasm2\fasm2.cmd` and
@@ -43,6 +49,14 @@ rem Generate and verify the projection only:
 build.cmd api
 rem Build, run, and compare all ten loader examples:
 build.cmd loaders
+rem Build a headless GPU operation, then run its executable:
+build.cmd compute
+build\recipe_compute.exe
+rem Use GPU pointers and reuse one recorded command buffer across batches:
+build.cmd compute-noapi
+build\recipe_compute_noapi.exe
+rem Verify both recipes and repeat with synchronization validation:
+build.cmd check-recipes
 rem Build and verify the three debug-utils examples:
 build.cmd debug
 rem Repeat debug checks with the Khronos validation layer:
@@ -59,10 +73,12 @@ rem Build and run the proofs under the shooter in progress:
 build.cmd myhits-proofs
 rem Repeat them with core and synchronization validation:
 build.cmd check-myhits
-rem Run all projection, loader, debug, explorer, cube, and proof checks:
+rem Run all projection, loader, recipe, debug, explorer, cube, and proof checks:
 build.cmd check
 rem Run just the projection and loader checks:
 build.cmd check-api
+rem Check automatic and explicit guard-page-safe stack growth:
+build.cmd check-stack
 rem Remove build artifacts; keep the generated projection:
 build.cmd clean
 ```
@@ -84,6 +100,18 @@ with layout assertions and alignment checking, and tests lazy resolution
 against a stand-in resolver that clobbers volatile registers. It runs all ten
 loader examples, checks imports, dense slot tables, and actual named-thunk
 instructions, and verifies startup failures for absent DLLs and resolver exports.
+It also checks `newcoff.inc`'s stack probing with large local and explicit
+allocations; the compute recipes declare startup scratch directly in `locals`
+and retain persistent zero-initialized state in BSS. See the
+[import/storage policy](docs/binary-layout.md).
+The [headless compute recipe](examples/recipes/README.md) checks 1,048,576 GPU
+sums against a CPU oracle, repeats with core/synchronization validation, and
+checks its unavailable-driver error.
+The [NoAPI compute recipe](examples/recipes/compute_noapi.md) checks a fixed
+modern contract, GPU pointer ABI, changing resident arguments, and guarded
+tails across three batches. An API trace confirms that setup records commands
+once and recurring work uses only submit/wait calls. A masked required feature
+must cause rejection before device creation.
 It also verifies the [debug-utils examples](examples/debug/README.md), including
 actual Windows debugger events and runs under the Khronos validation layer.
 The [legacy examples](examples/legacy/README.md) hold each executable to its
@@ -107,6 +135,7 @@ deferred range reuse, and graphics/presentation retirement.
 tools/                 projection generator, SDK verifier, assembler wrapper
 vk/loader/             IAT/thunk, delay, static, dynamic, COMDAT; runtime bootstrap
 examples/loaders/      ten builds of one instance/device program; stdout helper
+examples/recipes/      descriptor and GPU-pointer headless compute recipes
 examples/debug/        lifecycle, severity/output routing, object names/tags/labels
 examples/legacy/       fractal explorer under adaptive, compatibility, modern contracts
 examples/noAPI_cube/   GPU-only textured cube with negotiated Vulkan fallbacks
@@ -153,7 +182,9 @@ on its first call.
 
 See [the projection format](docs/vulkan.md), [the loader contracts](docs/loaders.md),
 [the import/storage policy](docs/binary-layout.md),
-and [the loader examples](examples/loaders/README.md). The
+and [the loader examples](examples/loaders/README.md). Start with the
+[compute recipe](examples/recipes/README.md) for a complete headless GPU operation.
+The
 [debug-utils examples](examples/debug/README.md) demonstrate message callbacks,
 console/debugger/file sinks, and object/workload annotations.
 The [legacy examples](examples/legacy/README.md) apply

@@ -43,6 +43,8 @@ CUBE_BODY = examples\noAPI_cube\features.inc examples\noAPI_cube\scene.inc examp
 CUBE_SHADERS = $(BUILD)\noAPI_cube_bindings.spv $(BUILD)\noAPI_cube_pointer.spv $(BUILD)\noAPI_cube_fragment.spv $(BUILD)\noAPI_cube_heap_vertex.spv $(BUILD)\noAPI_cube_heap_fragment.spv
 CUBE_EXAMPLE = $(BUILD)\noAPI_cube.exe
 RANGE_PROBE = $(BUILD)\vk_ranges_test.dll
+COMPUTE_RECIPE = $(BUILD)\recipe_compute.exe
+NOAPI_COMPUTE_RECIPE = $(BUILD)\recipe_compute_noapi.exe
 
 # myhits: the boundary header is assembled first, the shaders are compiled against it, then the programs embed them.
 MYHITS = source\myhits
@@ -98,7 +100,7 @@ VULKAN_DELAY_DEF = vk\vulkan-1.def
 VULKAN_DELAY_LIB = $(BUILD)\vulkan-1-delay.lib
 VULKAN_DELAY_OBJ = $(BUILD)\vk_delay.obj
 
-all: $(LOADER_EXAMPLES) $(DEBUG_EXAMPLES) $(LEGACY_EXAMPLES) $(CUBE_EXAMPLE) $(MYHITS_PROOFS)
+all: $(LOADER_EXAMPLES) $(DEBUG_EXAMPLES) $(LEGACY_EXAMPLES) $(CUBE_EXAMPLE) $(COMPUTE_RECIPE) $(NOAPI_COMPUTE_RECIPE) $(MYHITS_PROOFS)
 
 $(BUILD_READY):
 	if not exist "$(BUILD)" mkdir "$(BUILD)"
@@ -117,8 +119,11 @@ $(VK_VALIDATED): $(VK_GENERATED) tools\verify-vulkan-projection.ps1
 
 api: $(VK_VALIDATED)
 
-check-api: $(VK_VALIDATED) $(LOADER_EXAMPLES)
+check-api: $(VK_VALIDATED) $(LOADER_EXAMPLES) check-stack
 	$(POWERSHELL) -File tests\verify-vk-tree.ps1 -Fasm2 "$(FASM2)" -BuildDir "$(BUILD)" -LoaderExamples "$(LOADER_EXAMPLES)"
+
+check-stack: $(BUILD_READY)
+	$(POWERSHELL) -File tests\verify-stack-probe.ps1 -Fasm2 "$(FASM2)" -BuildDir "$(BUILD)"
 
 $(CONSOLE_OBJ): examples\loaders\console.asm $(EXAMPLE_STRINGS) $(OBJECT_BASE) $(BUILD_READY)
 	$(ASSEMBLE) -Source examples\loaders\console.asm -Output $@
@@ -205,7 +210,40 @@ $(BUILD)\loader_runtime_comdat_app.obj: examples\loaders\runtime_comdat_app.asm 
 $(BUILD)\loader_runtime_comdat.exe: $(BUILD)\loader_runtime_comdat_app.obj $(BUILD)\loader_comdat_device.obj $(CONSOLE_OBJ)
 	$(LOADER_EXAMPLE_LINK) $** kernel32.lib
 
-# Headless VK_EXT_debug_utils examples, with one Vulkan-calling object apiece.
+# Headless recipes, with one Vulkan-calling object apiece.
+$(BUILD)\recipe_compute.spv: examples\recipes\compute.comp $(BUILD_READY)
+	"$(VULKAN_SDK)\Bin\glslangValidator.exe" -V --target-env vulkan1.1 -o $@ examples\recipes\compute.comp
+	"$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.1 $@
+
+$(BUILD)\recipe_compute.obj: examples\recipes\compute.asm examples\recipes\host.inc $(BUILD)\recipe_compute.spv vk\loader\static.inc vk\loader\lazy.inc vk\loader\runtime.inc $(EXAMPLE_STRINGS) $(OBJECT_BASE) $(VK_VALIDATED) $(BUILD_READY)
+	$(ASSEMBLE) -Source examples\recipes\compute.asm -Output $@
+
+$(COMPUTE_RECIPE): $(BUILD)\recipe_compute.obj $(CONSOLE_OBJ)
+	$(LINK_EXAMPLE) /MAP:$(@R).map /OUT:$@ $** kernel32.lib user32.lib
+
+compute: $(COMPUTE_RECIPE)
+
+$(BUILD)\recipe_compute_noapi.spv: examples\recipes\compute_noapi.slang $(BUILD_READY)
+	"$(SLANGC)" -entry main -stage compute -target spirv -profile spirv_1_6 -emit-spirv-directly -fvk-use-scalar-layout -o $@ examples\recipes\compute_noapi.slang
+	"$(VULKAN_SDK)\Bin\spirv-val.exe" --target-env vulkan1.4 --scalar-block-layout $@
+
+$(BUILD)\recipe_compute_noapi.obj: examples\recipes\compute_noapi.asm examples\recipes\host.inc $(BUILD)\recipe_compute_noapi.spv vk\loader\static.inc vk\loader\lazy.inc vk\loader\runtime.inc $(OBJECT_BASE) $(VK_VALIDATED) $(BUILD_READY)
+	$(ASSEMBLE) -Source examples\recipes\compute_noapi.asm -Output $@
+
+$(NOAPI_COMPUTE_RECIPE): $(BUILD)\recipe_compute_noapi.obj $(CONSOLE_OBJ)
+	$(LINK_EXAMPLE) /MAP:$(@R).map /OUT:$@ $** kernel32.lib user32.lib
+
+compute-noapi: $(NOAPI_COMPUTE_RECIPE)
+
+recipes: $(COMPUTE_RECIPE) $(NOAPI_COMPUTE_RECIPE)
+
+check-recipes: $(COMPUTE_RECIPE) $(NOAPI_COMPUTE_RECIPE) check-stack
+	$(POWERSHELL) -File tests\verify-compute-recipe.ps1 -BuildDir "$(BUILD)" -Validation
+	$(POWERSHELL) -File tests\verify-noapi-compute-recipe.ps1 -BuildDir "$(BUILD)" -Validation
+
+check-compute-noapi: $(NOAPI_COMPUTE_RECIPE) check-stack
+	$(POWERSHELL) -File tests\verify-noapi-compute-recipe.ps1 -BuildDir "$(BUILD)" -Validation
+
 $(DEBUG_LOGGER_OBJ): examples\debug\logger.asm $(DEBUG_BODY)
 	$(ASSEMBLE) -Source examples\debug\logger.asm -Output $@
 
@@ -730,7 +768,7 @@ myhits-survey:
 check-myhits: $(MYHITS_PROOFS)
 	$(POWERSHELL) -File $(MYHITS)\proofs\run.ps1 -BuildDir "$(BUILD)" -Validation
 
-check: check-api check-debug check-legacy check-noAPI_cube check-myhits
+check: check-api check-recipes check-debug check-legacy check-noAPI_cube check-myhits
 
 # Generated includes and manifests survive clean; the next build reuses them.
 clean:

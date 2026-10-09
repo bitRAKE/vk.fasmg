@@ -179,7 +179,8 @@ must be coordinated by the owning thread. A mixed build that still imports
 other Vulkan functions retains its DLL startup dependency.
 
 `examples/loaders/runtime_static.asm`, `runtime_dynamic_app.asm`, and
-`runtime_comdat_app.asm` demonstrate each layout.
+`runtime_comdat_app.asm` demonstrate each layout. The headless compute recipe
+uses the static variant.
 
 ## Delay-load: `iat.inc` with `loader\delay.asm`
 
