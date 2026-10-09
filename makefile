@@ -28,7 +28,7 @@ CONSOLE_OBJ = $(BUILD)\loader_console.obj
 LOADER_EXAMPLE_BODY = examples\loaders\instance.inc examples\loaders\device.inc $(EXAMPLE_STRINGS) $(OBJECT_BASE) $(VK_VALIDATED) $(BUILD_READY)
 LINK_EXAMPLE = link /NOLOGO /SUBSYSTEM:CONSOLE /ENTRY:mainCRTStartup /NODEFAULTLIB /OPT:REF /OPT:ICF
 LOADER_EXAMPLE_LINK = $(LINK_EXAMPLE) /MAP:$(@R).map /OUT:$@
-LOADER_EXAMPLES = $(BUILD)\loader_iat.exe $(BUILD)\loader_delay.exe $(BUILD)\loader_static.exe $(BUILD)\loader_mixed.exe $(BUILD)\loader_dynamic.exe $(BUILD)\loader_comdat.exe
+LOADER_EXAMPLES = $(BUILD)\loader_iat.exe $(BUILD)\loader_thunk.exe $(BUILD)\loader_delay.exe $(BUILD)\loader_static.exe $(BUILD)\loader_mixed.exe $(BUILD)\loader_dynamic.exe $(BUILD)\loader_comdat.exe $(BUILD)\loader_runtime_static.exe $(BUILD)\loader_runtime_dynamic.exe $(BUILD)\loader_runtime_comdat.exe
 DEBUG_LOGGER_OBJ = $(BUILD)\debug_logger.obj
 DEBUG_BODY = examples\debug\context.inc examples\debug\sink.inc $(EXAMPLE_STRINGS) $(OBJECT_BASE) vk\loader\static.inc vk\loader\lazy.inc $(VK_VALIDATED) $(BUILD_READY)
 DEBUG_EXAMPLES = $(BUILD)\debug_lifecycle.exe $(BUILD)\debug_outputs.exe $(BUILD)\debug_objects.exe
@@ -177,6 +177,33 @@ $(BUILD)\loader_comdat.exe: $(BUILD)\loader_comdat_app.obj $(BUILD)\loader_comda
 
 loaders: $(LOADER_EXAMPLES)
 	$(POWERSHELL) -File examples\loaders\compare.ps1 -Executables "$(LOADER_EXAMPLES)"
+
+$(BUILD)\loader_thunk.obj: examples\loaders\thunk.asm vk\loader\thunk.inc $(LOADER_EXAMPLE_BODY)
+	$(ASSEMBLE) -Source examples\loaders\thunk.asm -Output $@
+
+$(BUILD)\loader_thunk.exe: $(BUILD)\loader_thunk.obj $(CONSOLE_OBJ)
+	$(LOADER_EXAMPLE_LINK) $** $(VULKAN_LIB) kernel32.lib
+
+$(BUILD)\loader_runtime_static.obj: examples\loaders\runtime_static.asm vk\loader\static.inc vk\loader\lazy.inc vk\loader\runtime.inc $(LOADER_EXAMPLE_BODY)
+	$(ASSEMBLE) -Source examples\loaders\runtime_static.asm -Output $@
+
+$(BUILD)\loader_runtime_static.exe: $(BUILD)\loader_runtime_static.obj $(CONSOLE_OBJ)
+	$(LOADER_EXAMPLE_LINK) $** kernel32.lib
+
+$(BUILD)\loader_runtime_dynamic_app.obj: examples\loaders\runtime_dynamic_app.asm vk\loader\dynamic.inc vk\loader\runtime.inc $(LOADER_EXAMPLE_BODY)
+	$(ASSEMBLE) -Source examples\loaders\runtime_dynamic_app.asm -Output $@
+
+$(BUILD)\loader_runtime_dynamic_loader.obj: $(LOADER_SOURCES) $(BUILD)\loader_runtime_dynamic_app.obj $(BUILD)\loader_dynamic_device.obj $(BUILD_READY)
+	$(ASSEMBLE) -Includes "newcoff.inc;$(BUILD)\loader_runtime_dynamic_app.vkuse;$(BUILD)\loader_dynamic_device.vkuse" -Source vk\loader\loader.asm -Output $@
+
+$(BUILD)\loader_runtime_dynamic.exe: $(BUILD)\loader_runtime_dynamic_app.obj $(BUILD)\loader_dynamic_device.obj $(BUILD)\loader_runtime_dynamic_loader.obj $(CONSOLE_OBJ)
+	$(LOADER_EXAMPLE_LINK) $** kernel32.lib
+
+$(BUILD)\loader_runtime_comdat_app.obj: examples\loaders\runtime_comdat_app.asm vk\loader\comdat.inc vk\loader\lazy.inc vk\loader\runtime.inc $(LOADER_EXAMPLE_BODY)
+	$(ASSEMBLE) -Source examples\loaders\runtime_comdat_app.asm -Output $@
+
+$(BUILD)\loader_runtime_comdat.exe: $(BUILD)\loader_runtime_comdat_app.obj $(BUILD)\loader_comdat_device.obj $(CONSOLE_OBJ)
+	$(LOADER_EXAMPLE_LINK) $** kernel32.lib
 
 # Headless VK_EXT_debug_utils examples, with one Vulkan-calling object apiece.
 $(DEBUG_LOGGER_OBJ): examples\debug\logger.asm $(DEBUG_BODY)

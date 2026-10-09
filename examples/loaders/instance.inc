@@ -5,7 +5,7 @@
 ; failed.
 include '..\strings.inc'
 
-extrn ExitProcess:qword
+extrn '__imp_ExitProcess' as ExitProcess:qword
 extrn console_initialize:qword
 extrn console_write_string:qword
 extrn console_write_line:qword
@@ -16,6 +16,13 @@ proc mainCRTStartup uses rbx
 	fastcall console_initialize
 	fastcall console_write_string,'[loaders] '
 	fastcall console_write_line,binding_text
+
+if definite LOADER_RUNTIME
+	mov ebx,1
+	fastcall vk_runtime_open
+	test eax,eax
+	jnz .exit
+end if
 
 	mov ebx,1
 	vkCreateInstance addr instance_info, 0, addr instance
@@ -55,7 +62,10 @@ end if
 .destroy_instance:
 	vkDestroyInstance [instance], 0
 .exit:
-	fastcall ExitProcess,rbx
+if definite LOADER_RUNTIME
+	fastcall vk_runtime_close
+end if
+	fastcall [ExitProcess],rbx
 	int3
 endp
 
@@ -73,12 +83,14 @@ endp
 
 end if
 
-section '.data$t' data readable writeable align 16
+section '.bss$t' readable writeable align 16
 
-instance dq 0
-device dq 0
-messenger dq 0
-api_version dd 0
+instance dq ?
+device dq ?
+messenger dq ?
+api_version dd ?
+
+section '.data$t' data readable writeable align 16
 
 align 8
 instance_extensions:

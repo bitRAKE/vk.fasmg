@@ -34,27 +34,31 @@ A loader takes the lists it finds and empties them. Includes that follow start
 new lists, for a later loader to bind another way, so position decides what a
 loader binds.
 
-For every function it takes, a loader defines an instruction and, once the
-object refers to it, a qword slot of the same name. The instruction calls
-through the slot:
+For every function it takes, a loader defines an instruction. The slot-based
+loaders call through a qword slot of the same name:
 
 ```asm
 vkCreateInstance addr instance_info, 0, addr instance	; fastcall [vkCreateInstance], ...
 ```
 
-`vkGetInstanceProcAddr` is what the others are resolved with. It is an import
-under every loader, except that a delay-load link takes it from the library
-when it loads it.
+`thunk.inc` instead calls a named function directly; the linker supplies its
+jump through the import table. The assembly call syntax stays the same.
+
+`vkGetInstanceProcAddr` is what the lazy loaders resolve the others with. Its
+external `__imp_` symbol normally binds to an import. The optional `runtime.inc`
+bootstrap supplies that symbol itself, after explicitly loading the DLL.
+A delay-load link takes the resolver from the library when it loads it.
 
 | Include | Slots live | Bound | Objects |
 | --- | --- | --- | --- |
 | `iat.inc` | in the import table | by Windows, before the program starts | any number |
+| `thunk.inc` | in the import table, reached by linker jump thunks | by Windows, before the program starts | any number |
 | `iat.inc`, linked for delay-load | in a table the linker builds | lazily, through `loader\delay.asm` | any number |
 | `static.inc` | in the object, for the functions it refers to | lazily | one |
 | `dynamic.inc` + `loader.asm` | in a loader object built last | lazily | any number |
 | `comdat.inc` | in COMDAT sections the linker merges | lazily | any number |
 
-Every loader gives a slot the symbol `__imp_vkName`. An object's reference
+Every slot-based loader gives a slot the symbol `__imp_vkName`. An object's reference
 therefore binds to whichever defines that symbol: an object's definition if
 there is one, `vulkan-1.lib` otherwise. The same object code links either way,
 and the link map names every slot a program defines.
@@ -100,6 +104,82 @@ include 'vk\loader\iat.inc'		; everything above
 include 'vk\ext\debug_utils.inc'
 include 'vk\loader\static.inc'		; everything since
 ```
+
+## `thunk.inc`: named import jump thunks
+
+This is an explicit Vulkan binding choice. Win32 imports in the runtime
+bootstrap and loader examples follow the separate
+[import/storage policy](binary-layout.md): direct IAT calls by default, with
+a documented reason required for named Win32 thunks.
+
+Select the same exported API as for `iat.inc`, but include `thunk.inc` instead.
+It declares `extrn 'vkName' as vkName:qword`; the generated instruction uses
+`fastcall vkName, ...`. MSVC's linker supplies `vkName: jmp [__imp_vkName]`.
+Link against the normal `vulkan-1.lib`.
+
+On x64 a relative `call vkName` occupies five bytes; a RIP-relative
+`call [__imp_vkName]` occupies six. The shared jump thunk occupies six bytes
+per imported function. Ignoring alignment, **C call sites to F functions**
+change their total call/thunk code by **6F - C bytes**. Repeated calls can
+reduce code size once reuse pays for the thunks; fewer bytes at a hot call
+site can improve its instruction-cache density. This is a layout option,
+not a measured speedup: the extra jump and its placement also matter.
+
+The thunk concentrates redirection at one address shared by its callers.
+Retargeting the IAT slot can redirect that thunk without editing every call;
+editing executable thunk bytes additionally requires the application's usual
+memory-protection, instruction-cache, and thread coordination measures.
+Use link maps and disassembly to establish size/layout, then compare the same
+workload with cold resolution excluded when evaluating steady-state cost.
+
+Export availability and startup requirements match `iat.inc`. These linker
+thunks cannot jump into the current ordinary lazy slots: those resolvers
+recover the slot address from a `call [slot]` operand, and the caller of a
+named thunk has a different return address. Delay-load thunks carry their
+own slot identity and have a different contract.
+
+## `runtime.inc`: explicit bootstrap for all three lazy layouts
+
+DLL loading is independent of slot layout. Static, dynamic, and COMDAT lazy
+loaders can all use this bootstrap, without a Vulkan import library:
+
+```asm
+include 'newcoff.inc'
+include 'vk/core.inc'
+include 'vk/loader/static.inc'       ; or dynamic.inc / comdat.inc
+include 'vk/loader/runtime.inc'
+vk_runtime.bootstrap              ; once in the application's owning object
+
+; During single-threaded startup, before any Vulkan call:
+fastcall vk_runtime_open           ; EAX = VK_SUCCESS or -3
+test eax,eax
+jnz .vulkan_unavailable
+; Create instance/device, execute work, destroy every Vulkan object.
+; Stop every Vulkan caller before releasing the DLL:
+fastcall vk_runtime_close
+```
+
+The bootstrap calls `LoadLibraryW('vulkan-1.dll')` and
+`GetProcAddress('vkGetInstanceProcAddr')`, publishing its resolver pointer as
+`__imp_vkGetInstanceProcAddr`. Link `kernel32.lib`; omit `vulkan-1.lib`.
+The existing lazy resolvers then use the pointer exactly as they use an import.
+For dynamic/COMDAT builds the other objects and table construction are unchanged.
+
+Missing DLL or export returns `VK_ERROR_INITIALIZATION_FAILED` (-3), with
+module and resolver state cleared. `vk_runtime_close` tolerates empty state.
+An optional DLL-name argument to `vk_runtime.bootstrap` supports deterministic
+failure tests. In both missing-runtime cases the program starts and decides
+how to report the error or use a CPU path. Call `open` explicitly; Vulkan
+commands must not be called when it fails.
+
+Closing ends the lazy table's lifetime. Its resolved slots still contain
+function addresses, so do not reopen the bootstrap and reuse those slots.
+The existing one-instance/one-device contract remains; bootstrap operations
+must be coordinated by the owning thread. A mixed build that still imports
+other Vulkan functions retains its DLL startup dependency.
+
+`examples/loaders/runtime_static.asm`, `runtime_dynamic_app.asm`, and
+`runtime_comdat_app.asm` demonstrate each layout.
 
 ## Delay-load: `iat.inc` with `loader\delay.asm`
 
@@ -271,7 +351,7 @@ No loader here keeps a table per device. What exists reaches further than its
 single `device` suggests, and the rest is a layer a program puts on top of a
 loader, not another loader.
 
-**What already serves any number of devices.** A function bound by `iat.inc`,
+**What already serves any number of devices.** A function bound by `iat.inc` or `thunk.inc`,
 delay-loaded or not, is the Vulkan loader's own entry point, which dispatches
 on the handle it is given. So does anything `vkGetInstanceProcAddr` returns: the lazy instance
 slots serve every physical device and device of the one instance.
@@ -312,13 +392,13 @@ functions to lay out as a table and to fill, once per device, with
 
 ## Choosing
 
-| | `iat.inc` | delay-load | `static.inc` | `dynamic.inc` + `loader.asm` | `comdat.inc` |
-| --- | --- | --- | --- | --- | --- |
-| Code at run time | none | linker's thunks, helper | resolver | resolver | resolver |
-| Extension functions | the eight exported files | all | all | all | all |
-| Program starts without the function | no | yes | yes | yes | yes |
-| Program starts without `vulkan-1.dll` | no | yes | no | no | no |
-| Slot table | import table | linker's | dense | dense | dense |
-| A device call goes | through the Vulkan loader | through the Vulkan loader | straight to the device | straight to the device | straight to the device |
-| Devices | any number | any number | one | one | one |
-| Build step beyond the objects | none | import library, once | none | loader object | none |
+| | `iat.inc` | `thunk.inc` | delay-load | `static.inc` | `dynamic.inc` + `loader.asm` | `comdat.inc` |
+| --- | --- | --- | --- | --- | --- | --- |
+| Code at run time | none | linker jump thunks | linker's thunks, helper | resolver | resolver | resolver |
+| Extension functions | the eight exported files | the eight exported files | all | all | all | all |
+| Program starts when a referenced function is absent on an untaken path | no | no | yes | yes | yes | yes |
+| Program starts without `vulkan-1.dll` | no | no | yes | with `runtime.inc` | with `runtime.inc` | with `runtime.inc` |
+| Slot table | import table | import table | linker's | dense | dense | dense |
+| A device call goes | through the Vulkan loader | through the Vulkan loader | through the Vulkan loader | straight to the device | straight to the device | straight to the device |
+| Devices | any number | any number | any number | one | one | one |
+| Build step beyond the objects | none | none | import library, once | none | loader object | none |

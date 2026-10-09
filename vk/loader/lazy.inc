@@ -12,7 +12,8 @@
 ; One instance and one device.  The resolvers read the qwords `instance` and
 ; `device`, which the application defines and fills; `instance` is zero until
 ; there is one, which is what the functions that precede it resolve against.
-; vkGetInstanceProcAddr cannot be resolved this way; it is always an import.
+; vkGetInstanceProcAddr cannot be resolved this way. Its __imp_ reference binds
+; to the import library normally, or to the runtime.inc bootstrap's pointer.
 
 ; Entered as the target of `call [slot]`.  Sets the arguments aside and leaves
 ; the slot's address in RAX, ready for a resolver call.

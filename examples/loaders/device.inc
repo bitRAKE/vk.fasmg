@@ -32,10 +32,12 @@ proc run_device uses rbx
 	ret
 endp
 
-section '.data$t' data readable writeable align 16
+section '.bss$t' readable writeable align 16
 
 adapters rq MAX_ADAPTERS
-adapters_listed dd 0
+adapters_listed dd ?
+
+section '.data$t' data readable writeable align 16
 
 queue_priority dd 1.0
 

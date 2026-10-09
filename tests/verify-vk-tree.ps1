@@ -9,11 +9,14 @@
         right resolver, against a stand-in for Vulkan;
       - the loader examples, one program built under each loader, run and
         are bound the way their loader says: by the import table, by the
-        linker's delay-load thunks, by lazy slots, by both, and in two objects
+        linker's named jump thunks or delay-load thunks, by lazy slots, by both, and in two objects
         through a loader object or through COMDAT, where the slots must lie
         side by side as one table;
       - the delay-load example, linked against a library that does not exist,
-        starts and fails at its first Vulkan call instead of not starting.
+        starts and fails at its first Vulkan call instead of not starting;
+      - explicit runtime loading in static, dynamic, and COMDAT arrangements
+        has no Vulkan import and handles both missing DLL and missing export;
+      - failed bootstrap lookup clears its module and resolver state.
 
     tools/assemble.ps1 requires fresh output even when fasm2.cmd masks an
     assembler failure, and rejects warnings.
@@ -59,9 +62,56 @@ function Get-DelayedImports([string]$executable) {
 function Get-Slots([string]$executable) {
     $slots = @{}
     foreach ($line in (Get-Content -LiteralPath ([System.IO.Path]::ChangeExtension($executable, 'map')))) {
-        if ($line -match '^\s*\d{4}:([0-9a-f]{8})\s+__imp_(vk\w+)\s+[0-9a-f]{16}\s+\S+\.obj\s*$') { $slots[$Matches[2]] = [Convert]::ToInt32($Matches[1], 16) }
+        if ($line -match '^\s*\d{4}:([0-9a-f]{8})\s+__imp_(vk\w+)\s+[0-9a-f]{16}\s+\S+\.obj\s*$' -and $Matches[2] -ne 'vkGetInstanceProcAddr') { $slots[$Matches[2]] = [Convert]::ToInt32($Matches[1], 16) }
     }
     return $slots
+}
+# Inspect the linked x64 instructions, rather than infer thunks from imports.
+function Assert-NamedThunks([string]$executable) {
+    $bytes = [IO.File]::ReadAllBytes($executable)
+    $pe = [BitConverter]::ToInt32($bytes, 0x3c)
+    $imageBase = [BitConverter]::ToInt64($bytes, $pe + 48)
+    $sectionTable = $pe + 24 + [BitConverter]::ToUInt16($bytes, $pe + 20)
+    $sections = @(for ($i = 0; $i -lt [BitConverter]::ToUInt16($bytes, $pe + 6); $i++) {
+        $offset = $sectionTable + 40 * $i
+        [pscustomobject]@{
+            Address = $imageBase + [BitConverter]::ToUInt32($bytes, $offset + 12)
+            Size = [BitConverter]::ToUInt32($bytes, $offset + 16)
+            Raw = [BitConverter]::ToUInt32($bytes, $offset + 20)
+            Code = ([BitConverter]::ToUInt32($bytes, $offset + 36) -band 0x20) -ne 0
+        }
+    })
+    $addresses = @{}
+    $thunks = @{}
+    foreach ($line in (Get-Content -LiteralPath ([IO.Path]::ChangeExtension($executable, 'map')))) {
+        if ($line -match '^\s*\d{4}:[0-9a-f]{8}\s+((?:__imp_)?vk\w+)\s+([0-9a-f]{16})\s+(?:f\s+)?vulkan-1:vulkan-1\.dll\s*$') {
+            $addresses[$Matches[1]] = [Convert]::ToInt64($Matches[2], 16)
+            if ($Matches[1] -notlike '__imp_*') { $thunks[$Matches[1]] = 0 }
+        }
+    }
+    if (-not $thunks.Count) { throw 'Named-function imports produced no jump thunks' }
+    foreach ($name in @($thunks.Keys)) {
+        $address = $addresses[$name]
+        $section = $sections | Where-Object { $address -ge $_.Address -and $address -lt $_.Address + $_.Size }
+        $offset = [int]($section.Raw + $address - $section.Address)
+        $target = $address + 6 + [BitConverter]::ToInt32($bytes, $offset + 2)
+        if ($bytes[$offset] -ne 0xff -or $bytes[$offset + 1] -ne 0x25 -or $target -ne $addresses["__imp_$name"]) {
+            throw "$name is not a six-byte RIP-relative JMP through its IAT entry"
+        }
+    }
+    foreach ($section in ($sections | Where-Object Code)) {
+        for ($i = 0; $i -lt $section.Size - 4; $i++) {
+            $offset = [int]($section.Raw + $i)
+            if ($bytes[$offset] -ne 0xe8) { continue }
+            $target = $section.Address + $i + 5 + [BitConverter]::ToInt32($bytes, $offset + 1)
+            foreach ($name in @($thunks.Keys)) {
+                if ($target -eq $addresses[$name]) { $thunks[$name]++ }
+            }
+        }
+    }
+    if (@($thunks.Values | Where-Object { $_ -eq 0 }).Count) { throw 'A named import thunk has no relative CALL site' }
+    $calls = ($thunks.Values | Measure-Object -Sum).Sum
+    Write-Host "[vk] named imports: $calls five-byte CALL sites, $($thunks.Count) six-byte JMP thunks through their matching IAT entries"
 }
 function Assert-DenseTable($slots, [string]$what) {
     if (-not $slots.Count) { throw "$what defines no slot" }
@@ -92,6 +142,11 @@ $fake = Invoke-Assembler 'tests\vk\lazy_fake.asm' 'vk_lazy_fake'
 if ($LASTEXITCODE) { throw "the lazy trampoline probe failed at check $LASTEXITCODE" }
 Write-Host "[vk] lazy trampoline: arguments intact, resolvers and handles as expected, one resolution per slot"
 
+$runtimeProbe = Invoke-Assembler 'tests\vk\runtime_probe.asm' 'vk_runtime_probe'
+& (Invoke-Linker 'vk_runtime_probe' @($runtimeProbe))
+if ($LASTEXITCODE) { throw "Runtime bootstrap probe failed at check $LASTEXITCODE" }
+Write-Host '[vk] runtime bootstrap: missing export returns -3, module/resolver cleared, repeated close safe'
+
 $extension = 'vkCreateDebugUtilsMessengerEXT'
 foreach ($executable in $LoaderExamples.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)) {
     $name = [System.IO.Path]::GetFileNameWithoutExtension($executable) -replace '^loader_',''
@@ -100,6 +155,10 @@ foreach ($executable in $LoaderExamples.Split(' ', [System.StringSplitOptions]::
     $imports = Get-VulkanImports $executable
     $slots = Get-Slots $executable
     switch ($name) {
+        'thunk' {
+            if ($slots.Count -or $imports -notcontains 'vkDestroySurfaceKHR' -or $imports -contains $extension) { throw 'thunk: unexpected imports or lazy slots' }
+            Assert-NamedThunks $executable
+        }
         'iat' {
             if ($slots.Count -or $imports -notcontains 'vkDestroySurfaceKHR' -or $imports -contains $extension) { throw "iat: $($slots.Count) slots, imports $($imports -join ', ')" }
             Write-Host "[vk] loader example iat ran: $($imports.Count) imports, an exported extension's among them, no slot of its own"
@@ -130,10 +189,36 @@ foreach ($executable in $LoaderExamples.Split(' ', [System.StringSplitOptions]::
             Write-Host "[vk] loader example mixed ran: $($imports.Count) imports for core and surface, $($slots.Count) lazy slots for debug_utils"
         }
         default {
-            if (($imports -join ',') -ne 'vkGetInstanceProcAddr') { throw "${name}: imports $($imports -join ', ')" }
+            if ($name -like 'runtime_*') {
+                if ($imports.Count -or (Get-DelayedImports $executable).Count) { throw "${name}: Vulkan is still imported" }
+                $map = Get-Content -LiteralPath ([IO.Path]::ChangeExtension($executable, 'map')) -Raw
+                if ($map -notmatch '__imp_vkGetInstanceProcAddr\s+[0-9a-f]{16}\s+loader_runtime_\w+\.obj') { throw "${name}: no bootstrap resolver pointer" }
+                # Exercise both failure paths in each table arrangement. kernel32
+                # loads successfully but cannot provide vkGetInstanceProcAddr.
+                $source = switch ($name) {
+                    'runtime_static' { 'examples\loaders\runtime_static.asm' }
+                    'runtime_dynamic' { 'examples\loaders\runtime_dynamic_app.asm' }
+                    'runtime_comdat' { 'examples\loaders\runtime_comdat_app.asm' }
+                }
+                foreach ($library in @('vulkan-runtime-does-not-exist.dll','kernel32.dll')) {
+                    $variant = "vk_${name}_" + $(if ($library -eq 'kernel32.dll') { 'no_export' } else { 'no_dll' })
+                    $fixture = Join-Path $BuildDir "$variant.asm"
+                    $fixtureText = (Get-Content -LiteralPath $source -Raw) -replace '(?m)^vk_runtime\.bootstrap\s*$', "vk_runtime.bootstrap '$library'"
+                    $fixtureText = $fixtureText.Replace("'instance.inc'", "'examples/loaders/instance.inc'").Replace("'device.inc'", "'examples/loaders/device.inc'")
+                    [IO.File]::WriteAllText($fixture, $fixtureText)
+                    $object = Invoke-Assembler $fixture $variant
+                    $inputs = @($object, (Join-Path $BuildDir 'loader_console.obj'))
+                    if ($name -eq 'runtime_dynamic') { $inputs += @((Join-Path $BuildDir 'loader_dynamic_device.obj'), (Join-Path $BuildDir 'loader_runtime_dynamic_loader.obj')) }
+                    if ($name -eq 'runtime_comdat') { $inputs += (Join-Path $BuildDir 'loader_comdat_device.obj') }
+                    $failed = Invoke-Linker $variant $inputs
+                    [void](& $failed | Out-String)
+                    if ($LASTEXITCODE -ne 1) { throw "$variant exited with $LASTEXITCODE instead of bootstrap step 1" }
+                }
+                Write-Host "[vk] ${name}: no Vulkan import, normal startup/failure without its DLL or resolver export"
+            } elseif (($imports -join ',') -ne 'vkGetInstanceProcAddr') { throw "${name}: imports $($imports -join ', ')" }
             if (-not $slots.ContainsKey($extension) -or -not $slots.ContainsKey('vkDeviceWaitIdle')) { throw "${name}: slots $($slots.Keys -join ', ')" }
             Assert-DenseTable $slots $name
-            Write-Host "[vk] loader example $name ran: vkGetInstanceProcAddr the only import, $($slots.Count) slots in $(8 * $slots.Count) bytes"
+            Write-Host "[vk] loader example $name ran: $($slots.Count) lazy slots in $(8 * $slots.Count) bytes"
         }
     }
 }

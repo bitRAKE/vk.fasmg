@@ -6,7 +6,8 @@
 ; A slot exists only for a function the object refers to, and resolves itself
 ; through vkGetInstanceProcAddr or vkGetDeviceProcAddr the first time it is
 ; called (see lazy.inc).  The application defines the qwords `instance` and
-; `device`; only vkGetInstanceProcAddr is imported.
+; `device`; only vkGetInstanceProcAddr needs an external provider. Normally
+; that is the Vulkan import library; runtime.inc can supply it explicitly.
 ;
 ; Each object including this builds its own tables.  For several objects that
 ; share one set of slots use dynamic.inc and loader.asm.

@@ -6,15 +6,15 @@ public console_initialize
 public console_write_string
 public console_write_line
 
-extrn GetStdHandle:qword
-extrn WriteFile:qword
+extrn '__imp_GetStdHandle' as GetStdHandle:qword
+extrn '__imp_WriteFile' as WriteFile:qword
 
 STD_OUTPUT_HANDLE := -11
 
 section '.text$loader_console' code readable executable align 16
 
 proc console_initialize
-	fastcall GetStdHandle,STD_OUTPUT_HANDLE
+	fastcall [GetStdHandle],STD_OUTPUT_HANDLE
 	mov [console_output],rax
 	ret
 endp
@@ -36,7 +36,7 @@ write_string:
 	jz string_done
 	cmp rax,-1
 	je string_done
-	fastcall WriteFile,rax,[text],rbx,addr console_written,0
+	fastcall [WriteFile],rax,[text],rbx,addr console_written,0
 string_done:
 	ret
 endp
